@@ -37,6 +37,9 @@ export enum ConfigKeys {
   // -- CLIENT URL
   CLIENT_BASE_URL = 'CLIENT_BASE_URL',
 
+  // -- CORS ORIGINS
+  CORS_ORIGINS = 'CORS_ORIGINS',
+
   // -- INITIAL ADMIN ACCOUNT
   ADMIN_FIRSTNAME = 'ADMIN_FIRSTNAME',
   ADMIN_LASTNAME = 'ADMIN_LASTNAME',
@@ -108,6 +111,9 @@ export const validationSchema = Joi.object({
 
   // -- CLIENT URL --
   [ConfigKeys.CLIENT_BASE_URL]: Joi.string().default('http://localhost:3003'),
+
+  // -- CORS ORIGINS --
+  [ConfigKeys.CORS_ORIGINS]: Joi.string().optional(),
 
   // -- ADMIN ACCOUNT --
   [ConfigKeys.ADMIN_FIRSTNAME]: Joi.string().required(),
