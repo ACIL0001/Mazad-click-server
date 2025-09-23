@@ -1,0 +1,16 @@
+{
+  "BID": {
+    "NOT_FOUND": "Enchère avec l'ID {id} non trouvée",
+    "CREATED": "Nouvelle Enchère Créée",
+    "CREATED_MESSAGE": "Votre enchère pour {title} a été créée avec succès"
+  },
+  "OFFER": {
+    "PRICE_TOO_LOW": "Le prix de l'offre doit être supérieur au prix actuel de l'enchère",
+    "NEW_OFFER_RECEIVED": "Nouvelle Offre Reçue",
+    "NEW_OFFER_MESSAGE": "Une nouvelle offre de {price} a été placée sur votre enchère {title}"
+  },
+  "PARTICIPANT": {
+    "ALREADY_EXISTS": "Le participant existe déjà pour cette enchère",
+    "NOT_FOUND": "Participant avec l'ID {id} non trouvé"
+  }
+}

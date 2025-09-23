@@ -1,0 +1,149 @@
+SATIM TEST URLs FOR MANUAL TESTING
+=====================================
+
+Test Data: mdOrder=1753614000000, amount=800000, currency=012
+
+MOST LIKELY TO WORK (Try these first):
+=======================================
+
+1. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+2. https://cib.satim.dz/payment/merchants/DEMO/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+3. https://cib.satim.dz/payment/merchants/SANDBOX/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+4. https://cib.satim.dz/payment/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000
+
+5. https://cib.satim.dz/payment/gateway?merchantId=TESTMERCHANT&mdOrder=1753614000000
+
+6. https://satim.dz/payment/process?merchant=TESTMERCHANT&order=1753614000000&amount=800000
+
+7. https://test.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000
+
+8. https://sandbox.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000
+
+ALTERNATIVE MERCHANT IDs:
+=========================
+
+9. https://cib.satim.dz/payment/merchants/CIB_TEST/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+10. https://cib.satim.dz/payment/merchants/EDAHABIA_TEST/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+11. https://cib.satim.dz/payment/merchants/SATIM_DEMO/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+12. https://cib.satim.dz/payment/merchants/TEST_CIB/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+13. https://cib.satim.dz/payment/merchants/TEST_EDAHABIA/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+14. https://cib.satim.dz/payment/merchants/SATIMTEST/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+15. https://cib.satim.dz/payment/merchants/TEST/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+ALTERNATIVE DOMAINS:
+===================
+
+16. https://pay.satim.dz/merchants/TESTMERCHANT/payment?order=1753614000000
+
+17. https://secure.satim.dz/payment/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+18. https://gateway.satim.dz/payment/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+19. https://payment.satim.dz/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+ALTERNATIVE URL PATTERNS:
+=========================
+
+20. https://cib.satim.dz/payment/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+21. https://cib.satim.dz/api/payment/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+22. https://cib.satim.dz/checkout/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+23. https://cib.satim.dz/transaction/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+24. https://satim.dz/payment/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000
+
+25. https://satim.dz/payment/gateway?merchantId=TESTMERCHANT&mdOrder=1753614000000
+
+DEMO MERCHANT VARIATIONS:
+=========================
+
+26. https://cib.satim.dz/payment/merchants/DEMO/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+27. https://cib.satim.dz/payment/DEMO/payment_fr.html?mdOrder=1753614000000&amount=800000
+
+28. https://cib.satim.dz/payment/gateway?merchantId=DEMO&mdOrder=1753614000000
+
+29. https://satim.dz/payment/process?merchant=DEMO&order=1753614000000&amount=800000
+
+SANDBOX MERCHANT VARIATIONS:
+============================
+
+30. https://cib.satim.dz/payment/merchants/SANDBOX/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+31. https://cib.satim.dz/payment/SANDBOX/payment_fr.html?mdOrder=1753614000000&amount=800000
+
+32. https://cib.satim.dz/payment/gateway?merchantId=SANDBOX&mdOrder=1753614000000
+
+33. https://satim.dz/payment/process?merchant=SANDBOX&order=1753614000000&amount=800000
+
+TEST ENVIRONMENT SPECIFIC:
+==========================
+
+34. https://test.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000
+
+35. https://test.satim.dz/payment/merchants/DEMO/payment_fr.html?mdOrder=1753614000000
+
+36. https://test.satim.dz/payment/merchants/SANDBOX/payment_fr.html?mdOrder=1753614000000
+
+37. https://sandbox.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000
+
+38. https://sandbox.satim.dz/payment/merchants/DEMO/payment_fr.html?mdOrder=1753614000000
+
+39. https://sandbox.satim.dz/payment/merchants/SANDBOX/payment_fr.html?mdOrder=1753614000000
+
+ADDITIONAL TEST MERCHANTS:
+==========================
+
+40. https://cib.satim.dz/payment/merchants/DEV/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+41. https://cib.satim.dz/payment/merchants/STAGE/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+42. https://cib.satim.dz/payment/merchants/UAT/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+43. https://cib.satim.dz/payment/merchants/ALPHA/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+44. https://cib.satim.dz/payment/merchants/BETA/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+INSTRUCTIONS:
+============
+
+1. Copy and paste each URL into your browser
+2. Check if you get a payment form or a 403 error
+3. Note which URLs work and which don't
+4. If you get a 403 error, try the next URL
+5. If you get a payment form, that URL pattern works!
+
+IMPORTANT NOTES:
+===============
+
+- Some URLs may only work from Algerian IP addresses
+- Test environment may be temporarily unavailable
+- Contact SATIM support if all URLs return 403 errors
+- The working URL pattern can be used in your application
+- Try using a VPN with Algerian IP if you're outside Algeria
+
+TESTING ORDER:
+=============
+
+Start with URLs 1-8 (most likely to work)
+Then try URLs 9-15 (alternative merchant IDs)
+Then try URLs 16-19 (alternative domains)
+Then try URLs 20-25 (alternative patterns)
+Finally try URLs 26-44 (other variations)
+
+If none work, the issue is likely:
+1. IP restriction (need Algerian IP)
+2. Test environment down
+3. Need to contact SATIM for access
+4. Test credentials need activation 

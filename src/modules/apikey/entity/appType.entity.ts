@@ -1,0 +1,7 @@
+export enum RoleCode {
+  CLIENT = 'CLIENT',
+  PROFESSIONAL = 'PROFESSIONAL',
+  RESELLER = 'RESELLER',
+  SOUS_ADMIN = 'SOUS_ADMIN',
+  ADMIN = 'ADMIN',
+}

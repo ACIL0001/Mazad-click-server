@@ -1,0 +1,116 @@
+ALTERNATIVE SATIM URLS TO TRY (After 403 Forbidden Results)
+============================================================
+
+Since the standard test URLs are giving 403 Forbidden, let's try these alternatives:
+
+ALTERNATIVE 1: Different Parameter Names
+=======================================
+
+1. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?orderId=1753614000000&amount=800000&currency=012
+
+2. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?transactionId=1753614000000&amount=800000&currency=012
+
+3. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?reference=1753614000000&amount=800000&currency=012
+
+ALTERNATIVE 2: Different Currency Codes
+=======================================
+
+4. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=DZD
+
+5. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=12
+
+6. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+ALTERNATIVE 3: Different Amount Format
+======================================
+
+7. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=8000&currency=012
+
+8. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=8000.00&currency=012
+
+9. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012&format=centimes
+
+ALTERNATIVE 4: Different Language Versions
+==========================================
+
+10. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment.html?mdOrder=1753614000000&amount=800000&currency=012
+
+11. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_ar.html?mdOrder=1753614000000&amount=800000&currency=012
+
+12. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_en.html?mdOrder=1753614000000&amount=800000&currency=012
+
+ALTERNATIVE 5: Different Merchant IDs (More Specific)
+=====================================================
+
+13. https://cib.satim.dz/payment/merchants/CIB_TEST/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+14. https://cib.satim.dz/payment/merchants/EDAHABIA_TEST/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+15. https://cib.satim.dz/payment/merchants/SATIM_DEMO/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012
+
+ALTERNATIVE 6: Different Domains (More Specific)
+================================================
+
+16. https://pay.satim.dz/merchants/TESTMERCHANT/payment?order=1753614000000
+
+17. https://secure.satim.dz/payment/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+18. https://gateway.satim.dz/payment/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+ALTERNATIVE 7: Different URL Structures
+=======================================
+
+19. https://cib.satim.dz/payment/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+20. https://cib.satim.dz/api/payment/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+21. https://cib.satim.dz/checkout/TESTMERCHANT?mdOrder=1753614000000&amount=800000
+
+ALTERNATIVE 8: With Additional Parameters
+=========================================
+
+22. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012&test=true
+
+23. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012&mode=test
+
+24. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000&amount=800000&currency=012&environment=sandbox
+
+ALTERNATIVE 9: Different Order ID Format
+========================================
+
+25. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=TEST_1753614000000&amount=800000&currency=012
+
+26. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=ORDER_1753614000000&amount=800000&currency=012
+
+27. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=DEMO_1753614000000&amount=800000&currency=012
+
+ALTERNATIVE 10: Minimal Parameters
+==================================
+
+28. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?mdOrder=1753614000000
+
+29. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html?amount=800000
+
+30. https://cib.satim.dz/payment/merchants/TESTMERCHANT/payment_fr.html
+
+TESTING PRIORITY:
+================
+
+1. Try URLs 1-3 (different parameter names)
+2. Try URLs 4-6 (different currency codes)
+3. Try URLs 7-9 (different amount formats)
+4. Try URLs 10-12 (different languages)
+5. Try URLs 13-15 (different merchant IDs)
+6. Try URLs 16-18 (different domains)
+7. Try URLs 19-21 (different URL structures)
+8. Try URLs 22-24 (additional parameters)
+9. Try URLs 25-27 (different order ID formats)
+10. Try URLs 28-30 (minimal parameters)
+
+WHAT THIS MEANS:
+===============
+
+- The 403 errors suggest IP restrictions or account activation issues
+- The test environment exists but requires specific access
+- We need to find the right combination of parameters
+- Contact SATIM support may be necessary for proper test access 
