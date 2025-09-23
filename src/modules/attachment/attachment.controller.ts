@@ -1,4 +1,5 @@
 import { Controller, Get, Param, Post, UploadedFile, UseInterceptors, Body, Request } from '@nestjs/common';
+import { Express } from 'express';
 import { AttachmentService } from './attachment.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Public } from 'src/common/decorators/public.decorator';

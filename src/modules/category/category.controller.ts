@@ -12,6 +12,7 @@ import {
   UseInterceptors,
   Query 
 } from '@nestjs/common';
+import { Express } from 'express';
 import { CategoryService } from './category.service';
 import { Category } from './schema/category.schema';
 import { CreateCategoryDto } from './dto/create-category.dto'; 
