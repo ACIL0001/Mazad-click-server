@@ -184,7 +184,7 @@ export class SmsService {
       const token = process.env.NETBEOPEN_WEBSERVICES_TOKEN;
       const params = new URLSearchParams({ u: username, h: token, op: 'balance' });
       const response = await lastValueFrom(this.httpService.get(`${apiUrl}?${params.toString()}`, { timeout: 10000 }));
-      return { raw: response.data, parsed: this.parseBalanceResponse(response.data), timestamp: new Date().toISOString() };
+      return { raw: (response as AxiosResponse).data, parsed: this.parseBalanceResponse((response as AxiosResponse).data), timestamp: new Date().toISOString() };
     } catch (error) {
       this.logger.error('Balance check failed:', error.message);
       return { error: error.message, timestamp: new Date().toISOString() };
@@ -324,10 +324,10 @@ export class SmsService {
       })
     );
 
-    this.logger.log(`POST Form Response: ${JSON.stringify(response.data)}`);
+    this.logger.log(`POST Form Response: ${JSON.stringify((response as AxiosResponse).data)}`);
     
-    if (!this.isSuccessResponse(response.data)) {
-      throw new BadRequestException(`SMS gateway rejected POST form request: "${response.data}"`);
+    if (!this.isSuccessResponse((response as AxiosResponse).data)) {
+      throw new BadRequestException(`SMS gateway rejected POST form request: "${(response as AxiosResponse).data}"`);
     }
   }
 
@@ -350,10 +350,10 @@ export class SmsService {
       })
     );
 
-    this.logger.log(`GET Response: ${JSON.stringify(response.data)}`);
+    this.logger.log(`GET Response: ${JSON.stringify((response as AxiosResponse).data)}`);
     
-    if (!this.isSuccessResponse(response.data)) {
-      throw new BadRequestException(`SMS gateway rejected GET request: "${response.data}"`);
+    if (!this.isSuccessResponse((response as AxiosResponse).data)) {
+      throw new BadRequestException(`SMS gateway rejected GET request: "${(response as AxiosResponse).data}"`);
     }
   }
 
@@ -377,10 +377,10 @@ export class SmsService {
       })
     );
 
-    this.logger.log(`POST JSON Response: ${JSON.stringify(response.data)}`);
+    this.logger.log(`POST JSON Response: ${JSON.stringify((response as AxiosResponse).data)}`);
     
-    if (!this.isSuccessResponse(response.data)) {
-      throw new BadRequestException(`SMS gateway rejected JSON request: "${response.data}"`);
+    if (!this.isSuccessResponse((response as AxiosResponse).data)) {
+      throw new BadRequestException(`SMS gateway rejected JSON request: "${(response as AxiosResponse).data}"`);
     }
   }
 

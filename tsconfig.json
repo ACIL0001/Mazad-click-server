@@ -20,6 +20,7 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
-    "typeRoots": ["./node_modules/@types", "./node_modules/mongoose/types"]
+    "typeRoots": ["./node_modules/@types", "./node_modules/mongoose/types"],
+    "types": ["node", "express", "multer", "jest"]
   }
 }
