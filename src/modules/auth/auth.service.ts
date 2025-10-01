@@ -54,7 +54,6 @@ export class AuthService {
 
   async SignIn(credentials: SignInDto) {
     const user = await this.userService.findByLogin(credentials.login);
-    console.log('Password = ', credentials.password);
     
     if (!user) throw new UnauthorizedException('Invalid credentials - login');
     
@@ -69,8 +68,6 @@ export class AuthService {
     }
 
     const session = await this.sessionService.CreateSession(user);
-    console.log('User +++ ', user);
-    console.log('Session created:', session);
 
     // Ensure session has required properties (note: backend uses snake_case)
     if (!session.access_token || !session.refresh_token) {
@@ -78,13 +75,11 @@ export class AuthService {
       throw new Error('Failed to create valid session');
     }
 
-    // Return consistent structure for frontend (convert to camelCase)
+    // Return consistent structure for frontend (convert to camelCase) - DON'T spread session
     return { 
       session: {
         accessToken: session.access_token,
         refreshToken: session.refresh_token,
-        // Include other session properties if needed
-        ...session
       }, 
       user 
     };

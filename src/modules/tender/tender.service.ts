@@ -2,11 +2,12 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Tender, TenderDocument, TENDER_STATUS, TENDER_TYPE } from './schema/tender.schema';
-import { TenderBid, TenderBidDocument } from './schema/tender-bid.schema';
+import { TenderBid, TenderBidDocument, TenderBidStatus } from './schema/tender-bid.schema';
 import { CreateTenderDto } from './dto/create-tender.dto';
 import { UpdateTenderDto } from './dto/update-tender.dto';
 import { CreateTenderBidDto } from './dto/create-tender-bid.dto';
@@ -63,7 +64,13 @@ export class TenderService {
             model: 'Attachment'
           }
         })
-        .populate('category')
+        .populate({
+          path: 'category',
+          populate: {
+            path: 'thumb',
+            model: 'Attachment'
+          }
+        })
         .populate('subCategory')
         .populate({ path: 'comments', populate: { path: 'user' } })
         .exec();
@@ -92,17 +99,18 @@ export class TenderService {
         }
       })
       .populate('attachments')
-      .populate('category') 
+      .populate({
+        path: 'category',
+        populate: {
+          path: 'thumb',
+          model: 'Attachment'
+        }
+      })
       .populate('subCategory')
       .exec();
   }
 
   async create(createTenderDto: CreateTenderDto): Promise<Tender> {
-    // Initialize currentLowestBid to maxBudget for reverse auction
-    createTenderDto.currentLowestBid = createTenderDto.maxBudget;
-
-    console.log('Creating tender:', createTenderDto);
-
     const createdTender = new this.tenderModel(createTenderDto);
     const savedTender = await createdTender.save();
     const populatedTender = await this.tenderModel
@@ -111,8 +119,6 @@ export class TenderService {
       .populate('subCategory')
       .populate('attachments')
       .exec();
-    
-    console.log('Tender created:', populatedTender);
 
     // Get all sellers (professionals) to send notifications
     const sellers = await this.findAllSellers(); // Use the local method
@@ -166,8 +172,6 @@ export class TenderService {
       const now = Date.now();
       const endDate = new Date(getAllTenders[index].endingAt).getTime();
       
-      console.log("endDate", endDate);
-      console.log("now", now);
 
       if (endDate < now) {
         const getTenderBids = await this.tenderBidModel.find({ tender: getAllTenders[index]._id });
@@ -183,26 +187,31 @@ export class TenderService {
             }
           }
 
-          // Check if the lowest bid meets the minimum price requirement
-          const meetsPriceRequirement = !getAllTenders[index].minimumPrice || 
-                                        lowestBid.bidAmount >= getAllTenders[index].minimumPrice;
+          // Check if tender owner is a professional user for automatic awarding
+          const tenderOwner = await this.userModel.findById(getAllTenders[index].owner).exec();
+          const isProfessionalOwner = tenderOwner && tenderOwner.type === 'PROFESSIONAL';
 
-          if (meetsPriceRequirement) {
-            // Award the tender to the lowest bidder
+          if (isProfessionalOwner) {
+            // Award the tender to the lowest bidder automatically for professional users
             await this.tenderModel.findByIdAndUpdate(getAllTenders[index]._id, {
               status: TENDER_STATUS.AWARDED,
               awardedTo: lowestBid.bidder,
             });
+          } else {
+            // For non-professional users, just close the tender without automatic awarding
+            await this.tenderModel.findByIdAndUpdate(getAllTenders[index]._id, {
+              status: TENDER_STATUS.CLOSED,
+            });
+            continue;
+          }
 
             const getWinner = await this.userModel.findOne({_id: lowestBid.bidder});
-            console.log("Winner of tender:", getWinner);
 
             let users = [getUser, getWinner];
             let createdAt = new Date();
 
             const chat = new this.chatModel({users , createdAt})
             await chat.save()
-            console.log('Chat created for tender:', chat);
 
             // Send socket notification for new chat to winner (seller)
             this.chatGateway.sendNewChatToBuyer(
@@ -289,17 +298,16 @@ export class TenderService {
 
             this.chatGateway.sendNotificationChatCreateToOne(lowestBid.bidder._id.toString());
 
-            console.log("Tender awarded to:", getWinner);
+            // Send notifications to all participants about the tender result
+            await this.notifyAllParticipants(getAllTenders[index]._id, lowestBid, getAllTenders[index].title);
+
             continue;
-          }
         }
 
         // If no acceptable bids, close the tender
         await this.tenderModel.findByIdAndUpdate(getAllTenders[index]._id, {
           status: TENDER_STATUS.CLOSED,
         });
-
-        console.log("Tender closed (no acceptable bids):", getAllTenders[index]._id);
       }
     }
     return;
@@ -324,20 +332,36 @@ export class TenderService {
 
   // Tender bid methods
   async createTenderBid(tenderId: string, createTenderBidDto: CreateTenderBidDto): Promise<TenderBid> {
-    console.log("Creating new tender bid");
+    
+    // Validate input data - only check that amount is positive
+    if (!createTenderBidDto.bidAmount || createTenderBidDto.bidAmount <= 0) {
+      throw new BadRequestException('Bid amount must be a positive number');
+    }
+
+    // No price restrictions - tenders accept any positive amount
+    
+    if (!createTenderBidDto.bidder) {
+      throw new BadRequestException('Bidder ID is required');
+    }
+    
+    if (!createTenderBidDto.tenderOwner) {
+      throw new BadRequestException('Tender owner ID is required');
+    }
+    
     const tender = await this.findOne(tenderId);
     console.log("Found tender:", tender._id);
 
-    // Check if the bid amount is lower than current lowest bid (reverse auction logic)
-    if (createTenderBidDto.bidAmount >= tender.currentLowestBid) {
-      const translatedMessage = await this.i18nService.t('TENDER_BID.INVALID_PRICE');
-      throw new BadRequestException('Bid amount must be lower than current lowest bid');
+    // Check if tender is still active
+    if (tender.status !== 'OPEN') {
+      throw new BadRequestException('Tender is no longer accepting bids');
+    }
+    
+    // Check if tender has ended
+    if (new Date() > new Date(tender.endingAt)) {
+      throw new BadRequestException('Tender has ended');
     }
 
-    // Check if bid meets minimum price requirement
-    if (tender.minimumPrice && createTenderBidDto.bidAmount < tender.minimumPrice) {
-      throw new BadRequestException('Bid amount is below minimum acceptable price');
-    }
+    // No price restrictions - tenders accept any positive amount
 
     // Create the tender bid
     const createdTenderBid = new this.tenderBidModel({ 
@@ -346,10 +370,6 @@ export class TenderService {
     });
     const savedTenderBid = await createdTenderBid.save();
     console.log("Tender bid created:", savedTenderBid._id);
-
-    // Update the tender's current lowest bid
-    const updatedTender = await this.update(tender._id, { currentLowestBid: createTenderBidDto.bidAmount });
-    console.log("Tender current lowest bid updated");
 
     // Create notification for tender owner
     const tenderOwnerTitle = "Nouvelle offre reçue";
@@ -363,7 +383,7 @@ export class TenderService {
         NotificationType.NEW_OFFER,
         tenderOwnerTitle,
         tenderOwnerMessage,
-        { tender: updatedTender, tenderBid: savedTenderBid }
+        { tender: tender, tenderBid: savedTenderBid }
       );
     } else {
       console.log("Warning: Tender owner is null or missing _id, skipping notification");
@@ -376,7 +396,7 @@ export class TenderService {
     return this.tenderBidModel
       .find({ tender: tenderId })
       .populate('bidder', 'firstName lastName phone email username')
-      .populate('tender', 'title currentLowestBid category')
+      .populate('tender', 'title category')
       .lean()
       .exec();
   }
@@ -390,7 +410,7 @@ export class TenderService {
     return this.tenderBidModel
       .find({ tender: { $in: tenderIds } })
       .populate('bidder', 'firstName lastName phone email username')
-      .populate('tender', 'title currentLowestBid category')
+      .populate('tender', 'title category')
       .lean()
       .exec();
   }
@@ -399,8 +419,347 @@ export class TenderService {
     return this.tenderBidModel
       .find({ bidder: bidderId })
       .populate('bidder', 'firstName lastName phone email username')
-      .populate('tender', 'title currentLowestBid category')
+      .populate('tender', 'title category')
       .lean()
       .exec();
+  }
+
+  /**
+   * Accept a tender bid
+   */
+  async acceptTenderBid(bidId: string, ownerId: string): Promise<TenderBid> {
+    console.log('TenderService: Accepting tender bid:', { bidId, ownerId });
+    
+    try {
+      // Find the tender bid
+      const tenderBid = await this.tenderBidModel.findById(bidId).populate('tender').exec();
+      if (!tenderBid) {
+        throw new BadRequestException(`Tender bid with ID ${bidId} not found`);
+      }
+
+      // Verify the owner has permission to accept this bid
+      const tender = await this.tenderModel.findById(tenderBid.tender._id).exec();
+      if (!tender || tender.owner.toString() !== ownerId) {
+        throw new ForbiddenException('You can only accept bids for your own tenders');
+      }
+
+      // Update the tender bid status
+      tenderBid.status = TenderBidStatus.ACCEPTED;
+      const updatedBid = await tenderBid.save();
+
+      // Send notification to the bidder
+      try {
+        const notificationTitle = "Offre Acceptée";
+        const notificationMessage = `Votre offre de ${tenderBid.bidAmount} DA pour l'appel d'offres "${tender.title}" a été acceptée!`;
+        
+        // Extract the bidder ID properly from the populated object
+        const bidderId = tenderBid.bidder._id ? tenderBid.bidder._id.toString() : tenderBid.bidder.toString();
+        
+        console.log('🔔 TenderService: Creating notification for bidder:', {
+          bidderId: tenderBid.bidder,
+          bidderIdString: bidderId,
+          bidderIdType: typeof tenderBid.bidder,
+          tenderTitle: tender.title,
+          notificationTitle,
+          notificationMessage
+        });
+        
+        await this.notificationService.create(
+          bidderId,
+          NotificationType.OFFER_ACCEPTED,
+          notificationTitle,
+          notificationMessage,
+          { 
+            tenderBid: updatedBid, 
+            tender: tender,
+            bidAmount: tenderBid.bidAmount,
+            tenderTitle: tender.title
+          },
+          ownerId, // senderId (tender owner)
+          undefined, // senderName (will be populated by notification service)
+          undefined  // senderEmail (will be populated by notification service)
+        );
+        
+        console.log('TenderService: Notification sent to bidder:', tenderBid.bidder);
+      } catch (notificationError) {
+        console.error('TenderService: Error sending notification:', notificationError);
+        // Don't fail the entire operation if notification fails
+      }
+
+      console.log('TenderService: Tender bid accepted successfully:', updatedBid._id);
+      return updatedBid;
+    } catch (error) {
+      console.error('TenderService: Error accepting tender bid:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Reject a tender bid
+   */
+  async rejectTenderBid(bidId: string, ownerId: string): Promise<TenderBid> {
+    console.log('TenderService: Rejecting tender bid:', { bidId, ownerId });
+    
+    try {
+      // Find the tender bid
+      const tenderBid = await this.tenderBidModel.findById(bidId).populate('tender').exec();
+      if (!tenderBid) {
+        throw new BadRequestException(`Tender bid with ID ${bidId} not found`);
+      }
+
+      // Verify the owner has permission to reject this bid
+      const tender = await this.tenderModel.findById(tenderBid.tender._id).exec();
+      if (!tender || tender.owner.toString() !== ownerId) {
+        throw new ForbiddenException('You can only reject bids for your own tenders');
+      }
+
+      // Update the tender bid status
+      tenderBid.status = TenderBidStatus.DECLINED;
+      const updatedBid = await tenderBid.save();
+
+      // Send notification to the bidder
+      try {
+        const notificationTitle = "Offre Refusée";
+        const notificationMessage = `Votre offre de ${tenderBid.bidAmount} DA pour l'appel d'offres "${tender.title}" a été refusée.`;
+        
+        // Extract the bidder ID properly from the populated object
+        const bidderId = tenderBid.bidder._id ? tenderBid.bidder._id.toString() : tenderBid.bidder.toString();
+        
+        await this.notificationService.create(
+          bidderId,
+          NotificationType.OFFER_DECLINED,
+          notificationTitle,
+          notificationMessage,
+          { 
+            tenderBid: updatedBid, 
+            tender: tender,
+            bidAmount: tenderBid.bidAmount,
+            tenderTitle: tender.title
+          },
+          ownerId, // senderId (tender owner)
+          undefined, // senderName (will be populated by notification service)
+          undefined  // senderEmail (will be populated by notification service)
+        );
+        
+        console.log('TenderService: Notification sent to bidder:', tenderBid.bidder);
+      } catch (notificationError) {
+        console.error('TenderService: Error sending notification:', notificationError);
+        // Don't fail the entire operation if notification fails
+      }
+
+      console.log('TenderService: Tender bid rejected successfully:', updatedBid._id);
+      return updatedBid;
+    } catch (error) {
+      console.error('TenderService: Error rejecting tender bid:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a tender bid
+   */
+  async deleteTenderBid(bidId: string, userId: string): Promise<TenderBid> {
+    console.log('TenderService: Deleting tender bid:', { bidId, userId });
+    
+    try {
+      // Find the tender bid
+      const tenderBid = await this.tenderBidModel.findById(bidId).populate('tender').exec();
+      if (!tenderBid) {
+        throw new BadRequestException(`Tender bid with ID ${bidId} not found`);
+      }
+
+      // Verify the user has permission to delete this bid (either the bidder or tender owner)
+      const tender = await this.tenderModel.findById(tenderBid.tender._id).exec();
+      const isBidder = tenderBid.bidder.toString() === userId;
+      const isTenderOwner = tender && tender.owner.toString() === userId;
+      
+      if (!isBidder && !isTenderOwner) {
+        throw new ForbiddenException('You can only delete your own bids or bids on your own tenders');
+      }
+
+      // Delete the tender bid
+      const deletedBid = await this.tenderBidModel.findByIdAndDelete(bidId).exec();
+      if (!deletedBid) {
+        throw new BadRequestException(`Tender bid with ID ${bidId} not found`);
+      }
+
+      console.log('TenderService: Tender bid deleted successfully:', deletedBid._id);
+      return deletedBid;
+    } catch (error) {
+      console.error('TenderService: Error deleting tender bid:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a tender
+   */
+  async deleteTender(tenderId: string, userId: string): Promise<Tender> {
+    console.log('TenderService: Deleting tender:', { tenderId, userId });
+
+    try {
+      // Find the tender
+      const tender = await this.tenderModel.findById(tenderId).exec();
+      if (!tender) {
+        throw new BadRequestException(`Tender with ID ${tenderId} not found`);
+      }
+
+      // Verify the user has permission to delete this tender (only the owner)
+      if (tender.owner.toString() !== userId) {
+        throw new ForbiddenException('You can only delete your own tenders');
+      }
+
+      // Delete all associated tender bids first
+      await this.tenderBidModel.deleteMany({ tender: tenderId }).exec();
+
+      // Delete the tender
+      const deletedTender = await this.tenderModel.findByIdAndDelete(tenderId).exec();
+      if (!deletedTender) {
+        throw new BadRequestException(`Tender with ID ${tenderId} not found`);
+      }
+
+      console.log('TenderService: Tender deleted successfully:', deletedTender._id);
+      return deletedTender;
+    } catch (error) {
+      console.error('TenderService: Error deleting tender:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check all open tenders and automatically award them if they have ended
+   * This method should be called periodically (e.g., via cron job)
+   */
+  async checkAllTendersForAutoAward(): Promise<void> {
+    console.log('Checking all tenders for automatic awarding...');
+    
+    try {
+      // Get all open tenders
+      const openTenders = await this.tenderModel.find({ status: TENDER_STATUS.OPEN }).exec();
+      console.log(`Found ${openTenders.length} open tenders to check`);
+
+      for (const tender of openTenders) {
+        const now = Date.now();
+        const endDate = new Date(tender.endingAt).getTime();
+
+        if (endDate < now) {
+          console.log(`Tender ${tender._id} has ended, checking for automatic awarding...`);
+          
+          // Get all bids for this tender
+          const tenderBids = await this.tenderBidModel.find({ tender: tender._id }).exec();
+
+          if (tenderBids.length > 0) {
+            // Find the lowest bid
+            let lowestBid = tenderBids[0];
+            for (let i = 1; i < tenderBids.length; i++) {
+              if (tenderBids[i].bidAmount < lowestBid.bidAmount) {
+                lowestBid = tenderBids[i];
+              }
+            }
+
+            // Check if tender owner is a professional user
+            const tenderOwner = await this.userModel.findById(tender.owner).exec();
+            const isProfessionalOwner = tenderOwner && tenderOwner.type === 'PROFESSIONAL';
+
+            if (isProfessionalOwner) {
+              console.log(`Auto-awarding tender ${tender._id} to lowest bidder ${lowestBid.bidder}`);
+              
+              // Award the tender to the lowest bidder
+              await this.tenderModel.findByIdAndUpdate(tender._id, {
+                status: TENDER_STATUS.AWARDED,
+                awardedTo: lowestBid.bidder,
+              });
+
+              // Get winner details
+              const getWinner = await this.userModel.findById(lowestBid.bidder).exec();
+              const getTenderOwner = await this.userModel.findById(tender.owner).exec();
+
+              // Create chat between winner and tender owner
+              const users = [getTenderOwner, getWinner];
+              const createdAt = new Date();
+              const chat = new this.chatModel({ users, createdAt });
+              await chat.save();
+
+              // Send notifications to all participants
+              await this.notifyAllParticipants(tender._id, lowestBid, tender.title);
+
+              console.log(`Tender ${tender._id} automatically awarded successfully`);
+            } else {
+              // For non-professional users, just close the tender
+              await this.tenderModel.findByIdAndUpdate(tender._id, {
+                status: TENDER_STATUS.CLOSED,
+              });
+              console.log(`Tender ${tender._id} closed (non-professional owner)`);
+            }
+          } else {
+            // No bids, close the tender
+            await this.tenderModel.findByIdAndUpdate(tender._id, {
+              status: TENDER_STATUS.CLOSED,
+            });
+            console.log(`Tender ${tender._id} closed (no bids)`);
+          }
+        }
+      }
+
+      console.log('All tenders checked for automatic awarding');
+    } catch (error) {
+      console.error('Error checking tenders for auto-award:', error);
+    }
+  }
+
+  /**
+   * Notify all participants about tender results
+   */
+  private async notifyAllParticipants(tenderId: string, winningBid: any, tenderTitle: string): Promise<void> {
+    try {
+      // Get all bids for this tender
+      const allBids = await this.tenderBidModel
+        .find({ tender: tenderId })
+        .populate('bidder', 'firstName lastName email')
+        .exec();
+
+      console.log(`Notifying ${allBids.length} participants about tender results`);
+
+      // Send notifications to all participants
+      for (const bid of allBids) {
+        const isWinner = bid._id.toString() === winningBid._id.toString();
+        
+        if (isWinner) {
+          // Winner notification
+          await this.notificationService.create(
+            bid.bidder._id.toString(),
+            NotificationType.BID_WON,
+            '🎉 Félicitations! Vous avez remporté l\'appel d\'offres',
+            `Vous avez remporté l'appel d'offres "${tenderTitle}" avec votre offre de ${bid.bidAmount} DA. L'acheteur vous contactera bientôt pour finaliser la transaction.`,
+            {
+              tenderId: tenderId,
+              tenderTitle: tenderTitle,
+              bidAmount: bid.bidAmount,
+              isWinner: true
+            }
+          );
+        } else {
+          // Loser notification
+          await this.notificationService.create(
+            bid.bidder._id.toString(),
+            NotificationType.OFFER_DECLINED,
+            'Appel d\'offres attribué à un autre participant',
+            `L'appel d'offres "${tenderTitle}" a été attribué à un autre participant avec une offre de ${winningBid.bidAmount} DA. Merci pour votre participation!`,
+            {
+              tenderId: tenderId,
+              tenderTitle: tenderTitle,
+              winningBidAmount: winningBid.bidAmount,
+              yourBidAmount: bid.bidAmount,
+              isWinner: false
+            }
+          );
+        }
+      }
+
+      console.log('All participant notifications sent successfully');
+    } catch (error) {
+      console.error('Error notifying participants:', error);
+      // Don't throw error to avoid breaking the main flow
+    }
   }
 }

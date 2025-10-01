@@ -77,11 +77,6 @@ export class Tender {
   })
   auctionType: TENDER_AUCTION_TYPE;
 
-  @Prop({ type: Number, required: true })
-  maxBudget: number; // Maximum budget the buyer is willing to pay
-
-  @Prop({ type: Number, required: true })
-  currentLowestBid: number; // Current lowest bid (starts at maxBudget)
 
   @Prop({ type: String })
   quantity: String;
@@ -92,11 +87,12 @@ export class Tender {
   @Prop({ type: String, required: true })
   location: String;
 
+  @Prop({ type: Number, required: false })
+  maxBudget?: number; // Maximum budget for the tender
+
   @Prop({ type: Boolean, required: true })
   isPro: boolean;
 
-  @Prop({ type: Number })
-  minimumPrice?: number; // Minimum acceptable price
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
   awardedTo?: User; // Winner of the tender

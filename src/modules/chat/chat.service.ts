@@ -55,7 +55,6 @@ export class ChatService {
             });
             
             if (existingChat) {
-              console.log("Admin chat already exists, returning existing chat");
               return existingChat;
             }
             
@@ -80,7 +79,6 @@ export class ChatService {
               createdAt: new Date(createdAt)
             };
             
-            console.log("Creating new admin chat with data:", chatData);
             const chat = new this.chatModel(chatData);
             await chat.save();
             
@@ -111,43 +109,46 @@ export class ChatService {
 
 
   async getChat(id: string, from: string): Promise<any[]> {
-    console.log("🔍 ChatService.getChat called with:");
-    console.log("  - id:", id, "(type:", typeof id, ")");
-    console.log("  - from:", from, "(type:", typeof from, ")");
-
     // Handle both string and ObjectId types for users._id
     let queryId: any = id;
     if (require('mongoose').Types.ObjectId.isValid(id)) {
       queryId = new (require('mongoose').Types.ObjectId)(id);
-      console.log("✅ Converted to ObjectId:", queryId);
-    } else {
-      console.log("⚠️ ID is not a valid ObjectId, using as string");
     }
 
     let chats: Chat[] = [];
     if (from == 'seller') {
-      console.log("🔍 Searching for seller chats...");
       chats = await this.chatModel.find({ 'users._id': queryId });
-      console.log("📊 Found seller chats:", chats.length);
     } else if (from == 'admin') {
-      console.log("🔍 Searching for admin chats...");
-      chats = await this.chatModel.find({ 'users._id': 'admin' });
-      console.log("📊 Found admin chats:", chats.length);
+      // For admin, find chats where either:
+      // 1. One user has _id === 'admin' OR AccountType === 'admin'
+      // 2. One user is an actual admin user from the database
+      try {
+        const adminUsers = await this.userService.findUsersByRoles([RoleCode.ADMIN]);
+        const adminUserIds = adminUsers.map(admin => admin._id.toString());
+        
+        chats = await this.chatModel.find({
+          $or: [
+            { 'users._id': 'admin' },
+            { 'users.AccountType': 'admin' },
+            { 'users._id': { $in: adminUserIds } }
+          ]
+        });
+      } catch (error) {
+        console.error('Error finding admin users:', error);
+        // Fallback to original logic
+        chats = await this.chatModel.find({ 'users._id': 'admin' });
+      }
     } else {
-      console.log("🔍 Searching for client chats...");
       chats = await this.chatModel.find({ 'users._id': queryId }).exec();
-      console.log("📊 Found client chats:", chats.length);
     }
-
-    console.log("📋 Raw chats data:", chats.map(chat => ({
-      id: chat._id,
-      users: chat.users.map((u: any) => ({ _id: u._id, firstName: u.firstName, lastName: u.lastName })),
-      createdAt: chat.createdAt
-    })));
 
     // Add isAdminChat property to each chat
     const chatsWithAdminFlag = chats.map(chat => {
-      const isAdminChat = chat.users.some((user: any) => user._id === 'admin' || user.AccountType === 'admin');
+      const isAdminChat = chat.users.some((user: any) => 
+        user._id === 'admin' || 
+        user.AccountType === 'admin' ||
+        user.type === 'ADMIN'
+      );
       // Cast chat as ChatDocument to access toObject
       return { ...(chat as any).toObject(), isAdminChat };
     });

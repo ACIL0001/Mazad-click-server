@@ -28,10 +28,27 @@ export class OfferService {
   ) {}
 
   async createOffer(bidId: string, createOfferDto: CreateOfferDto): Promise<Offer> {
-    console.log("Creating new offer");
-    const bid = await this.bidService.findOne(bidId);
-    console.log("Found bid:", bid._id);
+    // Try to find as bid first
+    let bid;
+    let isTender = false;
+    
+    try {
+      bid = await this.bidService.findOne(bidId);
+    } catch (error) {
+      // If not a bid, assume it's a tender and create a tender offer
+      isTender = true;
+    }
 
+    if (isTender) {
+      // Handle tender offer creation
+      return this.createTenderOffer(bidId, createOfferDto);
+    } else {
+      // Handle regular bid offer creation
+      return this.createBidOffer(bid, createOfferDto);
+    }
+  }
+
+  private async createBidOffer(bid: any, createOfferDto: CreateOfferDto): Promise<Offer> {
     // Determine the bid type
     const bidType = bid.bidType;
 
@@ -45,15 +62,13 @@ export class OfferService {
     // Create the offer with a default status
     const createdOffer = new this.offerModel({ 
       ...createOfferDto, 
-      bid: bidId,
+      bid: bid._id,
       status: OfferStatus.PENDING
     });
     const savedOffer = await createdOffer.save();
-    console.log("Offer created:", savedOffer._id);
 
     // Update the bid's current price
     const updatedBid = await this.bidService.update(bid._id, { currentPrice: createOfferDto.price });
-    console.log("Bid price updated");
 
     // Create notification for bid owner
     const bidOwnerTitle = "Nouvelle offre reçue";
@@ -69,14 +84,38 @@ export class OfferService {
         bidOwnerMessage,
         { bid: updatedBid, offer: savedOffer }
       );
-    } else {
-      console.log("Warning: Bid owner is null or missing _id, skipping notification");
-      // If needed, you could try to find the owner from the bid's owner field directly
-      // const ownerId = bid.owner ? (typeof bid.owner === 'string' ? bid.owner : null) : null;
     }
 
-    // Auto bid logic here...
-    // (keeping your existing auto bid logic)
+    return savedOffer;
+  }
+
+  private async createTenderOffer(tenderId: string, createOfferDto: CreateOfferDto): Promise<Offer> {
+    // For tenders, we create an offer record for tracking purposes
+    // The actual tender bid logic is handled in the tender service
+    
+    // Create the offer with a default status
+    const createdOffer = new this.offerModel({ 
+      ...createOfferDto, 
+      bid: tenderId, // Store tender ID in bid field for compatibility
+      status: OfferStatus.PENDING,
+      tenderId: tenderId // Add tender ID for reference
+    });
+    const savedOffer = await createdOffer.save();
+
+    // Create notification for tender owner
+    const tenderOwnerTitle = "Nouvelle offre reçue";
+    const tenderOwnerMessage = `Une nouvelle offre de ${createOfferDto.price} a été soumise pour votre appel d'offres`;
+
+    // Create notification for tender owner (we'll use the owner from createOfferDto)
+    if (createOfferDto.owner) {
+      await this.notificationService.create(
+        createOfferDto.owner,
+        NotificationType.NEW_OFFER,
+        tenderOwnerTitle,
+        tenderOwnerMessage,
+        { tenderId: tenderId, offer: savedOffer }
+      );
+    }
 
     return savedOffer;
   }
@@ -89,6 +128,17 @@ export class OfferService {
       .find({ bid: bidId })
       .populate('user', 'firstName lastName phone email username')
       .populate('bid', 'title currentPrice category')
+      .lean()
+      .exec();
+  }
+
+  /**
+   * Get offers by tender ID
+   */
+  async getOffersByTenderId(tenderId: string): Promise<Offer[]> {
+    return this.offerModel
+      .find({ tenderId: tenderId })
+      .populate('user', 'firstName lastName phone email username')
       .lean()
       .exec();
   }
@@ -202,5 +252,179 @@ export class OfferService {
     }
     
     return allOffers;
+  }
+
+  /**
+   * Update offer status (accept/reject)
+   */
+  async updateOfferStatus(offerId: string, status: 'ACCEPTED' | 'DECLINED', ownerId: string): Promise<Offer> {
+    console.log('Service: Updating offer status:', { offerId, status, ownerId });
+    
+    try {
+      // Validate ObjectId format
+      if (!offerId || offerId.length !== 24) {
+        console.error('Service: Invalid offer ID format:', offerId);
+        throw new Error('Invalid offer ID format');
+      }
+
+      // Log all offers to debug
+      const allOffers = await this.offerModel.find({}).lean().exec();
+      console.log('Service: All offers in database:', allOffers.map(o => ({ _id: o._id, owner: o.owner, status: o.status })));
+
+      // Find the offer
+      console.log('Service: Searching for offer with ID:', offerId);
+      const offer = await this.offerModel.findById(offerId).populate('user', 'firstName lastName email').exec();
+      if (!offer) {
+        console.error('Service: Offer not found:', offerId);
+        console.error('Service: Available offer IDs:', allOffers.map(o => o._id));
+        throw new BadRequestException(`Offer with ID ${offerId} not found`);
+      }
+
+      console.log('Service: Found offer:', { 
+        _id: offer._id, 
+        owner: offer.owner, 
+        currentStatus: offer.status,
+        price: offer.price 
+      });
+
+      // Check if the user is the owner of the offer
+      if (offer.owner.toString() !== ownerId) {
+        console.error('Service: Unauthorized access attempt:', { 
+          offerOwner: offer.owner, 
+          requestingUser: ownerId 
+        });
+        throw new Error('Unauthorized: You can only update your own offers');
+      }
+
+      // Update the offer status using proper enum values
+      const statusValue = status === 'ACCEPTED' ? OfferStatus.ACCEPTED : OfferStatus.DECLINED;
+      console.log('Service: Updating status to:', statusValue);
+      
+      offer.status = statusValue;
+      const updatedOffer = await offer.save();
+      
+      console.log('Service: Offer status updated successfully:', updatedOffer._id);
+
+      // Send notification to the offer maker
+      const notificationTitle = status === 'ACCEPTED' 
+        ? 'Offre Acceptée' 
+        : 'Offre Refusée';
+      
+      const notificationMessage = status === 'ACCEPTED'
+        ? `Votre offre de ${offer.price} DA a été acceptée!`
+        : `Votre offre de ${offer.price} DA a été refusée.`;
+
+      if (offer.user && offer.user._id) {
+        try {
+          console.log('Service: Creating notification for offer maker:', offer.user._id);
+          console.log('Service: Notification service available:', !!this.notificationService);
+          
+          if (!this.notificationService) {
+            console.error('Service: Notification service is not available');
+            throw new Error('Notification service not available');
+          }
+          
+          await this.notificationService.create(
+            offer.user._id.toString(),
+            status === 'ACCEPTED' ? NotificationType.OFFER_ACCEPTED : NotificationType.OFFER_DECLINED,
+            notificationTitle,
+            notificationMessage,
+            { offer: updatedOffer, tenderId: offer.tenderId || offer.bid }
+          );
+          console.log('Service: Notification created successfully');
+        } catch (notificationError) {
+          console.error('Service: Error creating notification:', notificationError);
+          // Don't fail the entire operation if notification fails
+        }
+      } else {
+        console.warn('Service: No user found for offer, skipping notification');
+      }
+
+      console.log('Service: Offer status updated successfully:', updatedOffer._id);
+      return updatedOffer;
+      
+    } catch (error) {
+      console.error('Service: Error updating offer status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Accept an offer
+   */
+  async acceptOffer(offerId: string, ownerId: string): Promise<Offer> {
+    return this.updateOfferStatus(offerId, 'ACCEPTED', ownerId);
+  }
+
+  /**
+   * Reject an offer
+   */
+  async rejectOffer(offerId: string, ownerId: string): Promise<Offer> {
+    return this.updateOfferStatus(offerId, 'DECLINED', ownerId);
+  }
+
+  /**
+   * Delete an offer
+   */
+  async deleteOffer(offerId: string, userId: string): Promise<{ message: string }> {
+    console.log('Service: Deleting offer:', { offerId, userId });
+    
+    try {
+      // Validate ObjectId format
+      if (!offerId || offerId.length !== 24) {
+        console.error('Service: Invalid offer ID format:', offerId);
+        throw new BadRequestException('Invalid offer ID format');
+      }
+
+      // Find the offer
+      const offer = await this.offerModel.findById(offerId).populate('user', 'firstName lastName email').exec();
+      if (!offer) {
+        console.error('Service: Offer not found:', offerId);
+        throw new BadRequestException(`Offer with ID ${offerId} not found`);
+      }
+
+      console.log('Service: Found offer:', { 
+        _id: offer._id, 
+        user: offer.user?._id, 
+        owner: offer.owner,
+        currentStatus: offer.status,
+        price: offer.price 
+      });
+
+      // Authorization: allow deleting when
+      // - requester is the offer creator (offer.user)
+      // - OR requester is the tender/auction owner related to this offer
+      let isAuthorized = false;
+      const isOfferOwner = !!offer.user && offer.user._id?.toString() === userId;
+
+      // Try to detect tender/auction owner via populated relations if available
+      // depending on the schema, offer may relate to bid or tender
+      const relatedBidOwnerId = (offer as any)?.bid?.owner?._id || (offer as any)?.bid?.owner;
+      const relatedTenderOwnerId = (offer as any)?.tenderOwner?._id || (offer as any)?.tenderOwner;
+      const isAuctionOwner = !!relatedBidOwnerId && relatedBidOwnerId.toString() === userId;
+      const isTenderOwner = !!relatedTenderOwnerId && relatedTenderOwnerId.toString() === userId;
+
+      isAuthorized = isOfferOwner || isAuctionOwner || isTenderOwner;
+
+      if (!isAuthorized) {
+        console.error('Service: Unauthorized access attempt:', {
+          offerUser: offer.user?._id,
+          relatedBidOwnerId,
+          relatedTenderOwnerId,
+          requestingUser: userId,
+        });
+        throw new ForbiddenException('Unauthorized: You can only delete your own offers or offers on your own tender');
+      }
+
+      // Delete the offer
+      await this.offerModel.findByIdAndDelete(offerId);
+      
+      console.log('Service: Offer deleted successfully:', offerId);
+      return { message: 'Offer deleted successfully' };
+      
+    } catch (error) {
+      console.error('Service: Error deleting offer:', error);
+      throw error;
+    }
   }
 }

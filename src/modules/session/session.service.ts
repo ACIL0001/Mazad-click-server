@@ -49,38 +49,27 @@ export class SessionService {
 
   // TODO: VALIDATE SESSION AND DOCUMENT IT
   async ValidateSession(access_token: string): Promise<Session> {
-    console.log('🔐 SessionService: Validating session with token:', access_token ? 'Present' : 'Missing');
-    console.log('🔐 SessionService: Token preview:', access_token ? access_token.substring(0, 20) + '...' : 'none');
-    
     try {
       const { sub, key } = await this.jwtService.verifyAsync(access_token);
-      console.log('🔐 SessionService: JWT verified, sub:', sub, 'key:', key);
 
       let session: Session = await this.cacheManager.get(`session:${key}`);
-      console.log('🔐 SessionService: Session from cache:', session ? 'Found' : 'Not found');
       
       if (!session) {
         session = await this.sessionModel.findOne({ access_key: key });
-        console.log('🔐 SessionService: Session from DB:', session ? 'Found' : 'Not found');
         
         if (!session) {
-          console.log('🔐 SessionService: No session found in DB');
           throw new UnauthorizedException('Invalid session');
         }
 
         this.cacheManager.set(`session:${key}`, session);
-        console.log('🔐 SessionService: Session cached');
       }
 
       if (!(session.user._id.toString() == sub.toString())) {
-        console.log('🔐 SessionService: User ID mismatch');
         throw new UnauthorizedException('Invalid session');
       }
 
-      console.log('🔐 SessionService: Session validated successfully');
       return session;
     } catch (error) {
-      console.log('🔐 SessionService: Error validating session:', error.message);
       throw error;
     }
   }

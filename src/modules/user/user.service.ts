@@ -100,42 +100,30 @@ export class UserService implements OnModuleInit {
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
-    console.log('Service: changePassword called with userId:', userId);
-
     // Find user with password field included
     const user = await this.userModel.findById(userId).select('+password');
-    console.log('Service: User found:', user ? 'Yes' : 'No');
 
     if (!user) {
-      console.log('Service: User not found error');
       throw new BadRequestException('User not found');
     }
 
     // Verify current password
-    console.log('Service: Comparing passwords...');
     const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
-    console.log('Service: Password comparison result:', isCurrentPasswordValid);
 
     if (!isCurrentPasswordValid) {
-      console.log('Service: Current password incorrect error');
       throw new BadRequestException('Current password is incorrect');
     }
 
     // Hash new password and update
-    console.log('Service: Hashing new password...');
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     await this.userModel.findByIdAndUpdate(userId, { password: hashedNewPassword });
-    console.log('Service: Password updated successfully');
 
     return { message: 'Password changed successfully' };
   }
 
   async updateUserFields(userId: string, update: Partial<User>) {
-    console.log('Updating user fields:', { userId, update });
-    
     try {
       const updatedUser = await this.userModel.findByIdAndUpdate(userId, update, { new: true }).populate('avatar');
-      console.log('User updated successfully:', updatedUser?._id);
       return updatedUser;
     } catch (error) {
       console.error('Error updating user fields:', error);
@@ -150,16 +138,12 @@ export class UserService implements OnModuleInit {
   }
 
   async updateSubscriptionPlan(userId: string, plan: string) {
-    console.log('updateSubscriptionPlan called with:', userId, plan);
     const result = await this.userModel.findByIdAndUpdate(userId, { subscriptionPlan: plan }, { new: true }).populate('avatar');
-    console.log('updateSubscriptionPlan result:', result);
     return result;
   }
 
   async createSubscriptionPlan(userId: string, plan: string) {
-    console.log('createSubscriptionPlan called with:', userId, plan);
     const user = await this.userModel.findById(userId).populate('avatar');
-    console.log('User found:', user);
     if (!user) {
       throw new BadRequestException('User not found');
     }
@@ -168,7 +152,6 @@ export class UserService implements OnModuleInit {
     }
     user.subscriptionPlan = plan;
     await user.save();
-    console.log('User after save:', user);
     return user;
   }
 

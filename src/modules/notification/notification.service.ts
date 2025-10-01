@@ -18,6 +18,9 @@ export class NotificationService {
     title: string,
     message: string,
     data?: any,
+    senderId?: string,
+    senderName?: string,
+    senderEmail?: string,
   ): Promise<Notification> {
     const notification = new this.notificationModel({
       userId,
@@ -26,14 +29,15 @@ export class NotificationService {
       message,
       data,
       read: false,
+      senderId,
+      senderName,
+      senderEmail,
     });
 
     await notification.save();
-    
 
     // Send notification to specific user via socket
     this.NotificationGateway.sendNotificationToUser(userId, {
-
       _id: notification._id,
       userId,
       type,
@@ -41,16 +45,16 @@ export class NotificationService {
       message,
       data,
       read: false,
+      senderId,
+      senderName,
+      senderEmail,
       createdAt: notification.createdAt,
     });
 
-    
     return notification;
   }
 
   async findForBuyer(userId: string): Promise<Notification[]> {
-    console.log('Fetching notifications for buyer userId:', userId);
-    console.log('User ID type:', typeof userId);
     try {
       const notifications = await this.notificationModel
         .find({ 
@@ -96,27 +100,7 @@ export class NotificationService {
   }
 
   async findForSeller(userId: string): Promise<Notification[]> {
-    console.log('Fetching notifications for seller userId:', userId);
-    console.log('User ID type:', typeof userId);
     try {
-      // TEMPORARILY: Return ALL notifications for the user to see what's in the database
-      console.log('🔍 DEBUG: Temporarily returning ALL notifications for user to debug');
-      
-      const allUserNotifications = await this.notificationModel
-        .find({ userId })
-        .sort({ createdAt: -1 })
-        .exec();
-      
-      console.log('🔍 DEBUG: All notifications for user (no type filter):', allUserNotifications.length);
-      console.log('🔍 DEBUG: All notification types for user:', allUserNotifications.map(n => n.type));
-      console.log('🔍 DEBUG: All notification titles:', allUserNotifications.map(n => n.title));
-      console.log('🔍 DEBUG: All notification user IDs:', allUserNotifications.map(n => n.userId));
-      
-      // Return all notifications temporarily for debugging
-      return allUserNotifications;
-      
-      // Original filtered query (commented out for debugging)
-      /*
       const query = { 
         userId,
         type: { 
@@ -124,24 +108,18 @@ export class NotificationService {
             NotificationType.BID_ENDED,
             NotificationType.BID_WON,
             NotificationType.ITEM_SOLD,
-            NotificationType.CHAT_CREATED,  // Added CHAT_CREATED for chat notifications
-            NotificationType.MESSAGE_RECEIVED  // Added message notifications for sellers
+            NotificationType.CHAT_CREATED,
+            NotificationType.MESSAGE_RECEIVED
           ] 
         }
       };
-      
-      console.log('🔍 DEBUG: Database query:', JSON.stringify(query, null, 2));
       
       const notifications = await this.notificationModel
         .find(query)
         .sort({ createdAt: -1 })
         .exec();
-
-      console.log('Found notifications for seller:', notifications.length);
-      console.log('Notification user IDs:', notifications.map(n => ({ id: n._id, userId: n.userId, title: n.title, read: n.read })));
       
       return notifications;
-      */
     } catch (error) {
       console.error('Error finding notifications for seller:', error);
       throw error;
@@ -158,34 +136,44 @@ export class NotificationService {
   }
 
   async markAsRead(id: string): Promise<Notification> {
-    console.log('🔖 Marking notification as read in service:', id);
-    return this.notificationModel.findByIdAndUpdate(
+    console.log('🔖 Service: Marking notification as read:', id);
+    
+    const result = await this.notificationModel.findByIdAndUpdate(
       id,
       { read: true, updatedAt: new Date() },
       { new: true }
     ).exec();
+    
+    if (result) {
+      console.log('✅ Service: Notification marked as read successfully:', {
+        id: result._id,
+        read: result.read,
+        updatedAt: result.updatedAt,
+        type: result.type
+      });
+    } else {
+      console.error('❌ Service: Failed to mark notification as read:', id);
+    }
+    
+    return result;
   }
 
   async markAllAsRead(userId: string): Promise<{ modifiedCount: number }> {
-    console.log('🔖 Marking all notifications as read for user:', userId);
     const result = await this.notificationModel.updateMany(
       { userId, read: false },
       { read: true, updatedAt: new Date() }
     ).exec();
     
-    console.log('📊 Marked as read result:', result);
     return { modifiedCount: result.modifiedCount };
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    console.log('🔢 Getting unread count for user:', userId);
     try {
       const count = await this.notificationModel.countDocuments({ 
         userId, 
-        read: false  // Only count unread notifications
+        read: false
       }).exec();
       
-      console.log('📊 Unread notification count:', count);
       return count;
     } catch (error) {
       console.error('Error getting unread count:', error);
@@ -205,5 +193,164 @@ export class NotificationService {
     ).exec();
     console.log('📊 Marked as read result for chat:', result);
     return { modifiedCount: result.modifiedCount };
+  }
+
+  async markAllChatNotificationsAsReadForUser(userId: string): Promise<{ modifiedCount: number }> {
+    console.log('🔖 Marking all chat notifications as read for user:', userId);
+    const result = await this.notificationModel.updateMany(
+      { 
+        userId, 
+        read: false, 
+        type: { 
+          $in: [
+            NotificationType.CHAT_CREATED,
+            NotificationType.MESSAGE_RECEIVED
+          ] 
+        }
+      },
+      { read: true, updatedAt: new Date() }
+    ).exec();
+    console.log('📊 Marked as read result for all chat notifications:', result);
+    return { modifiedCount: result.modifiedCount };
+  }
+
+  // New method to get general notifications with populated sender data
+  async findGeneralNotificationsForUser(userId: string): Promise<Notification[]> {
+    console.log('🔔 Fetching general notifications for user:', userId);
+    console.log('🔔 User ID type:', typeof userId);
+    
+    try {
+      // First, let's see all notifications for this user (for debugging)
+      const allUserNotifications = await this.notificationModel
+        .find({ userId })
+        .sort({ createdAt: -1 })
+        .exec();
+      
+      console.log('🔍 DEBUG: All notifications for user (no filters):', allUserNotifications.length);
+      console.log('🔍 DEBUG: All notification types:', allUserNotifications.map(n => n.type));
+      console.log('🔍 DEBUG: All notification titles:', allUserNotifications.map(n => n.title));
+      console.log('🔍 DEBUG: All notification read status:', allUserNotifications.map(n => n.read));
+      console.log('🔍 DEBUG: All notification user IDs:', allUserNotifications.map(n => n.userId));
+      
+      // Check specifically for offer notifications
+      const offerNotifications = allUserNotifications.filter(n => 
+        n.type === 'OFFER_ACCEPTED' || n.type === 'OFFER_DECLINED'
+      );
+      console.log('🔍 DEBUG: Offer notifications found:', offerNotifications.length);
+      if (offerNotifications.length > 0) {
+        console.log('🔍 DEBUG: Offer notifications details:', offerNotifications.map(n => ({
+          id: n._id,
+          title: n.title,
+          type: n.type,
+          read: n.read,
+          userId: n.userId
+        })));
+      }
+      
+      const notifications = await this.notificationModel
+        .find({ 
+          userId,
+          read: false, // Only unread notifications
+          type: { 
+            $nin: [
+              NotificationType.CHAT_CREATED,
+              NotificationType.MESSAGE_RECEIVED,
+              NotificationType.MESSAGE_ADMIN
+            ] 
+          }
+        })
+        .populate('senderId', 'firstName lastName email')
+        .sort({ createdAt: -1 })
+        .exec();
+
+      console.log('🔔 Found general notifications (filtered):', notifications.length);
+      console.log('🔔 Filtered notification types:', notifications.map(n => n.type));
+      console.log('🔔 Filtered notification titles:', notifications.map(n => n.title));
+      
+      // Add populated sender information to each notification
+      const notificationsWithSender = notifications.map(notification => {
+        const populatedNotification = notification.toObject() as any;
+        
+        console.log('🔍 Processing general notification:', populatedNotification._id);
+        console.log('🔍 SenderId type:', typeof populatedNotification.senderId);
+        console.log('🔍 SenderId value:', populatedNotification.senderId);
+        
+        // If senderId is populated, use that data
+        if (populatedNotification.senderId && typeof populatedNotification.senderId === 'object' && populatedNotification.senderId.firstName && populatedNotification.senderId.lastName) {
+          console.log('🔍 SenderId is populated object:', populatedNotification.senderId);
+          populatedNotification.senderName = `${populatedNotification.senderId.firstName} ${populatedNotification.senderId.lastName}`;
+          populatedNotification.senderEmail = populatedNotification.senderId.email || '';
+          console.log('🔍 Generated senderName:', populatedNotification.senderName);
+          console.log('🔍 Generated senderEmail:', populatedNotification.senderEmail);
+        } else {
+          console.log('🔍 SenderId is not populated or not an object');
+          // Fallback to existing senderName if available
+          if (!populatedNotification.senderName) {
+            populatedNotification.senderName = 'Unknown User';
+          }
+        }
+        
+        return populatedNotification;
+      });
+
+      return notificationsWithSender;
+    } catch (error) {
+      console.error('Error fetching general notifications:', error);
+      throw error;
+    }
+  }
+
+  // New method to get chat notifications with populated sender data
+  async findChatNotificationsForUser(userId: string): Promise<Notification[]> {
+    console.log('💬 Fetching chat notifications for user:', userId);
+    try {
+      const notifications = await this.notificationModel
+        .find({ 
+          userId,
+          read: false, // Only unread notifications
+          type: { 
+            $in: [
+              NotificationType.CHAT_CREATED,
+              NotificationType.MESSAGE_RECEIVED
+            ] 
+          }
+        })
+        .populate('senderId', 'firstName lastName email')
+        .sort({ createdAt: -1 })
+        .exec();
+
+      console.log('💬 Found chat notifications:', notifications.length);
+      
+      // Add populated sender information to each notification
+      const notificationsWithSender = notifications.map(notification => {
+        const populatedNotification = notification.toObject() as any;
+        
+        console.log('🔍 Processing chat notification:', populatedNotification._id);
+        console.log('🔍 SenderId type:', typeof populatedNotification.senderId);
+        console.log('🔍 SenderId value:', populatedNotification.senderId);
+        
+        // If senderId is populated, use that data
+        if (populatedNotification.senderId && typeof populatedNotification.senderId === 'object' && populatedNotification.senderId.firstName && populatedNotification.senderId.lastName) {
+          console.log('🔍 SenderId is populated object:', populatedNotification.senderId);
+          populatedNotification.senderName = `${populatedNotification.senderId.firstName} ${populatedNotification.senderId.lastName}`;
+          populatedNotification.senderEmail = populatedNotification.senderId.email || '';
+          console.log('🔍 Generated senderName:', populatedNotification.senderName);
+          console.log('🔍 Generated senderEmail:', populatedNotification.senderEmail);
+        } else {
+          console.log('🔍 SenderId is not populated or not an object');
+          // Fallback to existing senderName if available
+          if (!populatedNotification.senderName) {
+            populatedNotification.senderName = 'Unknown User';
+          }
+        }
+        
+        return populatedNotification;
+      });
+
+      return notificationsWithSender;
+    } catch (error) {
+      console.error('Error fetching chat notifications:', error);
+      throw error;
+    }
   }
 }

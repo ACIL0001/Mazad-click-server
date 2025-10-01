@@ -109,7 +109,14 @@ export class Identity {
   // NEW: Add source user type (what they currently are)
   @Prop({ type: String })
   sourceUserType: string;
+
+  // NEW: Add payment proof document field
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
+  paymentProof: Attachment; // Payment proof document uploaded during subscription
 }
 
-export type IdentityDocument = HydratedDocument<Identity>;
+export type IdentityDocument = HydratedDocument<Identity> & {
+  createdAt: Date;
+  updatedAt: Date;
+};
 export const IdentitySchema = SchemaFactory.createForClass(Identity);

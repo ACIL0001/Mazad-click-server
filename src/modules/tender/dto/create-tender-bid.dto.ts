@@ -1,13 +1,12 @@
-import { IsString, IsNumber, IsOptional } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min } from 'class-validator';
 
 export class CreateTenderBidDto {
-  @IsString()
-  bidder: string;
-
-  @IsString()
-  tenderOwner: string;
+  // These fields will be set by the controller, so no validation needed here
+  bidder?: string;
+  tenderOwner?: string;
 
   @IsNumber()
+  @Min(1, { message: 'Bid amount must be greater than 0' })
   bidAmount: number;
 
   @IsString()

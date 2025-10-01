@@ -102,7 +102,10 @@ export class BidService {
 
     createBidDto.currentPrice = createBidDto.startingPrice;
 
-    console.log('Dta ===== **** ==== **** ===', createBidDto);
+    // Only log in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Creating bid:', createBidDto.title);
+    }
 
     const createdBid = new this.bidModel(createBidDto);
     const savedBid = await createdBid.save();
@@ -112,7 +115,10 @@ export class BidService {
       .populate('productSubCategory')
       .populate('thumbs')
       .exec();
-    console.log('Bid created:', populatedBid);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Bid created:', populatedBid._id);
+    }
 
     // Get all buyers (clients) to send notifications
     const buyers = await this.clientService.findAllSellers();
@@ -136,6 +142,9 @@ export class BidService {
         notificationTitle,
         notificationMessage,
         populatedBid,
+        populatedBid.owner?._id?.toString(), // senderId
+        `${populatedBid.owner?.firstName || 'Unknown'} ${populatedBid.owner?.lastName || 'User'}`, // senderName
+        populatedBid.owner?.email // senderEmail
       );
     }
 
@@ -158,14 +167,16 @@ export class BidService {
   }
 
   async checkBids(id: string): Promise<void> {
-    console.log('***********************', id);
+    // Only log in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Checking bids for user:', id);
+    }
+    
     const getUser = await this.userService.getUserById(id);
     const getAllBids = await this.bidModel.find({ owner: id, status: BID_STATUS.OPEN }).exec();
     for (let index = 0; index < getAllBids.length; index++) {
       const now = Date.now();
       const data = new Date(getAllBids[index].endingAt).getTime();
-      console.log("data",data);
-      console.log("now",now);
 
       if (data < now) {
 
@@ -179,34 +190,26 @@ export class BidService {
             getAllBids[index].currentPrice >= getAllBids[index].reservePrice
           ) {
             let max = getOffers[0];
-            console.log("2");
 
             for (let i = 0; i < getOffers.length; i++) {
               if(getOffers[i].price > max.price){
                  max = getOffers[i];
               }
             }
-            console.log("3" , getUser );
-             console.log(getUser);
-            console.log(max.user);
 
             await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
               status: BID_STATUS.ON_AUCTION,
               winner: max.user,
               // isSell: true,
             });
-            console.log(getUser);
-            console.log(max.user);
 
             const getAther = await this.userModel.findOne({_id: max.user});
-            console.log("3Ather" , getAther);
 
             let users = [getUser, getAther];
             let createdAt = new Date();
 
              const chat =  new this.chatModel({users , createdAt})
              await chat.save()
-             console.log('ùùùùùù' , chat);
 
              // Send socket notification for new chat to buyer
              this.ChatGateWay.sendNewChatToBuyer(
@@ -275,7 +278,10 @@ export class BidService {
                  chatId: chat._id,
                  sellerName: getUser.firstName + ' ' + getUser.lastName,
                  productTitle: getAllBids[index].title
-               }
+               },
+               getUser._id.toString(), // senderId
+               `${getUser.firstName} ${getUser.lastName}`, // senderName
+               getUser.email // senderEmail
              );
 
              // Add CHAT_CREATED notification for seller
@@ -288,7 +294,10 @@ export class BidService {
                  chatId: chat._id,
                  winnerName: getAther.firstName + ' ' + getAther.lastName,
                  productTitle: getAllBids[index].title
-               }
+               },
+               getAther._id.toString(), // senderId
+               `${getAther.firstName} ${getAther.lastName}`, // senderName
+               getAther.email // senderEmail
              );
 
              // Send socket notification to winner (buyer)
@@ -334,7 +343,6 @@ export class BidService {
             //    }
             //  );
 
-              console.log("chat : ",chat);
 
             continue
 
@@ -344,7 +352,6 @@ export class BidService {
               status: BID_STATUS.CLOSED,
             });
 
-          console.log("ssssssssssssssssss" , getAllBids[index]._id);
 
 
 
@@ -368,7 +375,6 @@ export class BidService {
 
              const chat =  new this.chatModel({users , createdAt})
              await chat.save()
-             console.log("chat : ",chat);
 
              // Send socket notification for new chat to buyer
              this.ChatGateWay.sendNewChatToBuyer(
@@ -552,24 +558,52 @@ export class BidService {
     console.log('relaunchBid called with:', { relaunchBidDto, userId });
     
     // First, get the original bid to copy its data
-    const originalBid = await this.bidModel.findById(relaunchBidDto.originalBidId);
-    console.log('Original bid found:', originalBid);
-    
+    const originalBid = await this.bidModel
+      .findById(relaunchBidDto.originalBidId)
+      .populate('productCategory')
+      .populate('productSubCategory')
+      .populate('thumbs')
+      .populate('videos')
+      .exec();
     if (!originalBid) {
-      console.log('Original bid not found');
       throw new NotFoundException('Original bid not found');
     }
+    
+    // Debug logging for original bid
+    console.log('Original bid details:', {
+      _id: originalBid._id,
+      title: originalBid.title,
+      status: originalBid.status,
+      endingAt: originalBid.endingAt,
+      owner: originalBid.owner
+    });
 
     // Check if the user owns the original bid
     if (originalBid.owner.toString() !== userId) {
       throw new Error('You can only relaunch your own auctions');
     }
 
-    // Check if the original bid is finished and closed
+    // Check if the original bid is finished (either by time or status)
     const now = new Date();
     const endTime = new Date(originalBid.endingAt);
-    if (endTime >= now || originalBid.status !== BID_STATUS.CLOSED) {
-      throw new Error('You can only relaunch finished and closed auctions');
+    const isTimeFinished = endTime < now;
+    const isStatusClosed = originalBid.status === BID_STATUS.CLOSED;
+    
+    // Debug logging
+    console.log('Relaunch validation:', {
+      auctionId: originalBid._id,
+      status: originalBid.status,
+      endingAt: originalBid.endingAt,
+      endTime: endTime,
+      now: now,
+      isTimeFinished,
+      isStatusClosed,
+      canRelaunch: isTimeFinished || isStatusClosed
+    });
+    
+    // Allow relaunch if auction is either time-finished OR status-closed
+    if (!isTimeFinished && !isStatusClosed) {
+      throw new Error('You can only relaunch finished or closed auctions');
     }
 
     // Validate dates
@@ -598,8 +632,13 @@ export class BidService {
     }
 
     // Extract ObjectId from populated fields - this is the key fix
-    const productCategoryId = originalBid.productCategory._id || originalBid.productCategory;
+    const productCategoryId = originalBid.productCategory?._id || originalBid.productCategory;
     const productSubCategoryId = originalBid.productSubCategory?._id || originalBid.productSubCategory;
+
+    // Validate required fields
+    if (!productCategoryId) {
+      throw new Error('Product category is required for relaunch');
+    }
 
     // Create new bid data based on original bid and new data
     const newBidData: CreateBidDto = {
@@ -628,13 +667,20 @@ export class BidService {
     };
 
     try {
-      console.log('Creating new bid with data:', newBidData);
+      console.log('Creating new bid with data:', JSON.stringify(newBidData, null, 2));
+      
+      // Validate the new bid data before creating
+      if (!newBidData.title || !newBidData.description || !newBidData.place) {
+        throw new Error('Missing required fields: title, description, or place');
+      }
+      
+      if (!newBidData.startingPrice || newBidData.startingPrice <= 0) {
+        throw new Error('Invalid starting price');
+      }
       
       // Create the new bid
       const createdBid = new this.bidModel(newBidData);
       const savedBid = await createdBid.save();
-      console.log('Bid saved successfully:', savedBid._id);
-
       const populatedBid = await this.bidModel
         .findById(savedBid._id)
         .populate('productCategory')
@@ -643,13 +689,9 @@ export class BidService {
         .populate('videos')
         .exec();
 
-      console.log('Bid populated successfully:', populatedBid._id);
-
       // Get participants from the original auction to send notifications
-      console.log('Fetching participants from original auction...');
       try {
         const originalOffers = await this.offerService.getOffersByBidId(relaunchBidDto.originalBidId);
-        console.log('Found participants from original auction:', originalOffers.length);
 
         // Create notification for relaunched bid
         const notificationTitle = 'Enchère Relancée';
@@ -668,7 +710,6 @@ export class BidService {
                 notificationMessage,
                 populatedBid,
               );
-              console.log('Notification created for participant:', offer.user._id);
             } catch (notificationError) {
               console.error('Error creating notification for participant:', offer.user._id, notificationError);
               // Continue with other participants even if one fails
@@ -680,7 +721,6 @@ export class BidService {
         // Continue without notifications if they fail
       }
 
-      console.log('Relaunch completed successfully');
       return populatedBid;
     } catch (error) {
       console.error('Error in relaunch process:', error);

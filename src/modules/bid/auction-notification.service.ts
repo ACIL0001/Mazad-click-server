@@ -25,12 +25,15 @@ export class AuctionNotificationService {
    */
   @Cron(CronExpression.EVERY_MINUTE)
   async checkAuctionsInLast5Percent() {
-    this.logger.log('🔔 Checking for auctions in last 5% of time...');
+    // Only log every 5 minutes to reduce noise
+    const now = new Date();
+    const shouldLog = now.getMinutes() % 5 === 0;
+    
+    if (shouldLog) {
+      this.logger.log('🔔 Checking for auctions in last 5% of time...');
+    }
     
     try {
-      const now = new Date();
-      this.logger.log(`Current time: ${now.toISOString()}`);
-      
       // Find all active auctions
       const activeAuctions = await this.bidModel
         .find({
@@ -41,12 +44,12 @@ export class AuctionNotificationService {
         .populate('productCategory', 'name')
         .exec();
 
-      this.logger.log(`Found ${activeAuctions.length} active auctions`);
+      if (shouldLog) {
+        this.logger.log(`Found ${activeAuctions.length} active auctions`);
+      }
 
       for (const auction of activeAuctions) {
-        this.logger.log(`Checking auction ${auction._id}: ${auction.title}`);
-        this.logger.log(`Auction times - Start: ${auction.startingAt.toISOString()}, End: ${auction.endingAt.toISOString()}`);
-        await this.checkAndNotifyAuctionLast5Percent(auction, now);
+        await this.checkAndNotifyAuctionLast5Percent(auction, now, shouldLog);
       }
     } catch (error) {
       this.logger.error('Error checking auctions in last 5%:', error);
@@ -56,7 +59,7 @@ export class AuctionNotificationService {
   /**
    * Check if an auction is in its last 5% of time and send notifications
    */
-  private async checkAndNotifyAuctionLast5Percent(auction: Bid, now: Date) {
+  private async checkAndNotifyAuctionLast5Percent(auction: Bid, now: Date, shouldLog: boolean = false) {
     try {
       const totalDuration = auction.endingAt.getTime() - auction.startingAt.getTime();
       const elapsedTime = now.getTime() - auction.startingAt.getTime();
@@ -66,23 +69,29 @@ export class AuctionNotificationService {
       const last5PercentTime = totalDuration * 0.05; // 5% of total duration
       const isInLast5Percent = remainingTime <= last5PercentTime && remainingTime > 0;
       
-      this.logger.log(`Auction ${auction._id} calculation:`);
-      this.logger.log(`- Total duration: ${totalDuration}ms (${Math.round(totalDuration / (1000 * 60))} minutes)`);
-      this.logger.log(`- Elapsed time: ${elapsedTime}ms (${Math.round(elapsedTime / (1000 * 60))} minutes)`);
-      this.logger.log(`- Remaining time: ${remainingTime}ms (${Math.round(remainingTime / (1000 * 60))} minutes)`);
-      this.logger.log(`- Last 5% threshold: ${last5PercentTime}ms (${Math.round(last5PercentTime / (1000 * 60))} minutes)`);
-      this.logger.log(`- Is in last 5%: ${isInLast5Percent}`);
-      this.logger.log(`- Notification already sent: ${auction.last5PercentNotificationSent}`);
+      if (shouldLog) {
+        this.logger.log(`Auction ${auction._id} calculation:`);
+        this.logger.log(`- Total duration: ${totalDuration}ms (${Math.round(totalDuration / (1000 * 60))} minutes)`);
+        this.logger.log(`- Elapsed time: ${elapsedTime}ms (${Math.round(elapsedTime / (1000 * 60))} minutes)`);
+        this.logger.log(`- Remaining time: ${remainingTime}ms (${Math.round(remainingTime / (1000 * 60))} minutes)`);
+        this.logger.log(`- Last 5% threshold: ${last5PercentTime}ms (${Math.round(last5PercentTime / (1000 * 60))} minutes)`);
+        this.logger.log(`- Is in last 5%: ${isInLast5Percent}`);
+        this.logger.log(`- Notification already sent: ${auction.last5PercentNotificationSent}`);
+      }
       
       if (!isInLast5Percent) {
-        this.logger.log(`Auction ${auction._id} is not in last 5%, skipping`);
+        if (shouldLog) {
+          this.logger.log(`Auction ${auction._id} is not in last 5%, skipping`);
+        }
         return; // Not in last 5%, skip
       }
 
       // Check if we've already sent notification for this auction
       // We'll use a custom field in the auction document to track this
       if (auction.last5PercentNotificationSent) {
-        this.logger.log(`Notification already sent for auction ${auction._id}`);
+        if (shouldLog) {
+          this.logger.log(`Notification already sent for auction ${auction._id}`);
+        }
         return;
       }
 

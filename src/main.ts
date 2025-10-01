@@ -7,7 +7,6 @@ import { winstonLoggerOptions } from './configs/logger.config';
 import * as morgan from 'morgan';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import helmetConfig from './configs/helmet.config'; // Ensure this import is correct
-import corsConfig from './configs/cors.config'; // Import CORS configuration
 import { GlobaleExceptionFilter } from './common/filters/globale.filter';
 import { SetupSwagger } from './configs/swagger.config';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -20,8 +19,36 @@ async function bootstrap() {
 
   app.use(morgan('combined'));
 
-  // CORS Configuration - Use the centralized config
-  app.enableCors(corsConfig);
+  // CORS Configuration
+  const allowedOrigins = [
+    'http://localhost:3001', 
+    'http://localhost:3002', 
+    'http://localhost:3003',
+    'http://localhost:3004',
+    'http://localhost:3005', // Backoffice
+    'http://localhost:3006',
+    'http://localhost:3007',
+    'http://localhost:3008',
+    'http://localhost:3009',
+    'http://localhost:3010',
+    'https://mazad-click-buyer.vercel.app',
+    'https://mazad-click-seller.vercel.app',
+    'https://mazad-click-backoffice.vercel.app',
+    'https://mazad-click-admin.vercel.app',
+  ];
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, etc.)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('Not allowed by CORS'));
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'x-api-key', 'x-access-key'],
+  });
 
   // Helmet Configuration (which sets CSP)
   app.use(helmetConfig);
@@ -31,69 +58,11 @@ async function bootstrap() {
   // This helps ensure CORS headers are explicitly set for static files if helmet's CSP isn't enough alone
   app.use('/static', (req, res, next) => {
     const origin = req.headers.origin;
-    const allowedOrigins = [
-      // Development URLs
-      'http://localhost:3001', 
-      'http://localhost:3002', 
-      'http://localhost:3003',
-      'http://localhost:3004',
-      'http://localhost:3005', // Backoffice
-      'http://localhost:3006',
-      'http://localhost:3007',
-      'http://localhost:3008',
-      'http://localhost:3009',
-      'http://localhost:3010',
-      'http://127.0.0.1:3001',
-      'http://127.0.0.1:3002',
-      'http://127.0.0.1:3003',
-      'http://127.0.0.1:3004',
-      'http://127.0.0.1:3005',
-      'http://127.0.0.1:3006',
-      'http://127.0.0.1:3007',
-      'http://127.0.0.1:3008',
-      'http://127.0.0.1:3009',
-      'http://127.0.0.1:3010',
-      'http://192.168.56.1:3001',
-      'http://192.168.56.1:3002',
-      'http://192.168.56.1:3003',
-      'http://192.168.56.1:3004',
-      'http://192.168.56.1:3005', // Backoffice
-      'http://192.168.56.1:3006',
-      'http://192.168.56.1:3007',
-      'http://192.168.56.1:3008',
-      'http://192.168.56.1:3009',
-      'http://192.168.56.1:3010',
-      // Production URLs - Main Domain
-      'https://mazad.click',
-      'https://www.mazad.click',
-      // Production URLs - Vercel Deployments
-      'https://mazad-click-buyer.vercel.app',
-      'https://mazad-click-seller.vercel.app',
-      'https://mazad-click-backoffice.vercel.app',
-      'https://mazad-click-admin.vercel.app',
-      // Additional Vercel URLs (in case of branch deployments)
-      'https://mazad-click-buyer-git-main.vercel.app',
-      'https://mazad-click-seller-git-main.vercel.app',
-      'https://mazad-click-backoffice-git-main.vercel.app',
-      'https://mazad-click-admin-git-main.vercel.app',
-      // Render.com URLs (if you deploy there)
-      'https://mazad-click-buyer.onrender.com',
-      'https://mazad-click-seller.onrender.com',
-      'https://mazad-click-backoffice.onrender.com',
-      'https://mazad-click-admin.onrender.com',
-      // Netlify URLs (if you deploy there)
-      'https://mazad-click-buyer.netlify.app',
-      'https://mazad-click-seller.netlify.app',
-      'https://mazad-click-backoffice.netlify.app',
-      'https://mazad-click-admin.netlify.app'
-    ];
-    
     if (allowedOrigins.includes(origin)) {
       res.header('Access-Control-Allow-Origin', origin);
     }
     res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, x-api-key, x-access-key');
-    res.header('Access-Control-Allow-Credentials', 'true');
     next();
   });
   app.useGlobalFilters(new GlobaleExceptionFilter());

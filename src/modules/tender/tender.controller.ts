@@ -8,10 +8,11 @@ import {
   Put,
   UploadedFiles,
   Request,
+  Req,
   UseGuards,
   UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
-import { Express } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -56,6 +57,10 @@ export class TenderController {
     return tenders.map((tender) => ({
       ...JSON.parse(JSON.stringify(tender)),
       attachments: transformAttachment(tender.attachments),
+      category: tender.category ? {
+        ...JSON.parse(JSON.stringify(tender.category)),
+        thumb: transformAttachment(tender.category.thumb),
+      } : null,
     }));
   }
 
@@ -81,6 +86,25 @@ export class TenderController {
     return {
       message: 'done',
       result
+    }
+  }
+
+  @Post('check-all-auto-award')
+  @Public()
+  async checkAllTendersForAutoAward() {
+    try {
+      await this.tenderService.checkAllTendersForAutoAward();
+      return {
+        success: true,
+        message: 'All tenders checked for automatic awarding'
+      };
+    } catch (error) {
+      console.error('Error checking tenders for auto-award:', error);
+      return {
+        success: false,
+        message: 'Error checking tenders for auto-award',
+        error: error.message
+      };
     }
   }
 
@@ -204,7 +228,12 @@ export class TenderController {
   ) {
     const userId = req.session?.user?._id?.toString();
     if (!userId) {
-      throw new Error('User ID not found in session. Cannot create tender bid.');
+      throw new BadRequestException('User ID not found in session. Cannot create tender bid.');
+    }
+
+    // Validate required fields
+    if (!createTenderBidDto.bidAmount || createTenderBidDto.bidAmount <= 0) {
+      throw new BadRequestException('Bid amount must be a positive number');
     }
 
     // Set the bidder from the authenticated user
@@ -212,7 +241,12 @@ export class TenderController {
 
     // Get tender owner
     const tender = await this.tenderService.findOne(tenderId);
+    if (!tender.owner || !tender.owner._id) {
+      throw new BadRequestException('Tender owner not found');
+    }
     createTenderBidDto.tenderOwner = tender.owner._id.toString();
+
+    console.log('Controller - Final DTO before service call:', createTenderBidDto);
 
     return this.tenderService.createTenderBid(tenderId, createTenderBidDto);
   }
@@ -233,5 +267,130 @@ export class TenderController {
   @UseGuards(AuthGuard)
   async getTenderBidsByBidder(@Param('bidderId') bidderId: string) {
     return this.tenderService.getTenderBidsByBidderId(bidderId);
+  }
+
+  // Debug endpoint to check tender data
+  @Get(':id/debug')
+  @Public()
+  async debugTender(@Param('id') id: string) {
+    try {
+      const tender = await this.tenderService.findOne(id);
+      return {
+        success: true,
+        data: {
+          _id: tender._id,
+          title: tender.title,
+          status: tender.status,
+          endingAt: tender.endingAt,
+          owner: tender.owner
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Accept a tender bid
+   */
+  @Post('bids/:bidId/accept')
+  @UseGuards(AuthGuard)
+  async acceptTenderBid(
+    @Param('bidId') bidId: string,
+    @Req() req: ProtectedRequest,
+  ) {
+    try {
+      console.log('TenderController: Accepting tender bid:', { bidId, userId: req.session?.user?._id });
+      
+      const userId = req.session?.user?._id?.toString();
+      if (!userId) {
+        throw new BadRequestException('User ID not found in session');
+      }
+
+      const result = await this.tenderService.acceptTenderBid(bidId, userId);
+      console.log('TenderController: Tender bid accepted successfully:', result._id);
+      return result;
+    } catch (error) {
+      console.error('TenderController: Error accepting tender bid:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Reject a tender bid
+   */
+  @Post('bids/:bidId/reject')
+  @UseGuards(AuthGuard)
+  async rejectTenderBid(
+    @Param('bidId') bidId: string,
+    @Req() req: ProtectedRequest,
+  ) {
+    try {
+      console.log('TenderController: Rejecting tender bid:', { bidId, userId: req.session?.user?._id });
+      
+      const userId = req.session?.user?._id?.toString();
+      if (!userId) {
+        throw new BadRequestException('User ID not found in session');
+      }
+
+      const result = await this.tenderService.rejectTenderBid(bidId, userId);
+      console.log('TenderController: Tender bid rejected successfully:', result._id);
+      return result;
+    } catch (error) {
+      console.error('TenderController: Error rejecting tender bid:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a tender bid
+   */
+  @Delete('bids/:bidId')
+  @UseGuards(AuthGuard)
+  async deleteTenderBid(
+    @Param('bidId') bidId: string,
+    @Req() req: ProtectedRequest,
+  ) {
+    try {
+      console.log('TenderController: Deleting tender bid:', { bidId, userId: req.session?.user?._id });
+      
+      const userId = req.session?.user?._id?.toString();
+      if (!userId) {
+        throw new BadRequestException('User ID not found in session');
+      }
+
+      const result = await this.tenderService.deleteTenderBid(bidId, userId);
+      console.log('TenderController: Tender bid deleted successfully:', result._id);
+      return result;
+    } catch (error) {
+      console.error('TenderController: Error deleting tender bid:', error);
+      throw error;
+    }
+  }
+
+  @Delete(':tenderId')
+  @UseGuards(AuthGuard)
+  async deleteTender(
+    @Param('tenderId') tenderId: string,
+    @Req() req: ProtectedRequest,
+  ) {
+    try {
+      console.log('TenderController: Deleting tender:', { tenderId, userId: req.session?.user?._id });
+
+      const userId = req.session?.user?._id?.toString();
+      if (!userId) {
+        throw new BadRequestException('User ID not found in session');
+      }
+
+      const result = await this.tenderService.deleteTender(tenderId, userId);
+      console.log('TenderController: Tender deleted successfully:', result._id);
+      return result;
+    } catch (error) {
+      console.error('TenderController: Error deleting tender:', error);
+      throw error;
+    }
   }
 }

@@ -17,6 +17,9 @@ export enum NotificationType {
   BID_OUTBID = 'BID_OUTBID',
   PAYMENT_PENDING = 'PAYMENT_PENDING',
   MESSAGE_ADMIN = 'MESSAGE_ADMIN',
+  OFFER_ACCEPTED = 'OFFER_ACCEPTED',
+  OFFER_DECLINED = 'OFFER_DECLINED',
+  IDENTITY_VERIFICATION = 'IDENTITY_VERIFICATION',
 }
 
 @Schema({ timestamps: true })
@@ -40,6 +43,20 @@ export class Notification {
 
   @Prop({ default: false })
   read: boolean;
+
+  // Sender information
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'User',
+    required: false
+  })
+  senderId?: string;
+
+  @Prop()
+  senderName?: string;
+
+  @Prop()
+  senderEmail?: string;
 
   @Prop()
   createdAt?: Date;

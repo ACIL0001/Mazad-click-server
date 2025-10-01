@@ -45,4 +45,19 @@ export class MessageController {
   async markAllAsRead(@Param('chatId') chatId: string): Promise<{ modifiedCount: number }> {
     return this.MessageService.markAllAsRead(chatId);
   }
+
+  @Get('unread-count/:userId')
+  async getUnreadCount(@Param('userId') userId: string): Promise<{ count: number }> {
+    return this.MessageService.getUnreadCount(userId);
+  }
+
+  @Post('mark-chat-read')
+  async markChatAsRead(@Body() body: { chatId: string; userId: string }): Promise<{ messageCount: number; notificationCount: number }> {
+    return this.MessageService.markChatAsRead(body.chatId, body.userId);
+  }
+
+  @Get('unread-messages/:userId')
+  async getUnreadMessages(@Param('userId') userId: string): Promise<Message[]> {
+    return this.MessageService.getUnreadMessages(userId);
+  }
 }

@@ -5,7 +5,6 @@ import { Attachment } from './schema/attachment.schema';
 import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
 import { Multer } from 'multer';
-import { Express } from 'express';
 
 @Injectable()
 export class AttachmentService {

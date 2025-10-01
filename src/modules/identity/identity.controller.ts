@@ -16,7 +16,6 @@ import {
   Param, 
   Query // Added Query import
 } from '@nestjs/common';
-import { Express } from 'express';
 import { IdentityService } from './identity.service';
 import { Types } from 'mongoose'; 
 import { AuthGuard } from 'src/common/guards/auth.guard';
@@ -556,6 +555,8 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      // NEW PAYMENT PROOF FIELD
+      paymentProof: transformAttachment(identity.paymentProof),
     }));
   }
 
@@ -569,6 +570,8 @@ export class IdentityController {
     return identities.map(identity => ({
       ...JSON.parse(JSON.stringify(identity)),
       identityCard: transformAttachment(identity.identityCard),
+      // NEW PAYMENT PROOF FIELD
+      paymentProof: transformAttachment(identity.paymentProof),
     }));
   }
 
@@ -591,6 +594,8 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      // NEW PAYMENT PROOF FIELD
+      paymentProof: transformAttachment(identity.paymentProof),
     }));
   }
 
@@ -613,6 +618,8 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      // NEW PAYMENT PROOF FIELD
+      paymentProof: transformAttachment(identity.paymentProof),
     }));
   }
 
@@ -635,6 +642,8 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      // NEW PAYMENT PROOF FIELD
+      paymentProof: transformAttachment(identity.paymentProof),
     }));
   }
 
@@ -683,6 +692,8 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      // NEW PAYMENT PROOF FIELD
+      paymentProof: transformAttachment(identity.paymentProof),
     };
   }
 
@@ -695,6 +706,12 @@ export class IdentityController {
     }
     const identity = await this.identityService.getIdentityById(id);
     if (!identity) return null;
+    
+    // Debug logging for payment proof
+    console.log('🔍 Server - Identity details for ID:', id);
+    console.log('🔍 Server - Payment proof raw data:', identity.paymentProof);
+    console.log('🔍 Server - Payment proof transformed:', transformAttachment(identity.paymentProof));
+    
     return {
       ...JSON.parse(JSON.stringify(identity)),
       commercialRegister: transformAttachment(identity.commercialRegister),
@@ -709,6 +726,84 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      // NEW PAYMENT PROOF FIELD
+      paymentProof: transformAttachment(identity.paymentProof),
     };
+  }
+
+  // Update payment proof for an identity
+  @Put(':id/payment-proof')
+  @UseInterceptors(FileInterceptor('paymentProof', {
+    storage: diskStorage({
+      destination: './uploads',
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        cb(null, uniqueSuffix + extname(file.originalname));
+      }
+    })
+  }))
+  async updatePaymentProof(
+    @Param('id') identityId: string,
+    @UploadedFile() paymentProofFile: Express.Multer.File,
+    @Request() req
+  ): Promise<any> {
+    const userId = req.session?.user?._id;
+    console.log('Payment proof upload - User ID:', userId);
+    console.log('Payment proof upload - Identity ID:', identityId);
+    console.log('Payment proof upload - File:', paymentProofFile?.originalname);
+    
+    if (!userId) {
+      throw new BadRequestException('User not authenticated');
+    }
+
+    if (!paymentProofFile) {
+      throw new BadRequestException('Payment proof file is required');
+    }
+
+    // File validation
+    if (paymentProofFile.size === 0) {
+      throw new BadRequestException('Payment proof file cannot be empty');
+    }
+    
+    if (paymentProofFile.size > 5 * 1024 * 1024) {
+      throw new BadRequestException('Payment proof file size must be less than 5MB');
+    }
+    
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'application/pdf'];
+    if (!allowedTypes.includes(paymentProofFile.mimetype)) {
+      throw new BadRequestException('Payment proof must be an image (JPEG, PNG, GIF) or PDF file');
+    }
+
+    try {
+      // Upload the payment proof file
+      const attachment = await this.attachmentService.upload(paymentProofFile, AttachmentAs.IDENTITY, userId);
+
+      // Update the identity with the payment proof
+      const updatedIdentity = await this.identityService.updatePaymentProof(identityId, attachment._id.toString());
+
+      if (!updatedIdentity) {
+        throw new BadRequestException('Identity not found');
+      }
+
+      // Debug logging for payment proof upload
+      console.log('🔍 Server - Payment proof upload successful for identity:', identityId);
+      console.log('🔍 Server - Attachment created:', attachment);
+      console.log('🔍 Server - Updated identity payment proof:', updatedIdentity.paymentProof);
+
+      return {
+        success: true,
+        message: 'Payment proof updated successfully',
+        identity: {
+          ...JSON.parse(JSON.stringify(updatedIdentity)),
+          paymentProof: transformAttachment(updatedIdentity.paymentProof),
+        }
+      };
+    } catch (error) {
+      console.error('Error updating payment proof:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to update payment proof: ${error.message}`);
+    }
   }
 }

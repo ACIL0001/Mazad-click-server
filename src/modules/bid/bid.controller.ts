@@ -11,7 +11,6 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { Express } from 'express';
 import { FilesInterceptor, AnyFilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -262,8 +261,9 @@ export class BidController {
     @Request() request: ProtectedRequest,
     @Body() relaunchBidDto: RelaunchBidDto,
   ) {
-    console.log('Relaunch endpoint called with:', relaunchBidDto);
+    console.log('Relaunch endpoint called with:', JSON.stringify(relaunchBidDto, null, 2));
     console.log('Request session:', request.session);
+    console.log('Request headers:', request.headers);
     
     const userId = request.session?.user?._id?.toString();
     console.log('User ID:', userId);
@@ -274,6 +274,18 @@ export class BidController {
     }
 
     try {
+      // Validate the DTO manually to get better error messages
+      console.log('Validating DTO fields...');
+      console.log('originalBidId:', relaunchBidDto.originalBidId);
+      console.log('title:', relaunchBidDto.title);
+      console.log('description:', relaunchBidDto.description);
+      console.log('place:', relaunchBidDto.place);
+      console.log('startingPrice:', relaunchBidDto.startingPrice);
+      console.log('startingAt:', relaunchBidDto.startingAt, typeof relaunchBidDto.startingAt);
+      console.log('endingAt:', relaunchBidDto.endingAt, typeof relaunchBidDto.endingAt);
+      console.log('isPro:', relaunchBidDto.isPro, typeof relaunchBidDto.isPro);
+      console.log('auctionType:', relaunchBidDto.auctionType);
+      
       const result = await this.bidService.relaunchBid(relaunchBidDto, userId);
       console.log('Relaunch successful, returning result:', result);
       return result;
@@ -282,7 +294,8 @@ export class BidController {
       console.error('Error details:', {
         message: error.message,
         stack: error.stack,
-        name: error.name
+        name: error.name,
+        cause: error.cause
       });
       
       // Return a more specific error message

@@ -39,11 +39,6 @@ export class CreateTenderDto {
   @IsOptional()
   auctionType?: TENDER_AUCTION_TYPE;
 
-  @IsNumber()
-  maxBudget: number;
-
-  @IsNumber()
-  currentLowestBid: number;
 
   @IsString()
   @IsOptional()
@@ -55,10 +50,11 @@ export class CreateTenderDto {
   @IsString()
   location: string;
 
+  @IsNumber()
+  @IsOptional()
+  maxBudget?: number;
+
   @IsBoolean()
   isPro: boolean;
 
-  @IsNumber()
-  @IsOptional()
-  minimumPrice?: number;
 }

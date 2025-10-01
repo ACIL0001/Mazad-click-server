@@ -1,12 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Identity, IdentityDocument, IDE_TYPE, CONVERSION_TYPE } from './identity.schema';
+import { User } from '../user/schema/user.schema';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../notification/schema/notification.schema';
 
 @Injectable()
 export class IdentityService {
   constructor(
     @InjectModel(Identity.name) private identityModel: Model<IdentityDocument>,
+    @InjectModel(User.name) private userModel: Model<User>,
+    @Inject(forwardRef(() => NotificationService))
+    private readonly notificationService: NotificationService,
   ) {}
 
   async createIdentity(userId: string, identityData: Partial<Identity>): Promise<IdentityDocument> {
@@ -25,9 +31,65 @@ export class IdentityService {
       const savedIdentity = await identity.save();
       console.log('Identity saved successfully:', savedIdentity._id);
       
+      // Create notification for admins about new identity verification
+      try {
+        await this.createIdentityVerificationNotification(savedIdentity);
+      } catch (notificationError) {
+        console.error('Error creating identity verification notification:', notificationError);
+        // Don't throw error here as identity creation should still succeed
+      }
+      
       return savedIdentity;
     } catch (error) {
       console.error('Error creating identity:', error);
+      throw error;
+    }
+  }
+
+  private async createIdentityVerificationNotification(identity: IdentityDocument): Promise<void> {
+    try {
+      // Get all admin users (both ADMIN and SOUS_ADMIN)
+      const adminUsers = await this.userModel.find({
+        type: { $in: ['ADMIN', 'SOUS_ADMIN'] }
+      }).select('_id email firstName lastName');
+
+      if (adminUsers.length === 0) {
+        console.warn('No admin users found to send identity verification notification');
+        return;
+      }
+
+      const conversionTypeLabels = {
+        [CONVERSION_TYPE.PROFESSIONAL_VERIFICATION]: 'Vérification Professionnelle',
+        [CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL]: 'Client → Professionnel',
+        [CONVERSION_TYPE.CLIENT_TO_RESELLER]: 'Client → Revendeur'
+      };
+
+      const conversionLabel = conversionTypeLabels[identity.conversionType] || 'Vérification d\'identité';
+      
+      // Create notification for each admin user
+      const notificationPromises = adminUsers.map(adminUser => 
+        this.notificationService.create(
+          adminUser._id.toString(),
+          NotificationType.IDENTITY_VERIFICATION,
+          'Nouvelle demande de vérification d\'identité',
+          `Une nouvelle demande de ${conversionLabel} a été soumise et nécessite votre attention.`,
+          {
+            identityId: identity._id,
+            userId: identity.user,
+            conversionType: identity.conversionType,
+            status: identity.status,
+            submittedAt: identity.createdAt
+          },
+          identity.user.toString(),
+          'Utilisateur',
+          'user@example.com'
+        )
+      );
+
+      await Promise.all(notificationPromises);
+      console.log(`Identity verification notification created successfully for ${adminUsers.length} admin users`);
+    } catch (error) {
+      console.error('Error creating identity verification notification:', error);
       throw error;
     }
   }
@@ -47,6 +109,8 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      // NEW PAYMENT PROOF FIELD
+      .populate('paymentProof')
       .exec();
   }
 
@@ -65,6 +129,8 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      // NEW PAYMENT PROOF FIELD
+      .populate('paymentProof')
       .exec();
   }
 
@@ -84,6 +150,8 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      // NEW PAYMENT PROOF FIELD
+      .populate('paymentProof')
       .exec();
   }
 
@@ -106,6 +174,8 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      // NEW PAYMENT PROOF FIELD
+      .populate('paymentProof')
       .exec();
   }
 
@@ -129,6 +199,8 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      // NEW PAYMENT PROOF FIELD
+      .populate('paymentProof')
       .exec();
   }
 
@@ -147,6 +219,8 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      // NEW PAYMENT PROOF FIELD
+      .populate('paymentProof')
       .exec();
   }
 
@@ -174,6 +248,8 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      // NEW PAYMENT PROOF FIELD
+      .populate('paymentProof')
       .exec();
   }
 
@@ -185,6 +261,38 @@ export class IdentityService {
     })
       .populate('user', 'firstName lastName email avatarUrl type isVerified')
       .populate('identityCard')
+      // NEW PAYMENT PROOF FIELD
+      .populate('paymentProof')
       .exec();
+  }
+
+  // Update payment proof for an identity
+  async updatePaymentProof(identityId: string, paymentProofId: string): Promise<IdentityDocument | null> {
+    console.log('Updating payment proof for identity:', identityId, 'with attachment:', paymentProofId);
+    
+    const result = await this.identityModel.findByIdAndUpdate(
+      identityId,
+      { paymentProof: paymentProofId },
+      { new: true }
+    )
+      .populate('user', 'firstName lastName email avatarUrl type isVerified') 
+      .populate('commercialRegister')
+      .populate('nif')
+      .populate('nis')
+      .populate('last3YearsBalanceSheet')
+      .populate('certificates')
+      .populate('identityCard')
+      // NEW REQUIRED FIELDS
+      .populate('registreCommerceCarteAuto')
+      .populate('nifRequired')
+      .populate('numeroArticle')
+      .populate('c20')
+      .populate('misesAJourCnas')
+      // NEW PAYMENT PROOF FIELD
+      .populate('paymentProof')
+      .exec();
+      
+    console.log('Payment proof update result:', result?.paymentProof);
+    return result;
   }
 }

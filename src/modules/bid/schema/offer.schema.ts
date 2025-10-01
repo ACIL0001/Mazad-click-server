@@ -20,8 +20,11 @@ export class Offer {
   @Prop({ type: S.Types.ObjectId, ref: User.name, required: true })
   owner: User;
 
-  @Prop({ type: S.Types.ObjectId, ref: Bid.name, required: true })
+  @Prop({ type: S.Types.ObjectId, ref: Bid.name, required: false })
   bid: Bid;
+
+  @Prop({ type: S.Types.ObjectId, required: false })
+  tenderId: string;
 
   @Prop({ type: Number, required: true })
   price: number;

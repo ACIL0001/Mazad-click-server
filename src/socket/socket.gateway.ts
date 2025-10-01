@@ -22,7 +22,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleConnection(client: Socket) {
     const userId = client.handshake.query.userId as string;
 
-    if (userId) {
+    if (userId && userId !== 'undefined' && userId !== 'null') {
       let user = this.onlineUsers.find((e) => e.userId === userId);
       if (user) {
         // Add new socketId if not already present
@@ -32,11 +32,17 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       } else {
         this.onlineUsers.push({ userId, socketIds: [client.id] });
       }
-      console.log('[SOCKET] handleConnection:', { userId, socketId: client.id });
-      console.log('[SOCKET] Online Users after connect:', this.onlineUsers);
+      // Only log in development mode
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[SOCKET] handleConnection:', { userId, socketId: client.id });
+      }
       this.emitOnlineUsers();
     } else {
-      console.log('[SOCKET] handleConnection: No userId in handshake', { socketId: client.id });
+      // Disconnect clients without valid userId to prevent spam
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[SOCKET] handleConnection: No valid userId in handshake, disconnecting', { socketId: client.id });
+      }
+      client.disconnect(true);
     }
   }
 
@@ -50,54 +56,114 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
       return user;
     }).filter((user) => user.socketIds.length > 0); // Only keep users with at least one socket
-    console.log('[SOCKET] handleDisconnect:', { socketId: client.id, user: disconnectedUser });
-    console.log('[SOCKET] Online Users after disconnect:', this.onlineUsers);
+    // Only log in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[SOCKET] handleDisconnect:', { socketId: client.id, user: disconnectedUser });
+    }
     this.emitOnlineUsers();
   }
 
   sendMessageToUser(sender:string ,userId: string, message: string , idChat : string , idMes:string): void {
-    console.log('📨 sendMessageToUser called:', { sender, userId, message, idChat, idMes });
-    console.log("📨 Online users:", this.onlineUsers);
+    // Only log in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📨 sendMessageToUser called:', { sender, userId, message, idChat, idMes });
+    }
     
     const recipient = this.onlineUsers.find((e) => e.userId == userId);
     const senderUser = this.onlineUsers.find((e) => e.userId == sender);
-    console.log('📨 Recipient:', recipient);
-    console.log('📨 Sender:', senderUser);
     const now = new Date().toISOString(); 
+    
+    // Prepare message payload
+    const messagePayload = {
+      message, 
+      reciver: userId,
+      idChat,
+      sender, 
+      _id: idMes,
+      createdAt: now,
+      isSocket: true // Mark as socket message
+    };
     
     if (recipient) {
       // Send to all recipient sockets
       recipient.socketIds.forEach(socketId => {
-        this.server.to(socketId).emit('sendMessage',{
-           message , 
-           reciver : userId ,
-           idChat,
-           sender , 
-           _id:idMes ,
-           createdAt : now
-        });
+        // Send the actual message
+        this.server.to(socketId).emit('sendMessage', messagePayload);
+        
         // Emit newMessage for notification system
-        this.server.to(socketId).emit('newMessage',{
-           message , 
-           reciver : userId ,
-           idChat,
-           sender
+        this.server.to(socketId).emit('newMessage', {
+          message, 
+          reciver: userId,
+          idChat,
+          sender,
+          messageId: idMes,
+          createdAt: now
+        });
+        
+        // Emit messageReceived for real-time updates
+        this.server.to(socketId).emit('messageReceived', {
+          message,
+          sender,
+          chatId: idChat,
+          messageId: idMes,
+          timestamp: now
+        });
+        
+        // Emit buyerToSellerMessage for specific buyer-seller communication
+        this.server.to(socketId).emit('buyerToSellerMessage', {
+          message,
+          sender,
+          reciver: userId,
+          chatId: idChat,
+          messageId: idMes,
+          timestamp: now,
+          isSocket: true
+        });
+      });
+    } else {
+      // Only log in development mode
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⚠️ Recipient not online:', userId);
+      }
+    }
+    
+    if (senderUser) {
+      // Send confirmation to sender
+      senderUser.socketIds.forEach(socketId => {
+        this.server.to(socketId).emit('sendMessage', messagePayload);
+        
+        // Emit messageSent confirmation
+        this.server.to(socketId).emit('messageSent', {
+          message,
+          reciver: userId,
+          chatId: idChat,
+          messageId: idMes,
+          timestamp: now,
+          status: recipient ? 'delivered' : 'pending'
+        });
+        
+        // Emit buyerMessageSent for buyer confirmation
+        this.server.to(socketId).emit('buyerMessageSent', {
+          message,
+          reciver: userId,
+          chatId: idChat,
+          messageId: idMes,
+          timestamp: now,
+          status: recipient ? 'delivered' : 'pending'
         });
       });
     }
     
-    if (senderUser) {
-      senderUser.socketIds.forEach(socketId => {
-        this.server.to(socketId).emit('sendMessage',{
-           message , 
-           reciver : userId ,
-           idChat,
-           sender , 
-           _id:idMes ,
-           createdAt : now
-        });
-      });
-    }
+    // Also broadcast to chat room for real-time updates
+    this.server.to(`chat_${idChat}`).emit('chatMessageUpdate', {
+      message,
+      sender,
+      reciver: userId,
+      chatId: idChat,
+      messageId: idMes,
+      timestamp: now,
+      isSocket: true
+    });
   }
 
   sendMessageToAllAdmins(sender: string, message: string, idChat: string, idMes: string): void {
@@ -348,4 +414,133 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     }
   }
+
+  // New method to broadcast message to all users in a chat
+  @SubscribeMessage('joinChat')
+  handleJoinChat(client: Socket, payload: { chatId: string, userId: string }) {
+    console.log('📱 User joining chat:', payload);
+    const { chatId, userId } = payload;
+    
+    // Join the chat room
+    client.join(`chat_${chatId}`);
+    console.log(`✅ User ${userId} joined chat room: chat_${chatId}`);
+    
+    // Notify other users in the chat that someone joined
+    client.to(`chat_${chatId}`).emit('userJoinedChat', {
+      userId,
+      chatId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Send a confirmation to the user that they joined
+    client.emit('chatJoined', {
+      chatId,
+      userId,
+      timestamp: new Date().toISOString(),
+      message: 'Successfully joined chat room'
+    });
+  }
+
+  // New method to handle leaving a chat
+  @SubscribeMessage('leaveChat')
+  handleLeaveChat(client: Socket, payload: { chatId: string, userId: string }) {
+    console.log('📱 User leaving chat:', payload);
+    const { chatId, userId } = payload;
+    
+    // Leave the chat room
+    client.leave(`chat_${chatId}`);
+    console.log(`✅ User ${userId} left chat room: chat_${chatId}`);
+    
+    // Notify other users in the chat that someone left
+    client.to(`chat_${chatId}`).emit('userLeftChat', {
+      userId,
+      chatId,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // New method to broadcast typing indicators
+  @SubscribeMessage('typing')
+  handleTyping(client: Socket, payload: { chatId: string, userId: string, isTyping: boolean }) {
+    console.log('⌨️ Typing indicator:', payload);
+    const { chatId, userId, isTyping } = payload;
+    
+    // Broadcast typing status to other users in the chat
+    client.to(`chat_${chatId}`).emit('userTyping', {
+      userId,
+      chatId,
+      isTyping,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // New method to broadcast message read status
+  @SubscribeMessage('markMessageAsRead')
+  handleMarkMessageAsRead(client: Socket, payload: { messageId: string, chatId: string, userId: string }) {
+    console.log('👁️ Marking message as read:', payload);
+    const { messageId, chatId, userId } = payload;
+    
+    // Broadcast read status to other users in the chat
+    client.to(`chat_${chatId}`).emit('messageRead', {
+      messageId,
+      chatId,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Send confirmation to the user who marked it as read
+    client.emit('messageReadConfirmation', {
+      messageId,
+      chatId,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Enhanced method to send real-time message updates
+  sendRealtimeMessageUpdate(chatId: string, message: any) {
+    console.log('📡 Broadcasting real-time message update to chat:', chatId);
+    
+    // Send to all users in the chat room
+    this.server.to(`chat_${chatId}`).emit('realtimeMessageUpdate', {
+      message,
+      chatId,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Method to get online users in a specific chat
+  getOnlineUsersInChat(chatId: string): string[] {
+    // This would need to be implemented based on your chat room management
+    // For now, return all online users
+    return this.onlineUsers.map(user => user.userId);
+  }
+
+  // Handle direct message sending from frontend
+  @SubscribeMessage('sendMessage')
+  handleSendMessage(client: Socket, payload: { 
+    sender: string, 
+    reciver: string, 
+    message: string, 
+    idChat: string 
+  }) {
+    console.log('📨 Direct message received from frontend:', payload);
+    const { sender, reciver, message, idChat } = payload;
+    
+    // Generate a temporary message ID for socket delivery
+    const tempMessageId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Send the message via socket immediately for real-time delivery
+    this.sendMessageToUser(sender, reciver, message, idChat, tempMessageId);
+    
+    // Send confirmation back to sender
+    client.emit('messageSentConfirmation', {
+      messageId: tempMessageId,
+      chatId: idChat,
+      status: 'sent',
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log('✅ Direct message processed and sent via socket');
+  }
+
 }

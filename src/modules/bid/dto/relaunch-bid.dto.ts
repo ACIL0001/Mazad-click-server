@@ -91,4 +91,3 @@ export class RelaunchBidDto {
   @IsNotEmpty()
   isPro: boolean;
 }
-
