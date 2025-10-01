@@ -129,6 +129,15 @@ import { TenderModule } from './modules/tender/tender.module';
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
         const logger = new Logger('CacheModule');
+        const disableRedis = config.get('DISABLE_REDIS') === 'true';
+        
+        if (disableRedis) {
+          logger.log('🚫 Redis disabled, using in-memory cache');
+          return {
+            ttl: 1000 * 60 * 4, // 4 minutes
+            max: 100,
+          };
+        }
         
         try {
           // Try to connect to Redis
@@ -136,12 +145,12 @@ import { TenderModule } from './modules/tender/tender.module';
             socket: {
               host: config.get('REDIS_HOST'),
               port: config.get('REDIS_PORT'),
-              reconnectStrategy: (retries) => {
+              reconnectStrategy: (retries, cause) => {
                 if (retries > 10) {
                   logger.error('Redis reconnection attempts exceeded');
-                  throw new Error('Redis reconnection attempts exceeded');
+                  return false; // Stop retrying
                 }
-                return Math.min(retries * 50, 2000);
+                return Math.min(retries * 50, 2000); // Return delay in ms
               },
             },
           });
@@ -153,12 +162,9 @@ import { TenderModule } from './modules/tender/tender.module';
           };
         } catch (error) {
           logger.warn('⚠️ Redis not available, falling back to in-memory cache');
-          logger.warn('💡 To use Redis cache, install and start Redis server');
-          
-          // Fall back to in-memory cache
           return {
-            ttl: 1000 * 60 * 4, // 4 minutes
-            max: 100, // Maximum number of items in cache
+            ttl: 1000 * 60 * 4,
+            max: 100,
           };
         }
       },

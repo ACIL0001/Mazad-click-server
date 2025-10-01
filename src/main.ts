@@ -83,14 +83,14 @@ async function bootstrap() {
   SetupSwagger(app);
 
   const configService = app.get<ConfigService>(ConfigService);
-  await app.listen(configService.get(ConfigKeys.PORT), () => {
-    const logger = new Logger('AmiGO System');
-    logger.log(
-      `Sever is runing and listening on port ${configService.get(ConfigKeys.PORT)}`,
-    );
-    console.log(
-      `Server is running and listening on port ${configService.get(ConfigKeys.PORT)}`,
-    );
+  
+  // Use PORT from environment variable (Render provides this) or fallback to config
+  const port = process.env.PORT || configService.get(ConfigKeys.PORT) || 3000;
+  
+  await app.listen(port, () => {
+    const logger = new Logger('MazadClick System');
+    logger.log(`Server is running and listening on port ${port}`);
+    console.log(`Server is running and listening on port ${port}`);
   });
 }
 bootstrap();
