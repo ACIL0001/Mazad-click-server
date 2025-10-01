@@ -35,6 +35,7 @@ async function bootstrap() {
     'https://mazad-click-seller.vercel.app',
     'https://mazad-click-backoffice.vercel.app',
     'https://mazad-click-admin.vercel.app',
+    'https://mazad-click-backoffice-jtet.vercel.app'
   ];
   app.enableCors({
     origin: (origin, callback) => {
