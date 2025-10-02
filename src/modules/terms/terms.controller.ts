@@ -56,7 +56,11 @@ export class TermsController {
   @ApiResponse({ status: 200, description: 'Latest terms' })
   @ApiResponse({ status: 404, description: 'No terms found' })
   async findLatest() {
-    return this.termsService.findLatest();
+    const latestTerms = await this.termsService.findLatest();
+    if (!latestTerms) {
+      return { message: 'No terms and conditions found', data: null };
+    }
+    return latestTerms;
   }
 
   @Get(':id')
