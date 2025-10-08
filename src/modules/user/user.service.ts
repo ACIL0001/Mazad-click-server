@@ -250,4 +250,19 @@ async getRecommendedResellers() {
     isActive: true,
     isBanned: false
   }).populate('avatar');
-}}
+}
+
+async updateUserType(userId: string, newType: RoleCode): Promise<User> {
+  const user = await this.userModel.findByIdAndUpdate(
+    userId,
+    { type: newType },
+    { new: true }
+  ).populate('avatar');
+  
+  if (!user) {
+    throw new BadRequestException('User not found');
+  }
+  
+  return user;
+}
+}

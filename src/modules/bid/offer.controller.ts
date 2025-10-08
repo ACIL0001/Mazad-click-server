@@ -92,7 +92,8 @@ export class OfferController {
    * @returns An array of offers
    */
   @Get(':id')
-  @UseGuards(SellerGuard)
+  // FIXED: Removed @UseGuards(SellerGuard) which was causing the 403 Forbidden error.
+  // The route is now protected by the class-level AuthGuard, allowing any authenticated user.
   async getOffersByBidId(@Param('id') id: string) {
     return this.offerService.getOffersByBidId(id);
   }

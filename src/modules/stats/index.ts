@@ -4,5 +4,6 @@ export { StatsController } from './stats.controller';
 export type {
   UserStats,
   AuctionStats,
+  TenderStats,
   PlatformOverview,
-} from './stats.service'; 
+} from './stats.service';

@@ -7,6 +7,7 @@ import { StatsService } from './stats.service';
 import { User, UserSchema } from '../user/schema/user.schema';
 import { Bid, BidSchema } from '../bid/schema/bid.schema';
 import { Category, CategorySchema } from '../category/schema/category.schema';
+import { Tender, TenderSchema } from '../tender/schema/tender.schema';
 
 @Module({
   imports: [
@@ -14,10 +15,11 @@ import { Category, CategorySchema } from '../category/schema/category.schema';
       { name: User.name, schema: UserSchema },
       { name: Bid.name, schema: BidSchema },
       { name: Category.name, schema: CategorySchema },
+      { name: Tender.name, schema: TenderSchema },
     ]),
   ],
   controllers: [StatsController],
   providers: [StatsService],
   exports: [StatsService],
 })
-export class StatsModule {} 
+export class StatsModule {}

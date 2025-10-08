@@ -22,12 +22,16 @@ export class TermsService {
     return this.termsModel.find().sort({ createdAt: -1 }).exec();
   }
 
-  async findLatest(): Promise<Terms | null> {
+  async findLatest(): Promise<Terms> {
     const latestTerms = await this.termsModel
       .findOne()
       .select('title content version createdAt updatedAt')
       .sort({ createdAt: -1 })
       .exec();
+
+    if (!latestTerms) {
+      throw new NotFoundException('No terms and conditions found');
+    }
 
     return latestTerms;
   }

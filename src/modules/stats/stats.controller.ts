@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { StatsService, UserStats, AuctionStats, CategoryStats } from './stats.service';
+import { StatsService, UserStats, AuctionStats, TenderStats, CategoryStats } from './stats.service';
 import { Public } from '../../common/decorators/public.decorator';
 
 @Controller('stats')
@@ -17,6 +17,11 @@ export class StatsController {
     return this.statsService.getAuctionStats();
   }
 
+  @Get('tenders')
+  async getTenderStats(): Promise<TenderStats> {
+    return this.statsService.getTenderStats();
+  }
+
   @Get('categories')
   async getCategoryStats(): Promise<CategoryStats[]> {
     return this.statsService.getCategoryStats();
@@ -24,13 +29,15 @@ export class StatsController {
 
   @Get('summary')
   async getStatsSummary() {
-    const [users, auctions] = await Promise.all([
+    const [users, auctions, tenders] = await Promise.all([
       this.statsService.getUserStats(),
       this.statsService.getAuctionStats(),
+      this.statsService.getTenderStats(),
     ]);
     return {
       totalUsers: users.total,
       totalAuctions: auctions.total,
+      totalTenders: tenders.total,
       totalActiveUsers: users.byType.professional + users.byType.client,
       lastUpdated: new Date(),
     };
@@ -38,9 +45,10 @@ export class StatsController {
 
   @Get('dashboard')
   async getDashboardStats() {
-    const [users, auctions] = await Promise.all([
+    const [users, auctions, tenders] = await Promise.all([
       this.statsService.getUserStats(),
       this.statsService.getAuctionStats(),
+      this.statsService.getTenderStats(),
     ]);
     return {
       widgets: [
@@ -53,6 +61,11 @@ export class StatsController {
           title: 'Total Auctions',
           value: auctions.total,
           icon: 'auction',
+        },
+        {
+          title: 'Total Tenders',
+          value: tenders.total,
+          icon: 'tender',
         },
         {
           title: 'Active Users',
@@ -74,6 +87,11 @@ export class StatsController {
     return this.statsService.getAuctionTimeSeries();
   }
 
+  @Get('tenders/timeseries')
+  async getTenderTimeSeries() {
+    return this.statsService.getTenderTimeSeries();
+  }
+
   @Get('auctions/status-timeseries')
   async getAuctionStatusTimeSeries() {
     return this.statsService.getAuctionStatusTimeSeries();
@@ -83,4 +101,4 @@ export class StatsController {
   async getAuctionCategoryTimeSeries() {
     return this.statsService.getAuctionCategoryTimeSeries();
   }
-} 
+}

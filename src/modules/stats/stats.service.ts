@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../user/schema/user.schema';
 import { Bid, BidDocument } from '../bid/schema/bid.schema';
 import { Category, CategoryDocument } from '../category/schema/category.schema';
+import { Tender, TenderDocument, TENDER_STATUS } from '../tender/schema/tender.schema';
 import { RoleCode } from '../apikey/entity/appType.entity';
 
 export interface UserStats {
@@ -33,6 +34,22 @@ export interface AuctionStats {
   weeklyGrowth: number;
 }
 
+export interface TenderStats {
+  total: number;
+  byStatus: {
+    open: number;
+    awarded: number;
+    closed: number;
+    archived: number;
+  };
+  byType: {
+    product: number;
+    service: number;
+  };
+  dailyAverage: number;
+  weeklyGrowth: number;
+}
+
 export interface CategoryStats {
   name: string;
   count: number;
@@ -42,6 +59,7 @@ export interface CategoryStats {
 export interface PlatformOverview {
   users: UserStats;
   auctions: AuctionStats;
+  tenders: TenderStats;
   lastUpdated: Date;
 }
 
@@ -51,6 +69,7 @@ export class StatsService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
+    @InjectModel(Tender.name) private tenderModel: Model<TenderDocument>,
   ) {}
 
   async getUserStats(): Promise<UserStats> {
@@ -154,6 +173,56 @@ export class StatsService {
     };
   }
 
+  async getTenderStats(): Promise<TenderStats> {
+    const tenders = await this.tenderModel.find({}).exec();
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
+    // Count by status
+    const byStatus = {
+      open: tenders.filter(t => t.status === TENDER_STATUS.OPEN).length,
+      awarded: tenders.filter(t => t.status === TENDER_STATUS.AWARDED).length,
+      closed: tenders.filter(t => t.status === TENDER_STATUS.CLOSED).length,
+      archived: tenders.filter(t => t.status === TENDER_STATUS.ARCHIVED).length,
+    };
+
+    // Count by type
+    const byType = {
+      product: tenders.filter(t => t.tenderType === 'PRODUCT').length,
+      service: tenders.filter(t => t.tenderType === 'SERVICE').length,
+    };
+
+    // Calculate daily average over last 30 days
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const recentTenders = tenders.filter(t => new Date((t as any).createdAt) >= thirtyDaysAgo);
+    const dailyAverage = Math.round(recentTenders.length / 30);
+
+    // Calculate weekly growth
+    const thisWeekTenders = await this.tenderModel.find({
+      createdAt: { $gte: weekAgo }
+    }).exec();
+    
+    const previousWeekStart = new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const previousWeekTenders = await this.tenderModel.find({
+      createdAt: { 
+        $gte: previousWeekStart,
+        $lt: weekAgo
+      }
+    }).exec();
+
+    const weeklyGrowth = previousWeekTenders.length > 0 
+      ? Math.round(((thisWeekTenders.length - previousWeekTenders.length) / previousWeekTenders.length) * 100)
+      : thisWeekTenders.length > 0 ? 100 : 0;
+
+    return {
+      total: tenders.length,
+      byStatus,
+      byType,
+      dailyAverage,
+      weeklyGrowth,
+    };
+  }
+
   async getCategoryStats(): Promise<CategoryStats[]> {
     const bids = await this.bidModel.find({}).populate('productCategory').exec();
     const categories = await this.categoryModel.find({}).exec();
@@ -189,13 +258,15 @@ export class StatsService {
   }
 
   async getPlatformOverview(): Promise<PlatformOverview> {
-    const [users, auctions] = await Promise.all([
+    const [users, auctions, tenders] = await Promise.all([
       this.getUserStats(),
       this.getAuctionStats(),
+      this.getTenderStats(),
     ]);
     return {
       users,
       auctions,
+      tenders,
       lastUpdated: new Date(),
     };
   }
@@ -269,6 +340,43 @@ export class StatsService {
     const labels = months.map(({ month }) =>
       ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"][month]
     );
+    return { labels, data };
+  }
+
+  async getTenderTimeSeries() {
+    const now = new Date();
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ year: d.getFullYear(), month: d.getMonth() });
+    }
+
+    const results = await this.tenderModel.aggregate([
+      {
+        $match: {
+          createdAt: {
+            $gte: new Date(now.getFullYear(), now.getMonth() - 11, 1),
+            $lte: now,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const data = months.map(({ year, month }) => {
+      const found = results.find(r => r._id.year === year && r._id.month === month + 1);
+      return found ? found.count : 0;
+    });
+
+    const labels = months.map(({ month }) =>
+      ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"][month]
+    );
+
     return { labels, data };
   }
 
@@ -434,4 +542,4 @@ export class StatsService {
       series: Object.values(seriesData)
     };
   }
-} 
+}

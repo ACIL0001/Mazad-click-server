@@ -93,4 +93,34 @@ export class AuthService {
     await this.sessionService.DeleteSession(session);
     return 'Success';
   }
+
+  async markUserAsBuyer(user: User) {
+    // Update user's type to CLIENT (which represents buyer in this system)
+    const updatedUser = await this.userService.updateUserType(user._id.toString(), RoleCode.CLIENT);
+    
+    const buyerUrl = process.env.CLIENT_BASE_URL || 'http://localhost:3001';
+    console.log('🔄 Mark as buyer - redirecting to:', buyerUrl);
+    
+    return {
+      success: true,
+      message: 'User successfully marked as buyer',
+      user: updatedUser,
+      buyerUrl: buyerUrl
+    };
+  }
+
+  async markUserAsSeller(user: User) {
+    // Update user's type to PROFESSIONAL (which represents seller in this system)
+    const updatedUser = await this.userService.updateUserType(user._id.toString(), RoleCode.PROFESSIONAL);
+    
+    const sellerUrl = (process.env.SELLER_BASE_URL || 'http://localhost:3002') + '/dashboard/app';
+    console.log('🔄 Mark as seller - redirecting to:', sellerUrl);
+    
+    return {
+      success: true,
+      message: 'User successfully marked as seller',
+      user: updatedUser,
+      sellerUrl: sellerUrl
+    };
+  }
 }

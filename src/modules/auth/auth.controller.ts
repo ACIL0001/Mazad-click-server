@@ -101,4 +101,16 @@ export class AuthController {
 
     return { message: 'Password reset successful' };
   }
+
+  @Post('mark-as-buyer')
+  @UseGuards(AuthGuard)
+  async markAsBuyer(@Request() request: ProtectedRequest) {
+    return this.authService.markUserAsBuyer(request.session.user);
+  }
+
+  @Post('mark-as-seller')
+  @UseGuards(AuthGuard)
+  async markAsSeller(@Request() request: ProtectedRequest) {
+    return this.authService.markUserAsSeller(request.session.user);
+  }
 }
