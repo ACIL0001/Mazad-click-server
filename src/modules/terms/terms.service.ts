@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Terms, TermsDocument } from './schema/terms.schema';
@@ -22,18 +22,15 @@ export class TermsService {
     return this.termsModel.find().sort({ createdAt: -1 }).exec();
   }
 
-  async findLatest(): Promise<Terms> {
+  async findLatest(): Promise<Terms | null> {
     const latestTerms = await this.termsModel
       .findOne()
       .select('title content version createdAt updatedAt')
       .sort({ createdAt: -1 })
       .exec();
 
-    if (!latestTerms) {
-      throw new NotFoundException('No terms and conditions found');
-    }
-
-    return latestTerms;
+    // Return null with 200 OK when no terms exist instead of throwing 404
+    return latestTerms ?? null;
   }
 
   async findOne(id: string): Promise<Terms> {
