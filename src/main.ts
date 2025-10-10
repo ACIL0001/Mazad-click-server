@@ -50,7 +50,19 @@ async function bootstrap() {
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'x-api-key', 'x-access-key'],
+    // Include all custom headers used by the frontend (e.g., accept-language)
+    allowedHeaders: [
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'x-api-key',
+      'x-access-key',
+      'accept-language',
+      'X-Requested-With',
+      'Origin'
+    ],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   });
 
   // Helmet Configuration (which sets CSP)
