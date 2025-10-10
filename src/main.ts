@@ -43,9 +43,18 @@ async function bootstrap() {
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps, curl, etc.)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+
+      const allowedOriginPatterns = [
+        /^https?:\/\/localhost:30\d{2}$/,
+        /^https:\/\/mazad-click-(buyer|seller|backoffice|admin)(-[a-z0-9-]+)?\.vercel\.app$/,
+        /^https:\/\/buyer-mazad\.vercel\.app$/,
+      ];
+
+      const isAllowed =
+        allowedOrigins.includes(origin) ||
+        allowedOriginPatterns.some((rx) => rx.test(origin));
+
+      if (isAllowed) return callback(null, true);
       return callback(new Error('Not allowed by CORS'));
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
