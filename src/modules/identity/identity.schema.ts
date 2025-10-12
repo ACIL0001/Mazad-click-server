@@ -72,35 +72,18 @@ export class Identity {
   })
   nifRequired: Attachment; // NIF (required version)
 
-  @Prop({ 
-    type: MongooseSchema.Types.ObjectId, 
-    ref: Attachment.name,
-    required: function() {
-      return this.conversionType === CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL || 
-             this.conversionType === CONVERSION_TYPE.PROFESSIONAL_VERIFICATION;
-    }
-  })
+  // OPTIONAL FIELDS (moved from required)
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
   numeroArticle: Attachment; // Numero d'article
 
-  @Prop({ 
-    type: MongooseSchema.Types.ObjectId, 
-    ref: Attachment.name,
-    required: function() {
-      return this.conversionType === CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL || 
-             this.conversionType === CONVERSION_TYPE.PROFESSIONAL_VERIFICATION;
-    }
-  })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
   c20: Attachment; // C20
 
-  @Prop({ 
-    type: MongooseSchema.Types.ObjectId, 
-    ref: Attachment.name,
-    required: function() {
-      return this.conversionType === CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL || 
-             this.conversionType === CONVERSION_TYPE.PROFESSIONAL_VERIFICATION;
-    }
-  })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
   misesAJourCnas: Attachment; // Mises à jour CNAS/CASNOS et CACOBAPT
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
+  carteFellah: Attachment; // Carte Fellah (required only for Fellah category)
 
   // NEW: Add target user type (what they want to become)
   @Prop({ type: String })

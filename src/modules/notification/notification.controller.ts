@@ -81,7 +81,28 @@ export class NotificationController {
   @Get()
   @UseGuards(AuthGuard)
   async findAllNotifications(@Req() req: ProtectedRequest) {
-    return this.notificationService.findAllNotifications();
+    // For admin users, get all notifications
+    // For regular users, get only their notifications
+    if (!req.session?.user) {
+      throw new UnauthorizedException('User not authenticated');
+    }
+    
+    const userId = req.session.user._id.toString();
+    const userType = req.session.user.type;
+    
+    console.log('📧 Fetching notifications for user:', { userId, userType });
+    
+    // If admin or sous_admin, they should see their notifications
+    // (notifications are created specifically for each admin)
+    const notifications = await this.notificationService.findForUser(userId);
+    
+    console.log('📧 Found notifications:', {
+      count: notifications.length,
+      unreadCount: notifications.filter(n => !n.read).length,
+      types: notifications.map(n => n.type)
+    });
+    
+    return { data: notifications };
   }
 
   // Debug endpoint to see all notifications in database

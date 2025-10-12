@@ -22,6 +22,9 @@ export class Plan {
 
   @Prop({ type: String, enum: ['PROFESSIONAL', 'RESELLER'], required: true })
   role: string;
+
+  @Prop({ type: [String], default: [] })
+  benefits: string[];
 }
 
 export type PlanDocument = HydratedDocument<Plan>;

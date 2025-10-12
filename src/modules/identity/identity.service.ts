@@ -48,13 +48,21 @@ export class IdentityService {
 
   private async createIdentityVerificationNotification(identity: IdentityDocument): Promise<void> {
     try {
+      console.log('🔔 Creating identity verification notifications...');
+      
       // Get all admin users (both ADMIN and SOUS_ADMIN)
       const adminUsers = await this.userModel.find({
         type: { $in: ['ADMIN', 'SOUS_ADMIN'] }
-      }).select('_id email firstName lastName');
+      }).select('_id email firstName lastName type');
+
+      console.log(`📧 Found ${adminUsers.length} admin users:`, adminUsers.map(u => ({ 
+        id: u._id, 
+        email: u.email, 
+        type: u.type 
+      })));
 
       if (adminUsers.length === 0) {
-        console.warn('No admin users found to send identity verification notification');
+        console.warn('⚠️ No admin users found to send identity verification notification');
         return;
       }
 
@@ -86,8 +94,9 @@ export class IdentityService {
         )
       );
 
-      await Promise.all(notificationPromises);
-      console.log(`Identity verification notification created successfully for ${adminUsers.length} admin users`);
+      const createdNotifications = await Promise.all(notificationPromises);
+      console.log(`✅ Identity verification notifications created successfully for ${adminUsers.length} admin users`);
+      console.log('📝 Notification IDs:', createdNotifications.map(n => n._id));
     } catch (error) {
       console.error('Error creating identity verification notification:', error);
       throw error;

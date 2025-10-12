@@ -61,12 +61,14 @@ export class IdentityController {
     { name: 'nis', maxCount: 1 },
     { name: 'last3YearsBalanceSheet', maxCount: 1 },
     { name: 'certificates', maxCount: 1 },
-    // NEW REQUIRED FIELDS
+    // REQUIRED FIELDS
     { name: 'registreCommerceCarteAuto', maxCount: 1 },
     { name: 'nifRequired', maxCount: 1 },
+    // OPTIONAL FIELDS (moved from required)
     { name: 'numeroArticle', maxCount: 1 },
     { name: 'c20', maxCount: 1 },
     { name: 'misesAJourCnas', maxCount: 1 },
+    { name: 'carteFellah', maxCount: 1 },
   ], {
     storage: diskStorage({
       destination: './uploads',
@@ -86,12 +88,14 @@ export class IdentityController {
       nis?: Express.Multer.File[],
       last3YearsBalanceSheet?: Express.Multer.File[],
       certificates?: Express.Multer.File[],
-      // NEW REQUIRED FIELDS
+      // REQUIRED FIELDS
       registreCommerceCarteAuto?: Express.Multer.File[],
       nifRequired?: Express.Multer.File[],
+      // OPTIONAL FIELDS
       numeroArticle?: Express.Multer.File[],
       c20?: Express.Multer.File[],
       misesAJourCnas?: Express.Multer.File[],
+      carteFellah?: Express.Multer.File[],
     }
   ): Promise<IdentityDocument> {
     const userId = req.session?.user?._id;
@@ -117,8 +121,8 @@ export class IdentityController {
       return attachment._id;
     };
 
-    // Validate required fields for professional identity
-    const requiredFields = ['registreCommerceCarteAuto', 'nifRequired', 'numeroArticle', 'c20', 'misesAJourCnas'];
+    // Validate required fields for professional identity (only 2 required)
+    const requiredFields = ['registreCommerceCarteAuto', 'nifRequired'];
     const missingFields = [];
 
     for (const fieldName of requiredFields) {
@@ -129,11 +133,8 @@ export class IdentityController {
 
     if (missingFields.length > 0) {
       const fieldNames = {
-        registreCommerceCarteAuto: 'Registre de commerce/carte auto-entrepreneur/agrément/carte d\'artisan',
+        registreCommerceCarteAuto: 'Registre de commerce/carte auto-entrepreneur',
         nifRequired: 'NIF',
-        numeroArticle: 'Numéro d\'article',
-        c20: 'C20',
-        misesAJourCnas: 'Mises à jour CNAS/CASNOS et CACOBAPT'
       };
       const missingFieldNames = missingFields.map(field => fieldNames[field]).join(', ');
       throw new BadRequestException(`Les documents suivants sont requis: ${missingFieldNames}`);
@@ -147,12 +148,15 @@ export class IdentityController {
     const balanceSheetId = files.last3YearsBalanceSheet?.[0] ? await saveAttachment(files.last3YearsBalanceSheet[0]) : undefined;
     const certificatesId = files.certificates?.[0] ? await saveAttachment(files.certificates[0]) : undefined;
 
-    // Handle new required fields
+    // Handle required fields
     const registreCommerceCarteAutoId = await saveAttachment(files.registreCommerceCarteAuto[0]);
     const nifRequiredId = await saveAttachment(files.nifRequired[0]);
-    const numeroArticleId = await saveAttachment(files.numeroArticle[0]);
-    const c20Id = await saveAttachment(files.c20[0]);
-    const misesAJourCnasId = await saveAttachment(files.misesAJourCnas[0]);
+    
+    // Handle optional fields (moved from required)
+    const numeroArticleId = files.numeroArticle?.[0] ? await saveAttachment(files.numeroArticle[0]) : undefined;
+    const c20Id = files.c20?.[0] ? await saveAttachment(files.c20[0]) : undefined;
+    const misesAJourCnasId = files.misesAJourCnas?.[0] ? await saveAttachment(files.misesAJourCnas[0]) : undefined;
+    const carteFellahId = files.carteFellah?.[0] ? await saveAttachment(files.carteFellah[0]) : undefined;
 
     // Determine conversion type based on current user type
     let conversionType: CONVERSION_TYPE;
@@ -163,7 +167,7 @@ export class IdentityController {
       targetUserType = RoleCode.PROFESSIONAL;
     } else if (currentUser.type === RoleCode.CLIENT) {
       conversionType = CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL;
-      targetUserType: RoleCode.PROFESSIONAL;
+      targetUserType = RoleCode.PROFESSIONAL;
     } else {
       throw new BadRequestException('Invalid user type for professional identity submission');
     }
@@ -175,12 +179,14 @@ export class IdentityController {
       nis: nisId as any,
       last3YearsBalanceSheet: balanceSheetId as any,
       certificates: certificatesId as any,
-      // New required fields
+      // Required fields
       registreCommerceCarteAuto: registreCommerceCarteAutoId as any,
       nifRequired: nifRequiredId as any,
+      // Optional fields (moved from required)
       numeroArticle: numeroArticleId as any,
       c20: c20Id as any,
       misesAJourCnas: misesAJourCnasId as any,
+      carteFellah: carteFellahId as any,
       // Metadata
       status: IDE_TYPE.WAITING,
       conversionType,
@@ -291,12 +297,14 @@ export class IdentityController {
     { name: 'nis', maxCount: 1 },
     { name: 'last3YearsBalanceSheet', maxCount: 1 },
     { name: 'certificates', maxCount: 1 },
-    // NEW REQUIRED FIELDS
+    // REQUIRED FIELDS
     { name: 'registreCommerceCarteAuto', maxCount: 1 },
     { name: 'nifRequired', maxCount: 1 },
+    // OPTIONAL FIELDS (moved from required)
     { name: 'numeroArticle', maxCount: 1 },
     { name: 'c20', maxCount: 1 },
     { name: 'misesAJourCnas', maxCount: 1 },
+    { name: 'carteFellah', maxCount: 1 },
   ], {
     storage: diskStorage({
       destination: './uploads',
@@ -317,12 +325,14 @@ export class IdentityController {
       nis?: Express.Multer.File[],
       last3YearsBalanceSheet?: Express.Multer.File[],
       certificates?: Express.Multer.File[],
-      // NEW REQUIRED FIELDS
+      // REQUIRED FIELDS
       registreCommerceCarteAuto?: Express.Multer.File[],
       nifRequired?: Express.Multer.File[],
+      // OPTIONAL FIELDS
       numeroArticle?: Express.Multer.File[],
       c20?: Express.Multer.File[],
       misesAJourCnas?: Express.Multer.File[],
+      carteFellah?: Express.Multer.File[],
     }
   ): Promise<IdentityDocument> {
     const userId = req.session?.user?._id;
@@ -353,8 +363,8 @@ export class IdentityController {
       return attachment._id;
     };
 
-    // Validate required fields for professional identity
-    const requiredFields = ['registreCommerceCarteAuto', 'nifRequired', 'numeroArticle', 'c20', 'misesAJourCnas'];
+    // Validate required fields for professional identity (only 2 required)
+    const requiredFields = ['registreCommerceCarteAuto', 'nifRequired'];
     const missingFields = [];
 
     for (const fieldName of requiredFields) {
@@ -365,11 +375,8 @@ export class IdentityController {
 
     if (missingFields.length > 0) {
       const fieldNames = {
-        registreCommerceCarteAuto: 'Registre de commerce/carte auto-entrepreneur/agrément/carte d\'artisan',
+        registreCommerceCarteAuto: 'Registre de commerce/carte auto-entrepreneur',
         nifRequired: 'NIF',
-        numeroArticle: 'Numéro d\'article',
-        c20: 'C20',
-        misesAJourCnas: 'Mises à jour CNAS/CASNOS et CACOBAPT'
       };
       const missingFieldNames = missingFields.map(field => fieldNames[field]).join(', ');
       throw new BadRequestException(`Les documents suivants sont requis: ${missingFieldNames}`);
@@ -383,12 +390,15 @@ export class IdentityController {
     const balanceSheetId = files.last3YearsBalanceSheet?.[0] ? await saveAttachment(files.last3YearsBalanceSheet[0]) : undefined;
     const certificatesId = files.certificates?.[0] ? await saveAttachment(files.certificates[0]) : undefined;
 
-    // Handle new required fields
+    // Handle required fields
     const registreCommerceCarteAutoId = await saveAttachment(files.registreCommerceCarteAuto[0]);
     const nifRequiredId = await saveAttachment(files.nifRequired[0]);
-    const numeroArticleId = await saveAttachment(files.numeroArticle[0]);
-    const c20Id = await saveAttachment(files.c20[0]);
-    const misesAJourCnasId = await saveAttachment(files.misesAJourCnas[0]);
+    
+    // Handle optional fields (moved from required)
+    const numeroArticleId = files.numeroArticle?.[0] ? await saveAttachment(files.numeroArticle[0]) : undefined;
+    const c20Id = files.c20?.[0] ? await saveAttachment(files.c20[0]) : undefined;
+    const misesAJourCnasId = files.misesAJourCnas?.[0] ? await saveAttachment(files.misesAJourCnas[0]) : undefined;
+    const carteFellahId = files.carteFellah?.[0] ? await saveAttachment(files.carteFellah[0]) : undefined;
 
     // Create identity record with CLIENT_TO_PROFESSIONAL conversion type
     const identity = await this.identityService.createIdentity(userId, {
@@ -398,12 +408,14 @@ export class IdentityController {
       nis: nisId as any,
       last3YearsBalanceSheet: balanceSheetId as any,
       certificates: certificatesId as any,
-      // New required fields
+      // Required fields
       registreCommerceCarteAuto: registreCommerceCarteAutoId as any,
       nifRequired: nifRequiredId as any,
+      // Optional fields (moved from required)
       numeroArticle: numeroArticleId as any,
       c20: c20Id as any,
       misesAJourCnas: misesAJourCnasId as any,
+      carteFellah: carteFellahId as any,
       // Metadata
       status: IDE_TYPE.WAITING,
       conversionType: CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL,
@@ -555,6 +567,7 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      carteFellah: transformAttachment(identity.carteFellah),
       // NEW PAYMENT PROOF FIELD
       paymentProof: transformAttachment(identity.paymentProof),
     }));
@@ -594,6 +607,7 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      carteFellah: transformAttachment(identity.carteFellah),
       // NEW PAYMENT PROOF FIELD
       paymentProof: transformAttachment(identity.paymentProof),
     }));
@@ -618,6 +632,7 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      carteFellah: transformAttachment(identity.carteFellah),
       // NEW PAYMENT PROOF FIELD
       paymentProof: transformAttachment(identity.paymentProof),
     }));
@@ -642,6 +657,7 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      carteFellah: transformAttachment(identity.carteFellah),
       // NEW PAYMENT PROOF FIELD
       paymentProof: transformAttachment(identity.paymentProof),
     }));
@@ -692,6 +708,7 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      carteFellah: transformAttachment(identity.carteFellah),
       // NEW PAYMENT PROOF FIELD
       paymentProof: transformAttachment(identity.paymentProof),
     };
@@ -726,6 +743,7 @@ export class IdentityController {
       numeroArticle: transformAttachment(identity.numeroArticle),
       c20: transformAttachment(identity.c20),
       misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      carteFellah: transformAttachment(identity.carteFellah),
       // NEW PAYMENT PROOF FIELD
       paymentProof: transformAttachment(identity.paymentProof),
     };
