@@ -51,26 +51,20 @@ export class Identity {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
   identityCard: Attachment;
 
-  // NEW REQUIRED FIELDS FOR PROFESSIONALS
+  // CONDITIONALLY REQUIRED FIELDS FOR PROFESSIONALS
+  // Either (registreCommerceCarteAuto + nifRequired) OR carteFellah must be provided
+  // Validation is done in the controller, not in schema
   @Prop({ 
     type: MongooseSchema.Types.ObjectId, 
     ref: Attachment.name,
-    required: function() {
-      return this.conversionType === CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL || 
-             this.conversionType === CONVERSION_TYPE.PROFESSIONAL_VERIFICATION;
-    }
   })
-  registreCommerceCarteAuto: Attachment; // Registre de commerce/carte auto-entrepreneur/agrément/carte d'artisan agrément
+  registreCommerceCarteAuto: Attachment; // Registre de commerce/carte auto-entrepreneur/agrément/carte d'artisan agrément (RC/autres)
 
   @Prop({ 
     type: MongooseSchema.Types.ObjectId, 
     ref: Attachment.name,
-    required: function() {
-      return this.conversionType === CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL || 
-             this.conversionType === CONVERSION_TYPE.PROFESSIONAL_VERIFICATION;
-    }
   })
-  nifRequired: Attachment; // NIF (required version)
+  nifRequired: Attachment; // NIF/N° articles (NIF or Numero d'article)
 
   // OPTIONAL FIELDS (moved from required)
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
@@ -103,3 +97,22 @@ export type IdentityDocument = HydratedDocument<Identity> & {
   updatedAt: Date;
 };
 export const IdentitySchema = SchemaFactory.createForClass(Identity);
+
+// Add custom validation for conditionally required fields
+IdentitySchema.pre('save', function(next) {
+  // Only validate for professional identity submissions
+  if (this.conversionType === CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL || 
+      this.conversionType === CONVERSION_TYPE.PROFESSIONAL_VERIFICATION) {
+    
+    const hasRcAndNif = this.registreCommerceCarteAuto && this.nifRequired;
+    const hasCarteFellah = this.carteFellah;
+    
+    // Allow if either (RC + NIF) OR (Carte Fellah) is provided
+    if (!hasRcAndNif && !hasCarteFellah) {
+      const error = new Error('Vous devez fournir soit (RC/autres + NIF/N° articles) soit (Carte Fellah uniquement).');
+      return next(error);
+    }
+  }
+  
+  next();
+});

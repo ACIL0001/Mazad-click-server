@@ -103,6 +103,9 @@ export class IdentityController {
       throw new BadRequestException('User not authenticated');
     }
 
+    // Log received files for debugging
+    console.log('📁 Received files:', Object.keys(files).filter(key => files[key]?.[0]).map(key => `${key}: ${files[key][0].originalname}`));
+
     // Get current user to check their type
     const currentUser = await this.userService.findUserById(userId);
     if (!currentUser) {
@@ -121,24 +124,25 @@ export class IdentityController {
       return attachment._id;
     };
 
-    // Validate required fields for professional identity (only 2 required)
-    const requiredFields = ['registreCommerceCarteAuto', 'nifRequired'];
-    const missingFields = [];
+    // Validate required fields: Either (RC + NIF) OR (Carte Fellah only)
+    const hasRcAndNif = files.registreCommerceCarteAuto?.[0] && files.nifRequired?.[0];
+    const hasCarteFellah = files.carteFellah?.[0];
 
-    for (const fieldName of requiredFields) {
-      if (!files[fieldName]?.[0]) {
-        missingFields.push(fieldName);
-      }
-    }
+    console.log('🔍 Document validation check:', {
+      hasRcAndNif,
+      hasCarteFellah,
+      registreCommerceCarteAuto: !!files.registreCommerceCarteAuto?.[0],
+      nifRequired: !!files.nifRequired?.[0],
+      carteFellah: !!files.carteFellah?.[0],
+    });
 
-    if (missingFields.length > 0) {
-      const fieldNames = {
-        registreCommerceCarteAuto: 'Registre de commerce/carte auto-entrepreneur',
-        nifRequired: 'NIF',
-      };
-      const missingFieldNames = missingFields.map(field => fieldNames[field]).join(', ');
-      throw new BadRequestException(`Les documents suivants sont requis: ${missingFieldNames}`);
+    if (!hasRcAndNif && !hasCarteFellah) {
+      console.log('❌ Validation failed: Neither (RC+NIF) nor (Carte Fellah) provided');
+      throw new BadRequestException('Vous devez fournir soit (RC/autres + NIF/N° articles) soit (Carte Fellah uniquement).');
     }
+    
+    console.log('✅ Validation passed');
+
 
     // Handle existing optional fields
     const commercialRegisterId = files.commercialRegister?.[0] ? await saveAttachment(files.commercialRegister[0]) : undefined;
@@ -148,9 +152,9 @@ export class IdentityController {
     const balanceSheetId = files.last3YearsBalanceSheet?.[0] ? await saveAttachment(files.last3YearsBalanceSheet[0]) : undefined;
     const certificatesId = files.certificates?.[0] ? await saveAttachment(files.certificates[0]) : undefined;
 
-    // Handle required fields
-    const registreCommerceCarteAutoId = await saveAttachment(files.registreCommerceCarteAuto[0]);
-    const nifRequiredId = await saveAttachment(files.nifRequired[0]);
+    // Handle conditionally required fields (RC and NIF - only if provided)
+    const registreCommerceCarteAutoId = files.registreCommerceCarteAuto?.[0] ? await saveAttachment(files.registreCommerceCarteAuto[0]) : undefined;
+    const nifRequiredId = files.nifRequired?.[0] ? await saveAttachment(files.nifRequired[0]) : undefined;
     
     // Handle optional fields (moved from required)
     const numeroArticleId = files.numeroArticle?.[0] ? await saveAttachment(files.numeroArticle[0]) : undefined;
