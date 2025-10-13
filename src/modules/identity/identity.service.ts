@@ -1,3 +1,5 @@
+// identity.service.ts
+
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -118,6 +120,7 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
@@ -138,6 +141,7 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
@@ -159,6 +163,7 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
@@ -183,6 +188,7 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
@@ -208,6 +214,7 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
@@ -228,6 +235,7 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
@@ -257,6 +265,7 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
@@ -297,6 +306,7 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
+      .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();

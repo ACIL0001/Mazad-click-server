@@ -6,6 +6,7 @@ import { User } from 'src/modules/user/schema/user.schema';
 export enum IDE_TYPE {
   DONE = 'DONE',
   WAITING = 'WAITING',
+
   REJECTED = 'REJECTED',
 }
 
