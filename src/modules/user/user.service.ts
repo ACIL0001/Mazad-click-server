@@ -9,6 +9,7 @@ import { ConfigKeys } from 'src/configs/app.config';
 import * as bcrypt from 'bcrypt';
 import { Professional } from './schema/pro.schema';
 import { AttachmentService } from '../attachment/attachment.service';
+import { Category } from '../category/schema/category.schema';
 
 @Injectable()
 export class UserService implements OnModuleInit {
@@ -16,6 +17,7 @@ export class UserService implements OnModuleInit {
 
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Category.name) private readonly categoryModel: Model<Category>,
     private readonly configService: ConfigService,
     private readonly attachmentService: AttachmentService,
   ) {}
@@ -40,16 +42,31 @@ export class UserService implements OnModuleInit {
   // }
 
   async findUser(user?: RootFilterQuery<User>) {
-    return this.userModel.find(user).populate('avatar');
+    const users = await this.userModel.find(user).populate('avatar');
+    // Convert secteur IDs to names for all users
+    for (const user of users) {
+      await this.convertSecteurIdToName(user);
+    }
+    return users;
   }
 
   async findUserById(id: string) {
-    return this.userModel.findById(id).populate('avatar');
+    const user = await this.userModel.findById(id).populate('avatar');
+    if (user) {
+      // Convert secteur ID to name if needed
+      await this.convertSecteurIdToName(user);
+    }
+    return user;
   }
 
   // NEW: Find users by array of IDs
   async findUsersByIds(ids: string[]) {
-    return this.userModel.find({ _id: { $in: ids } }).populate('avatar');
+    const users = await this.userModel.find({ _id: { $in: ids } }).populate('avatar');
+    // Convert secteur IDs to names for all users
+    for (const user of users) {
+      await this.convertSecteurIdToName(user);
+    }
+    return users;
   }
 
   async findByLogin(login: string) {
@@ -91,7 +108,12 @@ export class UserService implements OnModuleInit {
   }
 
   async findAllBuyers() {
-    return this.userModel.find({ role: RoleCode.CLIENT }).populate('avatar');
+    const users = await this.userModel.find({ role: RoleCode.CLIENT }).populate('avatar');
+    // Convert secteur IDs to names for all users
+    for (const user of users) {
+      await this.convertSecteurIdToName(user);
+    }
+    return users;
   }
 
   async updatePassword(userId: Types.ObjectId, newPassword: string) {
@@ -166,7 +188,12 @@ export class UserService implements OnModuleInit {
   }
 
   async findUsersByRoles(roles: RoleCode[]) {
-    return this.userModel.find({ type: { $in: roles } }).populate('avatar');
+    const users = await this.userModel.find({ type: { $in: roles } }).populate('avatar');
+    // Convert secteur IDs to names for all users
+    for (const user of users) {
+      await this.convertSecteurIdToName(user);
+    }
+    return users;
   }
 
   async setUserActive(userId: string, isActive: boolean) {
@@ -233,24 +260,63 @@ async setUserRecommended(userId: string, isRecommended: boolean) {
 }
 
 async getRecommendedProfessionals() {
-  return this.userModel.find({ 
+  const users = await this.userModel.find({ 
     type: RoleCode.PROFESSIONAL, 
     isRecommended: true,
     isVerified: true,
     isActive: true,
     isBanned: false
   }).populate('avatar');
+  // Convert secteur IDs to names for all users
+  for (const user of users) {
+    await this.convertSecteurIdToName(user);
+  }
+  return users;
 }
 
 async getRecommendedResellers() {
-  return this.userModel.find({ 
+  const users = await this.userModel.find({ 
     type: RoleCode.RESELLER, 
     isRecommended: true,
     isVerified: true,
     isActive: true,
     isBanned: false
   }).populate('avatar');
+  // Convert secteur IDs to names for all users
+  for (const user of users) {
+    await this.convertSecteurIdToName(user);
+  }
+  return users;
 }
+
+  /**
+   * Converts secteur field from category ID to category name if needed
+   * @param user User document to process
+   */
+  private async convertSecteurIdToName(user: any): Promise<void> {
+    if (!user.secteur || user.type !== RoleCode.PROFESSIONAL) {
+      return;
+    }
+
+    // Check if secteur is a valid ObjectId (24-character hex string)
+    if (Types.ObjectId.isValid(user.secteur) && user.secteur.length === 24) {
+      try {
+        const category = await this.categoryModel.findById(user.secteur);
+        if (category) {
+          // Update the user in the database with the category name
+          await this.userModel.updateOne(
+            { _id: user._id },
+            { $set: { secteur: category.name } }
+          );
+          // Update the current user object
+          user.secteur = category.name;
+          this.logger.log(`Converted secteur ID ${user.secteur} to name "${category.name}" for user ${user.firstName} ${user.lastName}`);
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to convert secteur ID ${user.secteur} for user ${user.firstName} ${user.lastName}: ${error.message}`);
+      }
+    }
+  }
 
 async updateUserType(userId: string, newType: RoleCode): Promise<User> {
   const user = await this.userModel.findByIdAndUpdate(

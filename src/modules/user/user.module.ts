@@ -13,6 +13,7 @@ import { ProService } from './services/pro.service';
 import { ClientService } from './services/client.service';
 import { AttachmentModule } from '../attachment/attachment.module';
 import { IdentityModule } from '../identity/identity.module';
+import { Category, CategorySchema } from '../category/schema/category.schema';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { IdentityModule } from '../identity/identity.module';
       { name: Professional.name, schema: ProfessionalSchema },
       { name: Buyer.name, schema: BuyerSchema },
       { name: Admin.name, schema: AdminSchema },
+      { name: Category.name, schema: CategorySchema },
     ]),
     SessionModule,
     AttachmentModule,

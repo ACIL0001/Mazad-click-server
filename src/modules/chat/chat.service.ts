@@ -178,4 +178,45 @@ export class ChatService {
     return chats;
   }
 
+  async getGuestChats(): Promise<Chat[]> {
+    // Find all chats where one of the users has _id === 'guest' OR AccountType === 'guest'
+    const chats = await this.chatModel.find({
+      $or: [
+        { 'users._id': 'guest' },
+        { 'users.AccountType': 'guest' }
+      ]
+    }).exec();
+    
+    console.log(`Found ${chats.length} guest chats`);
+    return chats;
+  }
+
+  async findGuestChatByInfo(guestName: string, guestPhone: string): Promise<Chat | null> {
+    // Find a guest chat by matching guest name and phone
+    const chat = await this.chatModel.findOne({
+      $and: [
+        {
+          $or: [
+            { 'users._id': 'guest' },
+            { 'users.AccountType': 'guest' }
+          ]
+        },
+        {
+          $or: [
+            { 'users.firstName': guestName },
+            { 'users.phone': guestPhone }
+          ]
+        }
+      ]
+    }).exec();
+    
+    if (chat) {
+      console.log(`Found guest chat by info: ${chat._id}`);
+    } else {
+      console.log(`No guest chat found for ${guestName} (${guestPhone})`);
+    }
+    
+    return chat;
+  }
+
 }

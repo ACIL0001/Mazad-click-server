@@ -66,6 +66,14 @@ export class CreateUserDto {
   type: RoleCode;
 
   @IsOptional()
+  @IsString()
+  secteur?: string;
+
+  @IsOptional()
+  @IsString()
+  entreprise?: string;
+
+  @IsOptional()
   @IsObject()
   @ValidateNested()
   @Type(() => IdentityDto)

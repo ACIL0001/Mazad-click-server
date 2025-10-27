@@ -356,21 +356,22 @@ export class BidService {
 
 
         }  else {
+          // SERVICE auctions now work like PRODUCT auctions - highest bidder wins
           if (
             getOffers.length != 0 &&
-            getAllBids[index].currentPrice <= getAllBids[index].reservePrice
+            getAllBids[index].currentPrice >= getAllBids[index].reservePrice
           ) {
-            let min = getOffers[0];
+            let max = getOffers[0];
             for (let i = 0; i < getOffers.length; i++) {
-              if (getOffers[i].price < min.price) {
-                min = getOffers[i];
+              if (getOffers[i].price > max.price) {
+                max = getOffers[i];
               }
             }
             await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
               status: BID_STATUS.ON_AUCTION,
-               winner: min.user,
+               winner: max.user,
             });
-              let users = [getUser._id, min.user._id ? min.user._id : min.user];
+              let users = [getUser._id, max.user._id ? max.user._id : max.user];
             let createdAt = new Date();
 
              const chat =  new this.chatModel({users , createdAt})
@@ -378,7 +379,7 @@ export class BidService {
 
              // Send socket notification for new chat to buyer
              this.ChatGateWay.sendNewChatToBuyer(
-               min.user._id ? min.user._id.toString() : min.user.toString(),
+               max.user._id ? max.user._id.toString() : max.user.toString(),
                {
                  type: 'NEW_CHAT',
                  title: 'Nouveau chat créé',
@@ -395,16 +396,16 @@ export class BidService {
                {
                  type: 'NEW_CHAT',
                  title: 'Nouveau chat avec le gagnant',
-                 message: `Un nouveau chat a été créé avec l'acheteur ${(min.user.firstName || '')} ${(min.user.lastName || '')} pour finaliser la vente de "${getAllBids[index].title || 'le service'}".`,
+                 message: `Un nouveau chat a été créé avec l'acheteur ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour finaliser la vente de "${getAllBids[index].title || 'le service'}".`,
                  chatId: chat._id,
-                 winnerName: (min.user.firstName || '') + ' ' + (min.user.lastName || ''),
+                 winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
                  productTitle: getAllBids[index].title
                }
              );
 
              // Send winner notification (DB)
              await this.notificationService.create(
-               min.user._id ? min.user._id.toString() : min.user.toString(),
+               max.user._id ? max.user._id.toString() : max.user.toString(),
                NotificationType.BID_WON,
                'Félicitations! Vous avez remporté l\'enchère',
                `Vous avez remporté l'enchère pour "${getAllBids[index].title || 'le service'}". Un chat a été créé avec le vendeur pour finaliser la transaction.`,
@@ -421,20 +422,20 @@ export class BidService {
                getUser._id.toString(),
                NotificationType.ITEM_SOLD,
                'Félicitations! Votre service a été vendu',
-               `Votre service "${getAllBids[index].title || 'le service'}" a été vendu à ${(min.user.firstName || '')} ${(min.user.lastName || '')} pour ${min.price}€. Un chat a été créé pour finaliser la vente.`,
+               `Votre service "${getAllBids[index].title || 'le service'}" a été vendu à ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour ${max.price}€. Un chat a été créé pour finaliser la vente.`,
                {
                  bidId: getAllBids[index]._id,
                  productTitle: getAllBids[index].title,
-                 buyerId: min.user._id ? min.user._id : min.user,
-                 buyerName: (min.user.firstName || '') + ' ' + (min.user.lastName || ''),
-                 finalPrice: min.price,
+                 buyerId: max.user._id ? max.user._id : max.user,
+                 buyerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
+                 finalPrice: max.price,
                  chatId: chat._id
                }
              );
 
              // Add CHAT_CREATED notification for buyer
              await this.notificationService.create(
-               min.user._id ? min.user._id.toString() : min.user.toString(),
+               max.user._id ? max.user._id.toString() : max.user.toString(),
                NotificationType.CHAT_CREATED,
                'Nouveau chat créé',
                `Un nouveau chat a été créé avec le vendeur ${getUser.firstName} ${getUser.lastName} pour finaliser votre achat de "${getAllBids[index].title || 'le service'}".`,
@@ -450,17 +451,17 @@ export class BidService {
                getUser._id.toString(),
                NotificationType.CHAT_CREATED,
                'Nouveau chat avec le gagnant',
-               `Un nouveau chat a été créé avec l'acheteur ${(min.user.firstName || '')} ${(min.user.lastName || '')} pour finaliser la vente de "${getAllBids[index].title || 'le service'}".`,
+               `Un nouveau chat a été créé avec l'acheteur ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour finaliser la vente de "${getAllBids[index].title || 'le service'}".`,
                {
                  chatId: chat._id,
-                 winnerName: (min.user.firstName || '') + ' ' + (min.user.lastName || ''),
+                 winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
                  productTitle: getAllBids[index].title
                }
              );
 
              // Send socket notification to winner (buyer)
              this.ChatGateWay.sendBidWonNotificationToUser(
-               min.user._id ? min.user._id.toString() : min.user.toString(),
+               max.user._id ? max.user._id.toString() : max.user.toString(),
                {
                  type: 'BID_WON',
                  title: 'Félicitations! Vous avez remporté l\'enchère',
@@ -478,10 +479,10 @@ export class BidService {
                {
                  type: 'AUCTION_SOLD',
                  title: 'Votre enchère a été vendue',
-                 message: `Votre enchère "${getAllBids[index].title || 'le service'}" a été remportée par ${min.user.firstName || ''} ${min.user.lastName || ''}. Un chat a été créé avec l\'acheteur pour finaliser la transaction.`,
+                 message: `Votre enchère "${getAllBids[index].title || 'le service'}" a été remportée par ${max.user.firstName || ''} ${max.user.lastName || ''}. Un chat a été créé avec l\'acheteur pour finaliser la transaction.`,
                  bidId: getAllBids[index]._id,
                  chatId: chat._id,
-                 winnerName: (min.user.firstName || '') + ' ' + (min.user.lastName || ''),
+                 winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
                  productTitle: getAllBids[index].title
                }
              );
@@ -493,11 +494,11 @@ export class BidService {
             //    getUser._id.toString(),
             //    NotificationType.BID_CREATED, // You may want to create a new notification type for this
             //    'Votre enchère est terminée',
-            //    `Votre enchère \"${getAllBids[index].title || 'le service'}\" est maintenant terminée et a été vendue à ${(min.user.firstName || '')} ${(min.user.lastName || '')}.`,
+            //    `Votre enchère \"${getAllBids[index].title || 'le service'}\" est maintenant terminée et a été vendue à ${(max.user.firstName || '')} ${(max.user.lastName || '')}.`,
             //    {
             //      bidId: getAllBids[index]._id,
             //      productTitle: getAllBids[index].title,
-            //      winnerName: (min.user.firstName || '') + ' ' + (min.user.lastName || '')
+            //      winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || '')
             //    }
             //  );
 

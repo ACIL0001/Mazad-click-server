@@ -45,6 +45,7 @@ function transformAttachment(att) {
 export class IdentityController {
   constructor(
     private readonly identityService: IdentityService,
+    @InjectModel(Identity.name) private identityModel: Model<IdentityDocument>,
     @InjectModel(Professional.name) private proModel: Model<ProfessionalDocument>,
     private readonly attachmentService: AttachmentService,
     @Inject(forwardRef(() => UserService))
@@ -667,6 +668,31 @@ export class IdentityController {
     }));
   }
 
+  // Get rejected identities
+  @Get('rejected')
+  @UseGuards(AdminGuard)
+  async getRejectedIdentities(): Promise<any[]> {
+    const identities = await this.identityService.getIdentitiesByStatus(IDE_TYPE.REJECTED);
+    return identities.map(identity => ({
+      ...JSON.parse(JSON.stringify(identity)),
+      commercialRegister: transformAttachment(identity.commercialRegister),
+      nif: transformAttachment(identity.nif),
+      nis: transformAttachment(identity.nis),
+      last3YearsBalanceSheet: transformAttachment(identity.last3YearsBalanceSheet),
+      certificates: transformAttachment(identity.certificates),
+      identityCard: transformAttachment(identity.identityCard),
+      // NEW FIELDS
+      registreCommerceCarteAuto: transformAttachment(identity.registreCommerceCarteAuto),
+      nifRequired: transformAttachment(identity.nifRequired),
+      numeroArticle: transformAttachment(identity.numeroArticle),
+      c20: transformAttachment(identity.c20),
+      misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      carteFellah: transformAttachment(identity.carteFellah),
+      // NEW PAYMENT PROOF FIELD
+      paymentProof: transformAttachment(identity.paymentProof),
+    }));
+  }
+
   // Delete multiple identities - UPDATED to use query parameters
   @Delete()
   @UseGuards(AdminGuard)
@@ -698,6 +724,36 @@ export class IdentityController {
     }
     const identity = await this.identityService.getIdentityByUser(userId);
     if (!identity) return null;
+    return {
+      ...JSON.parse(JSON.stringify(identity)),
+      commercialRegister: transformAttachment(identity.commercialRegister),
+      nif: transformAttachment(identity.nif),
+      nis: transformAttachment(identity.nis),
+      last3YearsBalanceSheet: transformAttachment(identity.last3YearsBalanceSheet),
+      certificates: transformAttachment(identity.certificates),
+      identityCard: transformAttachment(identity.identityCard),
+      // NEW FIELDS
+      registreCommerceCarteAuto: transformAttachment(identity.registreCommerceCarteAuto),
+      nifRequired: transformAttachment(identity.nifRequired),
+      numeroArticle: transformAttachment(identity.numeroArticle),
+      c20: transformAttachment(identity.c20),
+      misesAJourCnas: transformAttachment(identity.misesAJourCnas),
+      carteFellah: transformAttachment(identity.carteFellah),
+      // NEW PAYMENT PROOF FIELD
+      paymentProof: transformAttachment(identity.paymentProof),
+    };
+  }
+
+  // Get user documents by user ID (for admin)
+  @Get('user/:userId')
+  @UseGuards(AdminGuard)
+  async getUserDocuments(@Param('userId') userId: string): Promise<any | null> { 
+    if (!userId) {
+      throw new BadRequestException('User ID is required');
+    }
+    const identity = await this.identityService.getIdentityByUser(userId);
+    if (!identity) return null;
+    
     return {
       ...JSON.parse(JSON.stringify(identity)),
       commercialRegister: transformAttachment(identity.commercialRegister),
@@ -826,6 +882,175 @@ export class IdentityController {
         throw error;
       }
       throw new BadRequestException(`Failed to update payment proof: ${error.message}`);
+    }
+  }
+
+  // Update identity document
+  @Put(':id/update-document')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: './uploads',
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = extname(file.originalname);
+        cb(null, `${uniqueSuffix}${ext}`);
+      },
+    }),
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new BadRequestException('Invalid file type. Only JPG, PNG, and PDF files are allowed.'), false);
+      }
+    },
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+  }))
+  async updateDocument(
+    @Param('id') identityId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { field: string },
+    @Request() req
+  ): Promise<any> {
+    try {
+      if (!file) {
+        throw new BadRequestException('No file uploaded');
+      }
+
+      if (!body.field) {
+        throw new BadRequestException('Field name is required');
+      }
+
+      // Validate field name
+      const allowedFields = [
+        'commercialRegister', 'nif', 'nis', 'last3YearsBalanceSheet', 
+        'certificates', 'identityCard', 'registreCommerceCarteAuto', 
+        'nifRequired', 'numeroArticle', 'c20', 'misesAJourCnas', 
+        'carteFellah', 'paymentProof'
+      ];
+
+      if (!allowedFields.includes(body.field)) {
+        throw new BadRequestException('Invalid field name');
+      }
+
+      // Get the identity by ID
+      const identity = await this.identityService.getIdentityById(identityId);
+      if (!identity) {
+        throw new BadRequestException('Identity not found');
+      }
+
+      // Upload the file
+      const attachment = await this.attachmentService.upload(
+        file,
+        AttachmentAs.IDENTITY,
+        (identity.user as any)._id ? (identity.user as any)._id.toString() : identity.user.toString()
+      );
+
+      // Update the identity document field
+      const updatedIdentity = await this.identityService.updateIdentityDocument(
+        identityId,
+        body.field,
+        attachment._id.toString()
+      );
+
+      if (!updatedIdentity) {
+        throw new BadRequestException('Failed to update identity document');
+      }
+
+      // Transform the response
+      const response = {
+        ...JSON.parse(JSON.stringify(updatedIdentity)),
+        commercialRegister: transformAttachment(updatedIdentity.commercialRegister),
+        nif: transformAttachment(updatedIdentity.nif),
+        nis: transformAttachment(updatedIdentity.nis),
+        last3YearsBalanceSheet: transformAttachment(updatedIdentity.last3YearsBalanceSheet),
+        certificates: transformAttachment(updatedIdentity.certificates),
+        identityCard: transformAttachment(updatedIdentity.identityCard),
+        registreCommerceCarteAuto: transformAttachment(updatedIdentity.registreCommerceCarteAuto),
+        nifRequired: transformAttachment(updatedIdentity.nifRequired),
+        numeroArticle: transformAttachment(updatedIdentity.numeroArticle),
+        c20: transformAttachment(updatedIdentity.c20),
+        misesAJourCnas: transformAttachment(updatedIdentity.misesAJourCnas),
+        carteFellah: transformAttachment(updatedIdentity.carteFellah),
+        paymentProof: transformAttachment(updatedIdentity.paymentProof),
+      };
+
+      return {
+        success: true,
+        data: response,
+        message: 'Document updated successfully'
+      };
+    } catch (error) {
+      console.error('Error updating identity document:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to update document: ${error.message}`);
+    }
+  }
+
+  // Delete a specific document from an identity
+  @Delete(':id/documents/:field')
+  @UseGuards(AdminGuard)
+  async deleteDocument(@Param('id') identityId: string, @Param('field') field: string): Promise<any> {
+    try {
+      const identity = await this.identityService.getIdentityById(identityId);
+      if (!identity) {
+        throw new BadRequestException('Identity not found');
+      }
+
+      // Validate field name
+      const allowedFields = [
+        'commercialRegister', 'nif', 'nis', 'last3YearsBalanceSheet', 
+        'certificates', 'identityCard', 'registreCommerceCarteAuto', 
+        'nifRequired', 'numeroArticle', 'c20', 'misesAJourCnas', 
+        'carteFellah', 'paymentProof'
+      ];
+
+      if (!allowedFields.includes(field)) {
+        throw new BadRequestException('Invalid field name');
+      }
+
+      // Set the field to null/undefined
+      const updateData: any = { [field]: null };
+      await this.identityModel.findByIdAndUpdate(identityId, { $unset: updateData }).exec();
+
+      const updatedIdentity = await this.identityService.getIdentityById(identityId);
+      if (!updatedIdentity) {
+        throw new BadRequestException('Failed to update identity after document deletion');
+      }
+
+      // Transform the response
+      const response = {
+        ...JSON.parse(JSON.stringify(updatedIdentity)),
+        commercialRegister: transformAttachment(updatedIdentity.commercialRegister),
+        nif: transformAttachment(updatedIdentity.nif),
+        nis: transformAttachment(updatedIdentity.nis),
+        last3YearsBalanceSheet: transformAttachment(updatedIdentity.last3YearsBalanceSheet),
+        certificates: transformAttachment(updatedIdentity.certificates),
+        identityCard: transformAttachment(updatedIdentity.identityCard),
+        registreCommerceCarteAuto: transformAttachment(updatedIdentity.registreCommerceCarteAuto),
+        nifRequired: transformAttachment(updatedIdentity.nifRequired),
+        numeroArticle: transformAttachment(updatedIdentity.numeroArticle),
+        c20: transformAttachment(updatedIdentity.c20),
+        misesAJourCnas: transformAttachment(updatedIdentity.misesAJourCnas),
+        carteFellah: transformAttachment(updatedIdentity.carteFellah),
+        paymentProof: transformAttachment(updatedIdentity.paymentProof),
+      };
+
+      return {
+        success: true,
+        data: response,
+        message: 'Document deleted successfully'
+      };
+    } catch (error) {
+      console.error('Error deleting identity document:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to delete document: ${error.message}`);
     }
   }
 }

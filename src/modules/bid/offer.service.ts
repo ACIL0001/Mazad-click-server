@@ -52,9 +52,9 @@ export class OfferService {
     // Determine the bid type
     const bidType = bid.bidType;
 
-    // Check if the offer price is valid based on bid type
-    if ((bidType === BID_TYPE.PRODUCT && createOfferDto.price <= bid.currentPrice) ||
-        (bidType === BID_TYPE.SERVICE && createOfferDto.price >= bid.currentPrice)) {
+    // Check if the offer price is valid - both PRODUCT and SERVICE auctions work the same way
+    // Users must bid higher than the current price to win the auction
+    if (createOfferDto.price <= bid.currentPrice) {
       const translatedMessage = await this.i18nService.t('OFFER.INVALID_PRICE');
       throw new BadRequestException(translatedMessage);
     }

@@ -6,6 +6,7 @@ import { CrateChatDto } from "./dto/create-chat.dto";
 import { DeletChatDto } from "./dto/delete.chat";
 import { getChatDto } from "./dto/get.chat";
 import { Query } from '@nestjs/common';
+import { Public } from 'src/common/decorators/public.decorator';
 
 
 
@@ -45,5 +46,22 @@ export class ChatController {
   @Get('admin-chats')
   async getAdminChats(): Promise<Chat[]> {
     return this.ChatService.getChatsByAdmin();
+  }
+
+  @Get('guest-chats')
+  async getGuestChats(): Promise<Chat[]> {
+    return this.ChatService.getGuestChats();
+  }
+
+  @Get('find-guest-chat')
+  @Public()
+  async findGuestChat(
+    @Query('name') name: string,
+    @Query('phone') phone: string
+  ): Promise<Chat | null> {
+    if (!name || !phone) {
+      throw new Error('Name and phone are required');
+    }
+    return this.ChatService.findGuestChatByInfo(name, phone);
   }
 }

@@ -175,18 +175,6 @@ export class NotificationController {
     return result;
   }
 
-  // Mark all notifications as read for sellers
-  @Put('read-all')
-  @UseGuards(AuthGuard, SellerGuard)
-  async markAllAsRead(@Req() req: ProtectedRequest) {
-    if (!req.session?.user) {
-      throw new UnauthorizedException('User not authenticated');
-    }
-    const userId = req.session.user._id.toString();
-    console.log("🔖 Marking all notifications as read for seller:", userId);
-    return this.notificationService.markAllAsRead(userId);
-  }
-
   // Mark all notifications as read for buyers
   @Put('buyer/read-all')
   @UseGuards(AuthGuard)
@@ -199,7 +187,7 @@ export class NotificationController {
     return this.notificationService.markAllAsRead(userId);
   }
 
-  // General read-all endpoint for both buyers and sellers
+  // General read-all endpoint for both buyers and sellers - FIXED: removed duplicate
   @Put('read-all')
   @UseGuards(AuthGuard)
   async markAllAsReadGeneral(@Req() req: ProtectedRequest) {

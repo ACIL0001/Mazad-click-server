@@ -65,6 +65,11 @@ export class User {
   @Prop({ type: Boolean, default: false })
 isRecommended: boolean;
 
+  @Prop({ type: String, required: false })
+  secteur?: string;
+
+  @Prop({ type: String, required: false })
+  entreprise?: string;
 
   createdAt: string;
   updatedAt: string;

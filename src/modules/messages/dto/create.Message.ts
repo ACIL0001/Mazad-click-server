@@ -3,6 +3,8 @@ import {
   IsString,
   IsDateString,
   IsNotEmpty,
+  IsOptional,
+  IsObject,
 } from 'class-validator';
 
 
@@ -23,5 +25,14 @@ export class CrateMessageDto {
   @IsString()
   idChat: string;
 
-
+  @IsOptional()
+  @IsObject()
+  attachment?: {
+    _id: string;
+    url: string;
+    name: string;
+    type: string;
+    size: number;
+    filename: string;
+  };
 }

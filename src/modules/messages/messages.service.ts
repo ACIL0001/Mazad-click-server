@@ -24,7 +24,8 @@ export class MessageService {
     sender: string,
     reciver: string,
     message: string,
-    idChat : string
+    idChat : string,
+    metadata?: any
   ): Promise<Message> {
     let date = new Date()
     const createMessage = new this.MessageModel({
@@ -34,6 +35,8 @@ export class MessageService {
       idChat,
       createdAt : date,
       isRead: false,
+      attachment: metadata?.attachment, // Include attachment if provided
+      ...metadata // Include any additional metadata (like guest info)
     });
     
     // Save message to database first
@@ -43,7 +46,9 @@ export class MessageService {
       sender, 
       reciver, 
       message, 
-      idChat 
+      idChat,
+      hasAttachment: !!createMessage.attachment,
+      attachment: createMessage.attachment
     });
     
     // Enhanced logging for debugging
@@ -67,8 +72,8 @@ export class MessageService {
         console.log('📨 Sending message to all admins:', admins.length);
         console.log('📨 Admin IDs:', admins.map(admin => admin._id));
         
-        // Send message via socket to all admins
-        this.MessageSocket.sendMessageToAllAdmins(sender, message, idChat, createMessage._id);
+        // Send message via socket to all admins (including attachment data)
+        this.MessageSocket.sendMessageToAllAdmins(sender, message, idChat, createMessage._id, createMessage.attachment);
         console.log('✅ Socket message sent to all admins');
         
         // Create and send notifications to each admin
@@ -108,8 +113,8 @@ export class MessageService {
       try {
         console.log('📨 Admin sending message to user:', reciver);
         
-        // Send message via socket to user
-        this.MessageSocket.sendMessageFromAdminToUser('admin', reciver, message, idChat, createMessage._id);
+        // Send message via socket to user (including attachment data)
+        this.MessageSocket.sendMessageFromAdminToUser('admin', reciver, message, idChat, createMessage._id, createMessage.attachment);
         console.log('📡 Backend emitted adminMessage and sendMessage events to user:', reciver);
         
         // Create notification for the user
@@ -236,12 +241,37 @@ export class MessageService {
   }
 
   async getAll(idChat:string): Promise<Message[]> {
-    console.log('Id' , idChat);
+    console.log('📥 Getting all messages for chat:', idChat);
     
-    const getChats =await this.MessageModel.find({idChat})
-    console.log('jjf' , getChats);
+    const getChats = await this.MessageModel.find({idChat}).lean();
+    console.log('📨 Messages found:', getChats.length);
     
-    return getChats;
+    // Process messages to ensure attachment URLs are absolute
+    const processedMessages = getChats.map(msg => {
+      if (msg.attachment && msg.attachment.url) {
+        // Convert relative URLs to absolute URLs
+        if (msg.attachment.url.startsWith('/static/')) {
+          msg.attachment.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${msg.attachment.url}`;
+        }
+        console.log('📎 Processed attachment URL:', msg.attachment.url);
+      }
+      return msg;
+    });
+    
+    // Log message with attachments
+    const messagesWithAttachments = processedMessages.filter(msg => msg.attachment);
+    if (messagesWithAttachments.length > 0) {
+      console.log('📎 Messages with attachments:', messagesWithAttachments.length);
+      messagesWithAttachments.forEach(msg => {
+        console.log('📎 Attachment data:', {
+          messageId: msg._id,
+          messagePreview: msg.message.substring(0, 30),
+          attachment: msg.attachment
+        });
+      });
+    }
+    
+    return processedMessages;
   }
 
   async deleteOne(id:string): Promise<Message> {
@@ -265,6 +295,13 @@ export class MessageService {
     ).exec();
     
     console.log('📊 Marked as read result:', result);
+    
+    // Emit socket event to notify clients that messages were marked as read
+    this.MessageSocket.sendMessageReadStatus(chatId, {
+      modifiedCount: result.modifiedCount,
+      timestamp: new Date().toISOString()
+    });
+    
     return { modifiedCount: result.modifiedCount };
   }
 

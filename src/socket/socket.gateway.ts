@@ -166,28 +166,42 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
-  sendMessageToAllAdmins(sender: string, message: string, idChat: string, idMes: string): void {
+  sendMessageToAllAdmins(sender: string, message: string, idChat: string, idMes: string, attachment?: any): void {
     console.log('📨 Sending message to all admins');
     console.log("📨 Online users:", this.onlineUsers);
     console.log("📨 Sender:", sender);
     console.log("📨 Message:", message);
     console.log("📨 Chat ID:", idChat);
+    console.log("📎 Attachment:", attachment);
     
     const senderUser = this.onlineUsers.find((e) => e.userId == sender);
     const now = new Date().toISOString();
+    
+    // Prepare message payload
+    const messagePayload: any = {
+      message,
+      reciver: 'admin',
+      idChat,
+      sender,
+      _id: idMes,
+      createdAt: now
+    };
+    
+    // Add attachment if present
+    if (attachment) {
+      // Ensure attachment URL is absolute
+      if (attachment.url && attachment.url.startsWith('/static/')) {
+        attachment.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${attachment.url}`;
+      }
+      messagePayload.attachment = attachment;
+      console.log('📎 Including attachment in socket message:', attachment);
+    }
     
     // Send to sender if they are online
     if (senderUser) {
       console.log('📤 Sending to sender:', sender);
       senderUser.socketIds.forEach(socketId => {
-        this.server.to(socketId).emit('sendMessage', {
-          message,
-          reciver: 'admin',
-          idChat,
-          sender,
-          _id: idMes,
-          createdAt: now
-        });
+        this.server.to(socketId).emit('sendMessage', messagePayload);
       });
     }
     
@@ -196,30 +210,33 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.onlineUsers.forEach(user => {
       console.log('📤 Sending to user:', user.userId);
       user.socketIds.forEach(socketId => {
-        this.server.to(socketId).emit('sendMessage', {
-          message,
-          reciver: 'admin',
-          idChat,
-          sender,
-          _id: idMes,
-          createdAt: now
-        });
+        this.server.to(socketId).emit('sendMessage', messagePayload);
         
         // Also emit newMessage for notification system
-        this.server.to(socketId).emit('newMessage', {
+        const notificationPayload: any = {
           message,
           reciver: 'admin',
           idChat,
           sender
-        });
+        };
+        if (attachment) {
+          // Ensure attachment URL is absolute
+          const attachmentCopy = { ...attachment };
+          if (attachmentCopy.url && attachmentCopy.url.startsWith('/static/')) {
+            attachmentCopy.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${attachmentCopy.url}`;
+          }
+          notificationPayload.attachment = attachmentCopy;
+        }
+        this.server.to(socketId).emit('newMessage', notificationPayload);
       });
     });
     console.log('✅ Message broadcasted to all online users');
   }
 
-  sendMessageFromAdminToUser(adminId: string, userId: string, message: string, idChat: string, idMes: string): void {
+  sendMessageFromAdminToUser(adminId: string, userId: string, message: string, idChat: string, idMes: string, attachment?: any): void {
     console.log('📨 Admin sending message to user:', { adminId, userId, message, idChat, idMes });
     console.log("📨 Online users:", this.onlineUsers);
+    console.log("📎 Attachment:", attachment);
     
     // For admin messages, adminId is 'admin' string, not actual admin user ID
     // So we don't need to find admin in online users, just send to recipient
@@ -229,7 +246,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     console.log('📨 Recipient user:', recipientUser);
     
     // Prepare message payload
-    const messagePayload = {
+    const messagePayload: any = {
       message,
       reciver: userId,
       idChat,
@@ -237,6 +254,16 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       _id: idMes,
       createdAt: now
     };
+    
+    // Add attachment if present
+    if (attachment) {
+      // Ensure attachment URL is absolute
+      if (attachment.url && attachment.url.startsWith('/static/')) {
+        attachment.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${attachment.url}`;
+      }
+      messagePayload.attachment = attachment;
+      console.log('📎 Including attachment in admin-to-user message:', attachment);
+    }
     
     // Send to recipient user if online
     if (recipientUser) {
@@ -251,12 +278,21 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(socketId).emit('sendMessage', messagePayload);
         
         // 3. Also emit newMessage for notification system
-        this.server.to(socketId).emit('newMessage', {
+        const notificationPayload: any = {
           message,
           reciver: userId,
           idChat,
           sender: 'admin'
-        });
+        };
+        if (attachment) {
+          // Ensure attachment URL is absolute
+          const attachmentCopy = { ...attachment };
+          if (attachmentCopy.url && attachmentCopy.url.startsWith('/static/')) {
+            attachmentCopy.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${attachmentCopy.url}`;
+          }
+          notificationPayload.attachment = attachmentCopy;
+        }
+        this.server.to(socketId).emit('newMessage', notificationPayload);
         
         // 4. Log success for debugging
         console.log('✅ Successfully emitted all message events to socket:', socketId);
@@ -264,18 +300,33 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       console.log('✅ Admin message sent to user via socket');
     } else {
       console.log('📤 User not online:', userId);
-      console.log('⚠️ Message will be delivered when user comes online');
       
-      // Broadcast the message to all sockets to increase chances of delivery
-      console.log('📤 Broadcasting admin message to all sockets as fallback');
-      this.server.emit('adminMessage', messagePayload);
-      this.server.emit('sendMessage', messagePayload);
-      this.server.emit('newMessage', {
-        message,
-        reciver: userId,
-        idChat,
-        sender: 'admin'
-      });
+      // For guest users, broadcast to all sockets since they might not be in onlineUsers
+      if (userId === 'guest') {
+        console.log('📤 Broadcasting admin message to all sockets for guest user');
+        this.server.emit('adminMessage', messagePayload);
+        this.server.emit('sendMessage', messagePayload);
+        this.server.emit('newMessage', {
+          message,
+          reciver: userId,
+          idChat,
+          sender: 'admin'
+        });
+        console.log('✅ Admin message broadcasted to all sockets for guest');
+      } else {
+        console.log('⚠️ Message will be delivered when user comes online');
+        
+        // Broadcast the message to all sockets to increase chances of delivery
+        console.log('📤 Broadcasting admin message to all sockets as fallback');
+        this.server.emit('adminMessage', messagePayload);
+        this.server.emit('sendMessage', messagePayload);
+        this.server.emit('newMessage', {
+          message,
+          reciver: userId,
+          idChat,
+          sender: 'admin'
+        });
+      }
     }
     
     // Also broadcast to all admin sockets to ensure all admin interfaces are updated
@@ -505,6 +556,23 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       message,
       chatId,
       timestamp: new Date().toISOString()
+    });
+  }
+
+  // Method to notify clients when messages are marked as read
+  sendMessageReadStatus(chatId: string, data: any) {
+    console.log('👁️ Broadcasting message read status for chat:', chatId, data);
+    
+    // Send to all users in the chat room
+    this.server.to(`chat_${chatId}`).emit('messagesMarkedAsRead', {
+      chatId,
+      ...data
+    });
+    
+    // Also send to all admin users globally
+    this.server.to('admin').emit('adminMessagesMarkedAsRead', {
+      chatId,
+      ...data
     });
   }
 

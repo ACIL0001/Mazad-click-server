@@ -31,16 +31,38 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const token = this.extractToken(request);
 
+    this.logger.debug('AuthGuard validation:', {
+      url: request.url,
+      method: request.method,
+      hasToken: !!token,
+      tokenPreview: token ? token.substring(0, 20) + '...' : 'none',
+      headers: {
+        authorization: request.headers.authorization ? 'Bearer ***' : 'none',
+        'x-access-key': request.headers['x-access-key'] ? '***' : 'none'
+      }
+    });
+
     if (!token) {
-      this.logger.warn('Token not found in request headers');
+      this.logger.warn('Token not found in request headers', {
+        url: request.url,
+        headers: Object.keys(request.headers)
+      });
       throw new UnauthorizedException('Token not found');
     }
 
     try {
       const session = await this.sessionService.ValidateSession(token);
       request.session = session;
+      this.logger.debug('Session validated successfully:', {
+        userId: session.user._id,
+        userType: session.user.type
+      });
     } catch (error) {
-      this.logger.error('Token validation failed:', error.message);
+      this.logger.error('Token validation failed:', {
+        error: error.message,
+        tokenPreview: token.substring(0, 20) + '...',
+        url: request.url
+      });
       throw new UnauthorizedException('Invalid token');
     }
 

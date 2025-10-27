@@ -23,7 +23,26 @@ export class Message {
   createdAt: Date;
 
   @Prop({ type: Boolean, default: false })
-  isRead: boolean;  
+  isRead: boolean;
+
+  @Prop({ 
+    type: {
+      _id: String,
+      url: String,
+      name: String,
+      type: String,
+      size: Number,
+      filename: String
+    }
+  })
+  attachment?: {
+    _id: string;
+    url: string;
+    name: string;
+    type: string;
+    size: number;
+    filename: string;
+  };
 }
 
 export type MessageDocument = HydratedDocument<Message>

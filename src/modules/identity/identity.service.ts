@@ -314,4 +314,35 @@ export class IdentityService {
     console.log('Payment proof update result:', result?.paymentProof);
     return result;
   }
+
+  async updateIdentityDocument(identityId: string, field: string, attachmentId: string): Promise<IdentityDocument | null> {
+    console.log('Updating identity document:', { identityId, field, attachmentId });
+    
+    try {
+      const updateData = { [field]: attachmentId };
+      
+      const result = await this.identityModel
+        .findByIdAndUpdate(identityId, { $set: updateData }, { new: true })
+        .populate('commercialRegister')
+        .populate('nif')
+        .populate('nis')
+        .populate('last3YearsBalanceSheet')
+        .populate('certificates')
+        .populate('identityCard')
+        .populate('registreCommerceCarteAuto')
+        .populate('nifRequired')
+        .populate('numeroArticle')
+        .populate('c20')
+        .populate('misesAJourCnas')
+        .populate('carteFellah')
+        .populate('paymentProof')
+        .exec();
+      
+      console.log('Document update result:', result?.[field]);
+      return result;
+    } catch (error) {
+      console.error('Error updating identity document:', error);
+      throw error;
+    }
+  }
 }
