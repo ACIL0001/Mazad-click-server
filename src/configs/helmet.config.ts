@@ -17,7 +17,9 @@ const helmetConfig = helmet({
         "'self'",
         'data:',
         'http://localhost:3000', // Development backend images
-        'https://api.mazad.click', // Production API images
+        'https://api.mazad.click', // Legacy production API images
+        'https://mazadclick-server.onrender.com', // Current production API images (Render.com)
+        'https://*.onrender.com', // Allow all Render.com subdomains
         'https:', // Allow all HTTPS images (needed for CDNs and external images)
       ],
       objectSrc: ["'none'"],

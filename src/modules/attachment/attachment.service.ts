@@ -25,9 +25,9 @@ export class AttachmentService {
                         const appPort = this.configService.get<number>('APP_PORT', 3000);
                         const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
                         
-                        // In production, use https://api.mazad.click if APP_HOST is not explicitly set
+                        // In production, use https://mazadclick-server.onrender.com if APP_HOST is not explicitly set
                         if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                          return 'https://api.mazad.click';
+                          return 'https://mazadclick-server.onrender.com';
                         }
                         
                         const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
