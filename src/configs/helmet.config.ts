@@ -16,7 +16,9 @@ const helmetConfig = helmet({
       imgSrc: [
         "'self'",
         'data:',
-        'http://localhost:3000', // Still correctly allowing backend images
+        'http://localhost:3000', // Development backend images
+        'https://api.mazad.click', // Production API images
+        'https:', // Allow all HTTPS images (needed for CDNs and external images)
       ],
       objectSrc: ["'none'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],

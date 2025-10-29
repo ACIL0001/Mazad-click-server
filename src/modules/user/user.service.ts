@@ -55,6 +55,36 @@ export class UserService implements OnModuleInit {
     if (user) {
       // Convert secteur ID to name if needed
       await this.convertSecteurIdToName(user);
+      
+      // Ensure avatar has fullUrl if it exists
+      if (user.avatar && typeof user.avatar === 'object' && !Array.isArray(user.avatar)) {
+        const userWithFullUrl = user.toObject() as any;
+        
+        // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
+        const apiBaseUrl = process.env.API_BASE_URL ||
+                          (() => {
+                            const appHost = process.env.APP_HOST || 'http://localhost';
+                            const appPort = process.env.APP_PORT || 3000;
+                            const isProduction = process.env.NODE_ENV === 'production';
+                            
+                            // In production, use https://api.mazad.click if APP_HOST is not explicitly set
+                            if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+                              return 'https://api.mazad.click';
+                            }
+                            
+                            const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+                            return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+                          })();
+        
+        const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
+        const avatarUrl = (user.avatar as any).url || `/static/${(user.avatar as any).filename}`;
+        userWithFullUrl.avatar.fullUrl = `${fullBaseUrl}${avatarUrl}`;
+        
+        // Also set photoURL for backward compatibility
+        userWithFullUrl.photoURL = userWithFullUrl.avatar.fullUrl;
+        
+        return userWithFullUrl;
+      }
     }
     return user;
   }
@@ -218,18 +248,61 @@ export class UserService implements OnModuleInit {
 
   async getUserById(id: string) {
     const user = await this.userModel.findById(id).populate('avatar');
+    if (user && user.avatar && typeof user.avatar === 'object' && !Array.isArray(user.avatar)) {
+      // Ensure avatar has fullUrl
+      const userWithFullUrl = user.toObject() as any;
+      
+      // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
+      const apiBaseUrl = process.env.API_BASE_URL ||
+                        (() => {
+                          const appHost = process.env.APP_HOST || 'http://localhost';
+                          const appPort = process.env.APP_PORT || 3000;
+                          const isProduction = process.env.NODE_ENV === 'production';
+                          
+                          // In production, use https://api.mazad.click if APP_HOST is not explicitly set
+                          if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+                            return 'https://api.mazad.click';
+                          }
+                          
+                          const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+                          return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+                        })();
+      
+      const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
+      const avatarUrl = (user.avatar as any).url || `/static/${(user.avatar as any).filename}`;
+      userWithFullUrl.avatar.fullUrl = `${fullBaseUrl}${avatarUrl}`;
+      
+      // Also set photoURL for backward compatibility
+      userWithFullUrl.photoURL = userWithFullUrl.avatar.fullUrl;
+      
+      return userWithFullUrl;
+    }
     return user;
   }
 
   async findUserByIdWithAvatar(userId: string) {
     const user = await this.userModel.findById(userId).populate('avatar').exec();
     if (user && user.avatar) {
-      // This method already correctly populates and constructs the full URL.
+      // Construct the full URL for the avatar using the same logic as AttachmentService
       const userWithFullUrl = user.toObject() as any;
-      const baseUrl = process.env.APP_HOST || 'http://localhost';
-      const appPort = process.env.APP_PORT || 3000;
-      const hostPart = appPort ? baseUrl.replace(/\/$/, '') : baseUrl;
-      const fullBaseUrl = appPort ? `${hostPart}:${appPort}` : hostPart;
+      
+      // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
+      const apiBaseUrl = process.env.API_BASE_URL ||
+                        (() => {
+                          const appHost = process.env.APP_HOST || 'http://localhost';
+                          const appPort = process.env.APP_PORT || 3000;
+                          const isProduction = process.env.NODE_ENV === 'production';
+                          
+                          // In production, use https://api.mazad.click if APP_HOST is not explicitly set
+                          if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+                            return 'https://api.mazad.click';
+                          }
+                          
+                          const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+                          return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+                        })();
+      
+      const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
       userWithFullUrl.avatar.fullUrl = `${fullBaseUrl}${user.avatar.url}`;
       return userWithFullUrl;
     }
