@@ -138,6 +138,37 @@ async function bootstrap() {
     
     next();
   });
+
+  // Dedicated Auth middleware for token validation
+  app.use('/auth', (req, res, next) => {
+    const origin = req.headers.origin;
+    console.log('🔍 Auth CORS Middleware - Origin:', origin, 'Path:', req.path);
+
+    // Check if origin is allowed
+    const isAllowed = allowedOrigins.includes(origin) ||
+      /^https:\/\/mazad-click-(buyer|seller|backoffice|admin)(-[a-z0-9-]+)?\.vercel\.app$/.test(origin) ||
+      /^https:\/\/mazadclick\.vercel\.app\/?$/.test(origin);
+
+    if (isAllowed) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, x-api-key, x-access-key, accept-language, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
+      console.log('✅ Auth CORS: Headers set for origin:', origin);
+    } else {
+      console.log('❌ Auth CORS: Origin not allowed:', origin);
+    }
+
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      console.log('✅ Auth CORS: Handling OPTIONS request for:', req.path);
+      res.status(204).end();
+      return;
+    }
+
+    next();
+  });
+
   app.useGlobalFilters(new GlobaleExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({

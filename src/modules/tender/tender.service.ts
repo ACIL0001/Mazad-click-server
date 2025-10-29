@@ -361,7 +361,20 @@ export class TenderService {
       throw new BadRequestException('Tender has ended');
     }
 
-    // No price restrictions - tenders accept any positive amount
+    // Validate that new bid is less than the current lowest bid
+    const existingBids = await this.tenderBidModel.find({ tender: tenderId }).exec();
+    
+    if (existingBids.length > 0) {
+      // Find the lowest bid amount
+      const lowestBidAmount = Math.min(...existingBids.map(bid => bid.bidAmount));
+      
+      // Check if new bid is less than the lowest bid
+      if (createTenderBidDto.bidAmount >= lowestBidAmount) {
+        throw new BadRequestException(
+          `Votre offre doit être inférieure à la dernière offre actuelle de ${lowestBidAmount}€. Vous ne pouvez pas faire une offre supérieure ou égale à la dernière offre.`
+        );
+      }
+    }
 
     // Create the tender bid
     const createdTenderBid = new this.tenderBidModel({ 
