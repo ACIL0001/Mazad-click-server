@@ -524,7 +524,10 @@ return { message: 'Admin users initialized successfully' };
   @Get('/professionals')
   @Public()
   async getProfessionals() {
-    return this.userService.findUsersByRoles([RoleCode.PROFESSIONAL]);
+    console.log('Getting ALL professionals (verified and unverified)...');
+    const professionals = await this.userService.findUsersByRoles([RoleCode.PROFESSIONAL]);
+    console.log(`Found ${professionals.length} total professionals`);
+    return professionals;
   }
 
   @Get('/resellers')
