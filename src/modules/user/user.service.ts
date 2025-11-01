@@ -132,9 +132,17 @@ export class UserService implements OnModuleInit {
   }
 
   async findByLogin(login: string) {
+    // ▼▼▼ CORRECTION HERE ▼▼▼
+    // Use a case-insensitive regex for the email field.
+    // Anchor the regex with ^ (start) and $ (end) to match the *entire* string.
     const user = await this.userModel.findOne({
-      $or: [{ email: login }, { phone: login }],
+      $or: [
+        { email: { $regex: new RegExp(`^${login}$`, 'i') } }, 
+        { phone: login }
+      ],
     }).populate('avatar');
+    // ▲▲▲ CORRECTION ENDS ▲▲▲
+    
     // if (!user) throw new BadRequestException('Invalid login'); // FIXME: TRANSLATE THIS
     return user;
   }
