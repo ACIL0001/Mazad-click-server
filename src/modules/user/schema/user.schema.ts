@@ -44,6 +44,9 @@ export class User {
   @Prop({ type: Boolean, default: false })
   isHasIdentity: boolean;
 
+  @Prop({ type: Boolean, default: false })
+  isCertified: boolean;
+
   @Prop({ type: String, enum: Object.values(RoleCode), required: true })
   type: RoleCode;
 
@@ -71,6 +74,9 @@ isRecommended: boolean;
   @Prop({ type: String, required: false })
   entreprise?: string;
 
+  @Prop({ type: String, required: false })
+  postOccupé?: string;
+
   createdAt: string;
   updatedAt: string;
 
@@ -87,9 +93,15 @@ export type UserDocument = HydratedDocument<User>;
 export const UserSchema = SchemaFactory.createForClass(User);
 UserSchema.set('discriminatorKey', '__t');
 
-// Set default rate based on role
+// Set default rate based on role and verification status
 UserSchema.path('rate').default(function () {
-  switch (this.type) {
+  const user = this as UserDocument;
+  // If user is verified, give 3 stars instead of default
+  if (user.isVerified) {
+    return 3;
+  }
+  
+  switch (user.type) {
     case 'CLIENT':
       return 3;
     case 'RESELLER':
@@ -103,6 +115,16 @@ UserSchema.path('rate').default(function () {
     default:
       return 3;
   }
+});
+
+// Update rate when isVerified changes
+UserSchema.pre('save', function (next) {
+  const user = this as UserDocument;
+  // If user becomes verified and rate is > 3, set it to 3
+  if (user.isVerified && user.isModified('isVerified') && (!user.rate || user.rate > 3)) {
+    user.rate = 3;
+  }
+  next();
 });
 
 UserSchema.pre('save', function (next) {

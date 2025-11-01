@@ -74,6 +74,10 @@ export class CreateUserDto {
   entreprise?: string;
 
   @IsOptional()
+  @IsString()
+  postOccupé?: string;
+
+  @IsOptional()
   @IsObject()
   @ValidateNested()
   @Type(() => IdentityDto)

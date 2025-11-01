@@ -50,53 +50,85 @@ export class UserService implements OnModuleInit {
     return users;
   }
 
+  // Helper method to enrich user with avatar URLs
+  private enrichUserWithAvatarUrls(user: any): any {
+    const userObj = user.toObject ? user.toObject({ virtuals: true }) : user;
+    
+    // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
+    const apiBaseUrl = process.env.API_BASE_URL ||
+                      (() => {
+                        const appHost = process.env.APP_HOST || 'http://localhost';
+                        const appPort = process.env.APP_PORT || 3000;
+                        const isProduction = process.env.NODE_ENV === 'production';
+                        
+                        // In production, use https://api.mazad.click if APP_HOST is not explicitly set
+                        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+                          return 'https://api.mazad.click';
+                        }
+                        
+                        // Parse the host to check if it already has a port
+                        let hostPart = appHost.replace(/\/$/, '');
+                        
+                        // Check if hostname (after ://) already has a port number
+                        // Example: http://localhost:3000 -> has port
+                        // Example: http://localhost -> needs port
+                        const hostnameMatch = hostPart.match(/:\/\/([^\/]+)/);
+                        if (hostnameMatch) {
+                          const hostname = hostnameMatch[1];
+                          // If hostname doesn't contain a colon (which would indicate a port), add it
+                          if (!hostname.includes(':') && appPort) {
+                            hostPart = hostPart.replace(/:\/\/[^\/]+/, `://${hostname}:${appPort}`);
+                          }
+                        } else if (appPort) {
+                          // If no protocol, just append port
+                          hostPart = `${hostPart}:${appPort}`;
+                        }
+                        
+                        return hostPart;
+                      })();
+    
+    const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
+    
+    // Ensure avatar has fullUrl and photoURL if it exists
+    if (userObj.avatar && typeof userObj.avatar === 'object' && !Array.isArray(userObj.avatar)) {
+      const avatarUrl = (userObj.avatar as any).url || `/static/${(userObj.avatar as any).filename}`;
+      userObj.avatar.fullUrl = `${fullBaseUrl}${avatarUrl}`;
+      userObj.photoURL = userObj.avatar.fullUrl;
+    } else if (!userObj.photoURL) {
+      // Set photoURL from virtual if avatar exists but photoURL is missing
+      if (user.avatar && typeof user.avatar === 'object' && !Array.isArray(user.avatar)) {
+        const avatarUrl = (user.avatar as any).url || `/static/${(user.avatar as any).filename}`;
+        userObj.photoURL = `${fullBaseUrl}${avatarUrl}`;
+      } else {
+        userObj.photoURL = null;
+      }
+    }
+    
+    return userObj;
+  }
+
   async findUserById(id: string) {
     const user = await this.userModel.findById(id).populate('avatar');
     if (user) {
       // Convert secteur ID to name if needed
       await this.convertSecteurIdToName(user);
       
-      // Ensure avatar has fullUrl if it exists
-      if (user.avatar && typeof user.avatar === 'object' && !Array.isArray(user.avatar)) {
-        const userWithFullUrl = user.toObject() as any;
-        
-        // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
-        const apiBaseUrl = process.env.API_BASE_URL ||
-                          (() => {
-                            const appHost = process.env.APP_HOST || 'http://localhost';
-                            const appPort = process.env.APP_PORT || 3000;
-                            const isProduction = process.env.NODE_ENV === 'production';
-                            
-                            // In production, use https://mazadclick-server.onrender.com if APP_HOST is not explicitly set
-                            if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                              return 'https://mazadclick-server.onrender.com';
-                            }
-                            
-                            const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-                            return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-                          })();
-        
-        const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
-        const avatarUrl = (user.avatar as any).url || `/static/${(user.avatar as any).filename}`;
-        userWithFullUrl.avatar.fullUrl = `${fullBaseUrl}${avatarUrl}`;
-        
-        // Also set photoURL for backward compatibility
-        userWithFullUrl.photoURL = userWithFullUrl.avatar.fullUrl;
-        
-        return userWithFullUrl;
-      }
+      // Enrich user with avatar URLs
+      return this.enrichUserWithAvatarUrls(user);
     }
-    return user;
+    return null;
   }
 
   // NEW: Find users by array of IDs
   async findUsersByIds(ids: string[]) {
     const users = await this.userModel.find({ _id: { $in: ids } }).populate('avatar');
-    // Convert secteur IDs to names for all users
+    // Convert secteur IDs to names and enrich with avatar URLs for all users
+    const enrichedUsers = [];
     for (const user of users) {
       await this.convertSecteurIdToName(user);
+      enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
     }
-    return users;
+    return enrichedUsers;
   }
 
   async findByLogin(login: string) {
@@ -139,11 +171,13 @@ export class UserService implements OnModuleInit {
 
   async findAllBuyers() {
     const users = await this.userModel.find({ role: RoleCode.CLIENT }).populate('avatar');
-    // Convert secteur IDs to names for all users
+    // Convert secteur IDs to names and enrich with avatar URLs for all users
+    const enrichedUsers = [];
     for (const user of users) {
       await this.convertSecteurIdToName(user);
+      enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
     }
-    return users;
+    return enrichedUsers;
   }
 
   async updatePassword(userId: Types.ObjectId, newPassword: string) {
@@ -208,9 +242,14 @@ export class UserService implements OnModuleInit {
   }
 
   async setUserVerified(userId: string, isVerified: boolean) {
+    const updateFields: any = { isVerified };
+    // If user is being verified, set rate to 3
+    if (isVerified) {
+      updateFields.rate = 3;
+    }
     const user = await this.userModel.findByIdAndUpdate(
       userId,
-      { isVerified },
+      { $set: updateFields },
       { new: true }
     ).populate('avatar');
     if (!user) throw new BadRequestException('User not found');
@@ -219,11 +258,13 @@ export class UserService implements OnModuleInit {
 
   async findUsersByRoles(roles: RoleCode[]) {
     const users = await this.userModel.find({ type: { $in: roles } }).populate('avatar');
-    // Convert secteur IDs to names for all users
+    // Convert secteur IDs to names and enrich with avatar URLs for all users
+    const enrichedUsers = [];
     for (const user of users) {
       await this.convertSecteurIdToName(user);
+      enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
     }
-    return users;
+    return enrichedUsers;
   }
 
   async setUserActive(userId: string, isActive: boolean) {
@@ -340,11 +381,13 @@ async getRecommendedProfessionals() {
     isActive: true,
     isBanned: false
   }).populate('avatar');
-  // Convert secteur IDs to names for all users
+  // Convert secteur IDs to names and enrich with avatar URLs for all users
+  const enrichedUsers = [];
   for (const user of users) {
     await this.convertSecteurIdToName(user);
+    enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
   }
-  return users;
+  return enrichedUsers;
 }
 
 async getRecommendedResellers() {
@@ -355,11 +398,13 @@ async getRecommendedResellers() {
     isActive: true,
     isBanned: false
   }).populate('avatar');
-  // Convert secteur IDs to names for all users
+  // Convert secteur IDs to names and enrich with avatar URLs for all users
+  const enrichedUsers = [];
   for (const user of users) {
     await this.convertSecteurIdToName(user);
+    enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
   }
-  return users;
+  return enrichedUsers;
 }
 
   /**

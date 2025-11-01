@@ -251,7 +251,7 @@ export class MessageService {
       if (msg.attachment && msg.attachment.url) {
         // Convert relative URLs to absolute URLs
         if (msg.attachment.url.startsWith('/static/')) {
-          msg.attachment.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${msg.attachment.url}`;
+          msg.attachment.url = `${process.env.API_BASE_URL || 'https://mazadclick-server.onrender.com'}${msg.attachment.url}`;
         }
         console.log('📎 Processed attachment URL:', msg.attachment.url);
       }

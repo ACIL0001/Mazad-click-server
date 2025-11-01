@@ -91,6 +91,10 @@ export class Identity {
   // NEW: Add payment proof document field
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
   paymentProof: Attachment; // Payment proof document uploaded during subscription
+
+  // NEW: Add post occupé field (optional)
+  @Prop({ type: String, required: false })
+  postOccupé?: string;
 }
 
 export type IdentityDocument = HydratedDocument<Identity> & {

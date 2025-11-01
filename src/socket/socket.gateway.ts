@@ -191,7 +191,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (attachment) {
       // Ensure attachment URL is absolute
       if (attachment.url && attachment.url.startsWith('/static/')) {
-        attachment.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${attachment.url}`;
+        attachment.url = `${process.env.API_BASE_URL || 'https://mazadclick-server.onrender.com'}${attachment.url}`;
       }
       messagePayload.attachment = attachment;
       console.log('📎 Including attachment in socket message:', attachment);
@@ -259,7 +259,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (attachment) {
       // Ensure attachment URL is absolute
       if (attachment.url && attachment.url.startsWith('/static/')) {
-        attachment.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${attachment.url}`;
+        attachment.url = `${process.env.API_BASE_URL || 'https://mazadclick-server.onrender.com'}${attachment.url}`;
       }
       messagePayload.attachment = attachment;
       console.log('📎 Including attachment in admin-to-user message:', attachment);

@@ -229,7 +229,7 @@ export class MessageController {
       
       const attachmentInfo = {
         _id: attachmentAny._id || attachmentAny.id || '',
-        url: attachmentAny.fullUrl || attachmentAny.url || `http://localhost:3000/static/${attachmentAny.filename}`,
+        url: attachmentAny.fullUrl || attachmentAny.url || `https://mazadclick-server.onrender.com/static/${attachmentAny.filename}`,
         name: attachmentAny.originalname || file.originalname,
         type: attachmentAny.mimetype || file.mimetype,
         size: attachmentAny.size || file.size,

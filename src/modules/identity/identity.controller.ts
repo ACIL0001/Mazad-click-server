@@ -693,6 +693,96 @@ export class IdentityController {
     }));
   }
 
+  // Delete a specific document from an identity (MUST be before @Delete(':id'))
+  @Delete(':id/documents/:field')
+  @UseGuards(AdminGuard)
+  async deleteDocument(@Param('id') identityId: string, @Param('field') field: string): Promise<any> {
+    try {
+      const identity = await this.identityService.getIdentityById(identityId);
+      if (!identity) {
+        throw new BadRequestException('Identity not found');
+      }
+
+      // Validate field name
+      const allowedFields = [
+        'commercialRegister', 'nif', 'nis', 'last3YearsBalanceSheet', 
+        'certificates', 'identityCard', 'registreCommerceCarteAuto', 
+        'nifRequired', 'numeroArticle', 'c20', 'misesAJourCnas', 
+        'carteFellah', 'paymentProof'
+      ];
+
+      if (!allowedFields.includes(field)) {
+        throw new BadRequestException('Invalid field name');
+      }
+
+      // Set the field to null/undefined
+      const updateData: any = { [field]: null };
+      await this.identityModel.findByIdAndUpdate(identityId, { $unset: updateData }).exec();
+
+      const updatedIdentity = await this.identityService.getIdentityById(identityId);
+      if (!updatedIdentity) {
+        throw new BadRequestException('Failed to update identity after document deletion');
+      }
+
+      // Transform the response
+      const response = {
+        ...JSON.parse(JSON.stringify(updatedIdentity)),
+        commercialRegister: transformAttachment(updatedIdentity.commercialRegister),
+        nif: transformAttachment(updatedIdentity.nif),
+        nis: transformAttachment(updatedIdentity.nis),
+        last3YearsBalanceSheet: transformAttachment(updatedIdentity.last3YearsBalanceSheet),
+        certificates: transformAttachment(updatedIdentity.certificates),
+        identityCard: transformAttachment(updatedIdentity.identityCard),
+        registreCommerceCarteAuto: transformAttachment(updatedIdentity.registreCommerceCarteAuto),
+        nifRequired: transformAttachment(updatedIdentity.nifRequired),
+        numeroArticle: transformAttachment(updatedIdentity.numeroArticle),
+        c20: transformAttachment(updatedIdentity.c20),
+        misesAJourCnas: transformAttachment(updatedIdentity.misesAJourCnas),
+        carteFellah: transformAttachment(updatedIdentity.carteFellah),
+        paymentProof: transformAttachment(updatedIdentity.paymentProof),
+      };
+
+      return {
+        success: true,
+        data: response,
+        message: 'Document deleted successfully'
+      };
+    } catch (error) {
+      console.error('Error deleting identity document:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to delete document: ${error.message}`);
+    }
+  }
+
+  // Delete a single identity by ID
+  @Delete(':id')
+  @UseGuards(AdminGuard)
+  async deleteIdentity(@Param('id') id: string) {
+    if (!id || !Types.ObjectId.isValid(id)) {
+      throw new BadRequestException(`Invalid identity ID: ${id}`);
+    }
+
+    const identity = await this.identityService.getIdentityById(id);
+    if (!identity) {
+      // If identity doesn't exist, consider it already deleted
+      // Return success to prevent errors when deleting already-deleted items
+      return { 
+        success: true,
+        message: 'Identity not found or already deleted.',
+        deletedCount: 0
+      };
+    }
+
+    await this.identityService.deleteIdentity(id);
+    return { 
+      success: true,
+      message: 'Identity deleted successfully.',
+      deletedCount: 1
+    };
+  }
+
   // Delete multiple identities - UPDATED to use query parameters
   @Delete()
   @UseGuards(AdminGuard)
@@ -713,6 +803,23 @@ export class IdentityController {
 
     const result = await this.identityService.deleteIdentities(idArray);
     return { message: `${result.deletedCount} identities deleted successfully.` };
+  }
+
+  // Mark identity's user as certified (Admin only)
+  @Put(':id/certify')
+  @UseGuards(AdminGuard)
+  async certifyIdentity(@Param('id') id: string) {
+    if (!id || !Types.ObjectId.isValid(id)) {
+      throw new BadRequestException(`Invalid identity ID: ${id}`);
+    }
+
+    const identity = await this.identityService.getIdentityById(id);
+    if (!identity) {
+      throw new BadRequestException('Identity not found');
+    }
+
+    await this.identityService.setUserCertified(identity);
+    return { success: true, message: 'User certified successfully' };
   }
 
   // Get current user's identity
@@ -991,66 +1098,4 @@ export class IdentityController {
     }
   }
 
-  // Delete a specific document from an identity
-  @Delete(':id/documents/:field')
-  @UseGuards(AdminGuard)
-  async deleteDocument(@Param('id') identityId: string, @Param('field') field: string): Promise<any> {
-    try {
-      const identity = await this.identityService.getIdentityById(identityId);
-      if (!identity) {
-        throw new BadRequestException('Identity not found');
-      }
-
-      // Validate field name
-      const allowedFields = [
-        'commercialRegister', 'nif', 'nis', 'last3YearsBalanceSheet', 
-        'certificates', 'identityCard', 'registreCommerceCarteAuto', 
-        'nifRequired', 'numeroArticle', 'c20', 'misesAJourCnas', 
-        'carteFellah', 'paymentProof'
-      ];
-
-      if (!allowedFields.includes(field)) {
-        throw new BadRequestException('Invalid field name');
-      }
-
-      // Set the field to null/undefined
-      const updateData: any = { [field]: null };
-      await this.identityModel.findByIdAndUpdate(identityId, { $unset: updateData }).exec();
-
-      const updatedIdentity = await this.identityService.getIdentityById(identityId);
-      if (!updatedIdentity) {
-        throw new BadRequestException('Failed to update identity after document deletion');
-      }
-
-      // Transform the response
-      const response = {
-        ...JSON.parse(JSON.stringify(updatedIdentity)),
-        commercialRegister: transformAttachment(updatedIdentity.commercialRegister),
-        nif: transformAttachment(updatedIdentity.nif),
-        nis: transformAttachment(updatedIdentity.nis),
-        last3YearsBalanceSheet: transformAttachment(updatedIdentity.last3YearsBalanceSheet),
-        certificates: transformAttachment(updatedIdentity.certificates),
-        identityCard: transformAttachment(updatedIdentity.identityCard),
-        registreCommerceCarteAuto: transformAttachment(updatedIdentity.registreCommerceCarteAuto),
-        nifRequired: transformAttachment(updatedIdentity.nifRequired),
-        numeroArticle: transformAttachment(updatedIdentity.numeroArticle),
-        c20: transformAttachment(updatedIdentity.c20),
-        misesAJourCnas: transformAttachment(updatedIdentity.misesAJourCnas),
-        carteFellah: transformAttachment(updatedIdentity.carteFellah),
-        paymentProof: transformAttachment(updatedIdentity.paymentProof),
-      };
-
-      return {
-        success: true,
-        data: response,
-        message: 'Document deleted successfully'
-      };
-    } catch (error) {
-      console.error('Error deleting identity document:', error);
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new BadRequestException(`Failed to delete document: ${error.message}`);
-    }
-  }
 }

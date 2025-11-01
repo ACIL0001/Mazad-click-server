@@ -98,7 +98,8 @@ export class AuthService {
     // Update user's type to CLIENT (which represents buyer in this system)
     const updatedUser = await this.userService.updateUserType(user._id.toString(), RoleCode.CLIENT);
     
-    const buyerUrl = process.env.CLIENT_BASE_URL || 'http://localhost:3001';
+    // const buyerUrl = process.env.CLIENT_BASE_URL || 'http://localhost:3001';
+    const buyerUrl = process.env.CLIENT_BASE_URL || 'https://mazadclick.vercel.app';
     console.log('🔄 Mark as buyer - redirecting to:', buyerUrl);
     
     return {
