@@ -8,6 +8,15 @@ import { NotificationType } from "../notification/schema/notification.schema";
 import { log } from "util";
 import { UserService } from '../user/user.service';
 import { RoleCode } from '../apikey/entity/appType.entity';
+const resolveApiBaseUrl = (): string => {
+  const envUrl = process.env.API_BASE_URL;
+  if (envUrl && envUrl.trim() !== '') {
+    return envUrl.trim().replace(/\/$/, '');
+  }
+  return (process.env.NODE_ENV === 'production'
+    ? 'https://mazadclick-server.onrender.com'
+    : 'http://localhost:3000').replace(/\/$/, '');
+};
 
 
 @Injectable()
@@ -251,7 +260,8 @@ export class MessageService {
       if (msg.attachment && msg.attachment.url) {
         // Convert relative URLs to absolute URLs
         if (msg.attachment.url.startsWith('/static/')) {
-          msg.attachment.url = `${process.env.API_BASE_URL || 'https://mazadclick-server.onrender.com'}${msg.attachment.url}`;
+          // msg.attachment.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${msg.attachment.url}`;
+          msg.attachment.url = `${resolveApiBaseUrl()}${msg.attachment.url}`;
         }
         console.log('📎 Processed attachment URL:', msg.attachment.url);
       }

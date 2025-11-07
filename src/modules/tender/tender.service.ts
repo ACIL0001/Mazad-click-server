@@ -111,8 +111,26 @@ export class TenderService {
   }
 
   async create(createTenderDto: CreateTenderDto): Promise<Tender> {
+    console.log('🔍 [TenderService] Creating tender with DTO:', {
+      title: createTenderDto.title,
+      tenderType: createTenderDto.tenderType,
+      auctionType: createTenderDto.auctionType,
+      evaluationType: createTenderDto.evaluationType,
+      hasEvaluationType: !!createTenderDto.evaluationType,
+      allKeys: Object.keys(createTenderDto)
+    });
+    
     const createdTender = new this.tenderModel(createTenderDto);
+    
+    console.log('🔍 [TenderService] Tender model before save:', {
+      title: createdTender.title,
+      evaluationType: createdTender.evaluationType,
+      evaluationTypeValue: (createdTender as any).evaluationType
+    });
+    
     const savedTender = await createdTender.save();
+    
+    console.log('✅ [TenderService] Tender saved with evaluationType:', savedTender.evaluationType);
     const populatedTender = await this.tenderModel
       .findById(savedTender._id)
       .populate('category')
@@ -331,14 +349,27 @@ export class TenderService {
   }
 
   // Tender bid methods
-  async createTenderBid(tenderId: string, createTenderBidDto: CreateTenderBidDto): Promise<TenderBid> {
+  async createTenderBid(tenderId: string, createTenderBidDto: CreateTenderBidDto, isMieuxDisant: boolean = false): Promise<TenderBid> {
     
-    // Validate input data - only check that amount is positive
-    if (!createTenderBidDto.bidAmount || createTenderBidDto.bidAmount <= 0) {
-      throw new BadRequestException('Bid amount must be a positive number');
+    console.log('🔍 [TenderService] Creating bid:', {
+      tenderId,
+      isMieuxDisant,
+      bidAmount: createTenderBidDto.bidAmount,
+      hasProposal: !!createTenderBidDto.proposal
+    });
+    
+    // Validate based on evaluation type
+    if (isMieuxDisant) {
+      // For MIEUX_DISANT: Proposal is required
+      if (!createTenderBidDto.proposal || createTenderBidDto.proposal.trim().length < 10) {
+        throw new BadRequestException('Une proposition détaillée est requise (minimum 10 caractères)');
+      }
+    } else {
+      // For MOINS_DISANT: Bid amount must be positive
+      if (!createTenderBidDto.bidAmount || createTenderBidDto.bidAmount <= 0) {
+        throw new BadRequestException('Le montant de l\'offre doit être un nombre positif');
+      }
     }
-
-    // No price restrictions - tenders accept any positive amount
     
     if (!createTenderBidDto.bidder) {
       throw new BadRequestException('Bidder ID is required');
@@ -361,18 +392,20 @@ export class TenderService {
       throw new BadRequestException('Tender has ended');
     }
 
-    // Validate that new bid is less than the current lowest bid
-    const existingBids = await this.tenderBidModel.find({ tender: tenderId }).exec();
-    
-    if (existingBids.length > 0) {
-      // Find the lowest bid amount
-      const lowestBidAmount = Math.min(...existingBids.map(bid => bid.bidAmount));
+    // For MOINS_DISANT: Validate that new bid is less than the current lowest bid
+    if (!isMieuxDisant) {
+      const existingBids = await this.tenderBidModel.find({ tender: tenderId }).exec();
       
-      // Check if new bid is less than the lowest bid
-      if (createTenderBidDto.bidAmount >= lowestBidAmount) {
-        throw new BadRequestException(
-          `Votre offre doit être inférieure à la dernière offre actuelle de ${lowestBidAmount}€. Vous ne pouvez pas faire une offre supérieure ou égale à la dernière offre.`
-        );
+      if (existingBids.length > 0) {
+        // Find the lowest bid amount
+        const lowestBidAmount = Math.min(...existingBids.map(bid => bid.bidAmount));
+        
+        // Check if new bid is less than the lowest bid
+        if (createTenderBidDto.bidAmount >= lowestBidAmount) {
+          throw new BadRequestException(
+            `Votre offre doit être inférieure à la dernière offre actuelle de ${lowestBidAmount} DA. Vous ne pouvez pas faire une offre supérieure ou égale à la dernière offre.`
+          );
+        }
       }
     }
 

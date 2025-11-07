@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { SubscriptionController } from './subscription.controller';
@@ -19,7 +19,7 @@ import { SessionModule } from '../session/session.module';
       { name: Payment.name, schema: PaymentSchema },
     ]),
     ConfigModule,
-    UserModule,
+    forwardRef(() => UserModule),
     SessionModule,
   ],
   controllers: [SubscriptionController],

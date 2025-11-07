@@ -54,14 +54,23 @@ export class TenderController {
       id: tender._id,
       attachments: tender.attachments,
     })));
-    return tenders.map((tender) => ({
-      ...JSON.parse(JSON.stringify(tender)),
-      attachments: transformAttachment(tender.attachments),
-      category: tender.category ? {
-        ...JSON.parse(JSON.stringify(tender.category)),
-        thumb: transformAttachment(tender.category.thumb),
-      } : null,
-    }));
+    return tenders.map((tender) => {
+      const tenderData = JSON.parse(JSON.stringify(tender));
+      
+      // Ensure evaluationType is always present (default to MOINS_DISANT for old tenders)
+      if (!tenderData.evaluationType) {
+        tenderData.evaluationType = 'MOINS_DISANT';
+      }
+      
+      return {
+        ...tenderData,
+        attachments: transformAttachment(tender.attachments),
+        category: tender.category ? {
+          ...JSON.parse(JSON.stringify(tender.category)),
+          thumb: transformAttachment(tender.category.thumb),
+        } : null,
+      };
+    });
   }
 
   @Get('health')
@@ -127,8 +136,18 @@ export class TenderController {
       
       console.log('awardedUser:', awardedUser);
       
+      const tenderData = JSON.parse(JSON.stringify(tender));
+      
+      // Ensure evaluationType is always present (default to MOINS_DISANT for old tenders)
+      if (!tenderData.evaluationType) {
+        tenderData.evaluationType = 'MOINS_DISANT';
+        console.log('⚠️ Tender missing evaluationType, defaulting to MOINS_DISANT');
+      }
+      
+      console.log('✅ Tender evaluation type:', tenderData.evaluationType);
+      
       return {
-        ...JSON.parse(JSON.stringify(tender)),
+        ...tenderData,
         attachments: transformAttachment(tender.attachments),
         awardedUser: awardedUser
       };
@@ -186,6 +205,14 @@ export class TenderController {
     console.log('Creating tender with data:', rawData);
 
     const createTenderDto: CreateTenderDto = JSON.parse(rawData);
+    
+    console.log('📋 CreateTenderDto parsed:', {
+      title: createTenderDto.title,
+      tenderType: createTenderDto.tenderType,
+      auctionType: createTenderDto.auctionType,
+      evaluationType: createTenderDto.evaluationType,
+      hasEvaluationType: !!createTenderDto.evaluationType
+    });
 
     if (files && files.length > 0) {
       const attachmentPromises = files.map(async (file) => {
@@ -231,16 +258,35 @@ export class TenderController {
       throw new BadRequestException('User ID not found in session. Cannot create tender bid.');
     }
 
-    // Validate required fields
-    if (!createTenderBidDto.bidAmount || createTenderBidDto.bidAmount <= 0) {
-      throw new BadRequestException('Bid amount must be a positive number');
+    // Validate required fields based on tender evaluation type
+    const tender = await this.tenderService.findOne(tenderId);
+    const isMieuxDisant = tender.evaluationType === 'MIEUX_DISANT';
+    
+    console.log('🔍 [TenderController] Bid validation:', {
+      tenderId,
+      evaluationType: tender.evaluationType,
+      isMieuxDisant,
+      bidAmount: createTenderBidDto.bidAmount,
+      hasProposal: !!createTenderBidDto.proposal,
+      proposalLength: createTenderBidDto.proposal?.length
+    });
+    
+    if (isMieuxDisant) {
+      // For MIEUX_DISANT: Proposal is required, bidAmount can be 0
+      if (!createTenderBidDto.proposal || createTenderBidDto.proposal.trim().length < 10) {
+        throw new BadRequestException('Une proposition détaillée est requise (minimum 10 caractères)');
+      }
+    } else {
+      // For MOINS_DISANT: Bid amount must be positive
+      if (!createTenderBidDto.bidAmount || createTenderBidDto.bidAmount <= 0) {
+        throw new BadRequestException('Le montant de l\'offre doit être un nombre positif');
+      }
     }
 
     // Set the bidder from the authenticated user
     createTenderBidDto.bidder = userId;
 
-    // Get tender owner
-    const tender = await this.tenderService.findOne(tenderId);
+    // Set tender owner (already fetched above for validation)
     if (!tender.owner || !tender.owner._id) {
       throw new BadRequestException('Tender owner not found');
     }
@@ -248,7 +294,7 @@ export class TenderController {
 
     console.log('Controller - Final DTO before service call:', createTenderBidDto);
 
-    return this.tenderService.createTenderBid(tenderId, createTenderBidDto);
+    return this.tenderService.createTenderBid(tenderId, createTenderBidDto, isMieuxDisant);
   }
 
   @Get(':id/bids')

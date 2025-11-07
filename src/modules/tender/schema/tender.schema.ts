@@ -21,6 +21,11 @@ export enum TENDER_AUCTION_TYPE {
   EXPRESS = 'EXPRESS',
 }
 
+export enum TENDER_EVALUATION_TYPE {
+  MOINS_DISANT = 'MOINS_DISANT', // Lowest price wins
+  MIEUX_DISANT = 'MIEUX_DISANT', // Best value/proposal wins
+}
+
 @Schema({ timestamps: true })
 export class Tender {
   _id: string;
@@ -77,6 +82,13 @@ export class Tender {
   })
   auctionType: TENDER_AUCTION_TYPE;
 
+  @Prop({
+    type: String,
+    enum: Object.values(TENDER_EVALUATION_TYPE),
+    default: TENDER_EVALUATION_TYPE.MOINS_DISANT,
+    required: true,
+  })
+  evaluationType: TENDER_EVALUATION_TYPE;
 
   @Prop({ type: String })
   quantity: String;

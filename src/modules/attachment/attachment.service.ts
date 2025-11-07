@@ -25,12 +25,12 @@ export class AttachmentService {
                         const appPort = this.configService.get<number>('APP_PORT', 3000);
                         const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
                         
-                        // In production, use https://mazadclick-server.onrender.com if APP_HOST is not explicitly set
+                        // In production, use http://localhost:3000 if APP_HOST is not explicitly set
                         // if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
                         //   return 'http://localhost:3000';
                         // }
                         if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                          return process.env.API_BASE_URL || 'https://mazadclick-server.onrender.com';
+                          return 'https://mazadclick-server.onrender.com';
                         }
                         
                         const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');

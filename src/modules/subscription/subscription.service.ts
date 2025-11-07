@@ -49,36 +49,61 @@ export class SubscriptionService implements OnModuleInit {
    * Get all subscriptions
    */
   async findAll() {
-    // Correctly populate the user and plan fields
-    const subscriptions = await this.subscriptionModel
-      .find()
-      .populate('user')
-      .populate('plan')
-      .exec();
+    try {
+      // Correctly populate the user and plan fields
+      const subscriptions = await this.subscriptionModel
+        .find()
+        .populate('user')
+        .populate('plan')
+        .exec();
 
-    // Map the results to a new structure that the frontend expects
-    return subscriptions.map((sub) => {
-      // Access populated fields directly
-      const user = sub.user;
-      const plan = sub.plan;
+      this.logger.log(`Found ${subscriptions.length} subscriptions`);
 
-      // Calculate isActive status and map to a readable string
-      const status = sub.expiresAt > new Date() ? 'Active' : 'Expired';
-      const isActive = sub.expiresAt > new Date();
+      // Map the results to a new structure that the frontend expects
+      return subscriptions.map((sub) => {
+        // Access populated fields directly
+        const user = sub.user;
+        const plan = sub.plan;
 
-      return {
-        _id: sub._id,
-        userId: user._id.toString(),
-        planId: plan._id.toString(),
-        planName: plan.name,
-        planPrice: plan.price,
-        planDuration: plan.duration,
-        startDate: sub.createdAt,
-        endDate: sub.expiresAt,
-        isActive: isActive,
-        status: status,
-      };
-    });
+        // Handle null/undefined user or plan
+        if (!user || !plan) {
+          this.logger.warn(`Subscription ${sub._id} has missing user or plan. User: ${!!user}, Plan: ${!!plan}`);
+          return {
+            _id: sub._id,
+            userId: user?._id?.toString() || 'unknown',
+            planId: plan?._id?.toString() || 'unknown',
+            planName: plan?.name || 'Unknown Plan',
+            planPrice: plan?.price || 0,
+            planDuration: plan?.duration || 0,
+            startDate: sub.createdAt,
+            endDate: sub.expiresAt,
+            isActive: sub.expiresAt > new Date(),
+            status: sub.expiresAt > new Date() ? 'Active' : 'Expired',
+            error: !user || !plan ? 'Missing user or plan reference' : undefined,
+          };
+        }
+
+        // Calculate isActive status and map to a readable string
+        const status = sub.expiresAt > new Date() ? 'Active' : 'Expired';
+        const isActive = sub.expiresAt > new Date();
+
+        return {
+          _id: sub._id,
+          userId: user._id.toString(),
+          planId: plan._id.toString(),
+          planName: plan.name,
+          planPrice: plan.price,
+          planDuration: plan.duration,
+          startDate: sub.createdAt,
+          endDate: sub.expiresAt,
+          isActive: isActive,
+          status: status,
+        };
+      });
+    } catch (error) {
+      this.logger.error('Error in findAll subscriptions:', error);
+      throw new BadRequestException('Failed to fetch subscriptions: ' + error.message);
+    }
   }
 
   /**

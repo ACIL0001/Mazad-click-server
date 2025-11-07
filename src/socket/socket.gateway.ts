@@ -6,6 +6,15 @@ interface IOnlineUser {
   userId: string;
   socketIds: string[];
 }
+const resolveApiBaseUrl = (): string => {
+  const envUrl = process.env.API_BASE_URL;
+  if (envUrl && envUrl.trim() !== '') {
+    return envUrl.trim().replace(/\/$/, '');
+  }
+  return (process.env.NODE_ENV === 'production'
+    ? 'https://mazadclick-server.onrender.com'
+    : 'http://localhost:3000').replace(/\/$/, '');
+};
 
 
 @WebSocketGateway({
@@ -191,7 +200,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (attachment) {
       // Ensure attachment URL is absolute
       if (attachment.url && attachment.url.startsWith('/static/')) {
-        attachment.url = `${process.env.API_BASE_URL || 'https://mazadclick-server.onrender.com'}${attachment.url}`;
+        // attachment.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${attachment.url}`;
+        attachment.url = `${resolveApiBaseUrl()}${attachment.url}`;
       }
       messagePayload.attachment = attachment;
       console.log('📎 Including attachment in socket message:', attachment);
@@ -223,7 +233,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
           // Ensure attachment URL is absolute
           const attachmentCopy = { ...attachment };
           if (attachmentCopy.url && attachmentCopy.url.startsWith('/static/')) {
-            attachmentCopy.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${attachmentCopy.url}`;
+            attachmentCopy.url = `${resolveApiBaseUrl()}${attachmentCopy.url}`;
           }
           notificationPayload.attachment = attachmentCopy;
         }
@@ -259,7 +269,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (attachment) {
       // Ensure attachment URL is absolute
       if (attachment.url && attachment.url.startsWith('/static/')) {
-        attachment.url = `${process.env.API_BASE_URL || 'https://mazadclick-server.onrender.com'}${attachment.url}`;
+        attachment.url = `${resolveApiBaseUrl()}${attachment.url}`;
       }
       messagePayload.attachment = attachment;
       console.log('📎 Including attachment in admin-to-user message:', attachment);
@@ -288,7 +298,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
           // Ensure attachment URL is absolute
           const attachmentCopy = { ...attachment };
           if (attachmentCopy.url && attachmentCopy.url.startsWith('/static/')) {
-            attachmentCopy.url = `${process.env.API_BASE_URL || 'http://localhost:3000'}${attachmentCopy.url}`;
+            attachmentCopy.url = `${resolveApiBaseUrl()}${attachmentCopy.url}`;
           }
           notificationPayload.attachment = attachmentCopy;
         }

@@ -1,5 +1,5 @@
 import { IsString, IsNumber, IsOptional, IsEnum, IsArray, IsBoolean, IsDateString } from 'class-validator';
-import { TENDER_TYPE, TENDER_AUCTION_TYPE } from '../schema/tender.schema';
+import { TENDER_TYPE, TENDER_AUCTION_TYPE, TENDER_EVALUATION_TYPE } from '../schema/tender.schema';
 
 export class CreateTenderDto {
   @IsString()
@@ -39,6 +39,9 @@ export class CreateTenderDto {
   @IsOptional()
   auctionType?: TENDER_AUCTION_TYPE;
 
+  @IsEnum(TENDER_EVALUATION_TYPE)
+  @IsOptional()
+  evaluationType?: TENDER_EVALUATION_TYPE;
 
   @IsString()
   @IsOptional()

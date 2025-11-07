@@ -10,6 +10,9 @@ import { Attachment, AttachmentSchema } from '../attachment/schema/attachment.sc
 import { AttachmentModule } from '../attachment/attachment.module';
 import { UserModule } from '../user/user.module';
 import { NotificationModule } from '../notification/notification.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
+import { Plan, PlanSchema } from '../subscription/schema/plan.schema';
+import { Subscription, SubscriptionSchema } from '../subscription/schema/subscription.schema';
 
 @Module({
   imports: [MongooseModule.forFeature([
@@ -17,7 +20,9 @@ import { NotificationModule } from '../notification/notification.module';
     { name: Professional.name, schema: ProfessionalSchema },
     { name: User.name, schema: UserSchema },
     { name: Attachment.name, schema: AttachmentSchema },
-  ]), SessionModule, AttachmentModule, forwardRef(() => UserModule), forwardRef(() => NotificationModule)],
+    { name: Plan.name, schema: PlanSchema },
+    { name: Subscription.name, schema: SubscriptionSchema },
+  ]), SessionModule, AttachmentModule, forwardRef(() => UserModule), forwardRef(() => NotificationModule), forwardRef(() => SubscriptionModule)],
   providers: [IdentityService],
   controllers: [IdentityController],
   exports: [IdentityService],

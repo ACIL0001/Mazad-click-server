@@ -6,7 +6,7 @@ export class CreateTenderBidDto {
   tenderOwner?: string;
 
   @IsNumber()
-  @Min(1, { message: 'Bid amount must be greater than 0' })
+  @Min(0, { message: 'Bid amount cannot be negative' })
   bidAmount: number;
 
   @IsString()

@@ -21,8 +21,7 @@ async function bootstrap() {
 
   // CORS Configuration - Enhanced for better compatibility
   const allowedOrigins = [
-    // 'http://localhost:3001',
-    'https://mazadclick.vercel.app', 
+    'http://localhost:3001', 
     'http://localhost:3002', 
     'http://localhost:3003',
     'http://localhost:3004',

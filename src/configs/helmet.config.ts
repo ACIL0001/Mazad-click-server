@@ -16,8 +16,7 @@ const helmetConfig = helmet({
       imgSrc: [
         "'self'",
         'data:',
-        // 'http://localhost:3000', // Development backend images
-        'https://mazadclick-server.onrender.com', // Production backend images
+        'http://localhost:3000', // Development backend images
         'https://api.mazad.click', // Legacy production API images
         'https://mazadclick-server.onrender.com', // Current production API images (Render.com)
         'https://*.onrender.com', // Allow all Render.com subdomains

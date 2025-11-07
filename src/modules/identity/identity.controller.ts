@@ -34,6 +34,9 @@ import { UserService } from '../user/user.service';
 import { AdminGuard } from 'src/common/guards/admin.guard';
 import { Identity, IdentityDocument, IDE_TYPE, CONVERSION_TYPE } from './identity.schema'; 
 import { RoleCode } from '../apikey/entity/appType.entity';
+import { SubscriptionService } from '../subscription/subscription.service';
+import { Plan } from '../subscription/schema/plan.schema';
+import { Subscription } from '../subscription/schema/subscription.schema';
 
 function transformAttachment(att) {
   if (!att) return null;
@@ -49,7 +52,11 @@ export class IdentityController {
     @InjectModel(Professional.name) private proModel: Model<ProfessionalDocument>,
     private readonly attachmentService: AttachmentService,
     @Inject(forwardRef(() => UserService))
-    private readonly userService: UserService
+    private readonly userService: UserService,
+    @Inject(forwardRef(() => SubscriptionService))
+    private readonly subscriptionService: SubscriptionService,
+    @InjectModel(Plan.name) private planModel: Model<any>,
+    @InjectModel(Subscription.name) private subscriptionModel: Model<any>
   ) {}
 
   // UPDATED: Professional identity submission with new required fields
@@ -81,6 +88,7 @@ export class IdentityController {
   }))
   async createIdentity(
     @Request() req,
+    @Body() body: { plan?: string },
     @UploadedFiles() files: {
       // Existing optional fields
       commercialRegister?: Express.Multer.File[],
@@ -203,6 +211,86 @@ export class IdentityController {
       identity: identity._id,
       isHasIdentity: true,
     });
+
+    // Handle subscription plan if provided
+    // Extract plan from body or req.body (FormData text fields are in req.body)
+    // With multer/FormData, text fields are accessible via req.body
+    const planName = body?.plan || (req.body?.plan as string) || (req.body as any)?.plan;
+    
+    console.log('🔍 Checking for subscription plan:', {
+      'body.plan': body?.plan,
+      'req.body.plan': req.body?.plan,
+      'req.body': req.body,
+      'plan extracted': planName
+    });
+    
+    if (planName) {
+      console.log('✅ Processing subscription plan:', { userId, planName });
+      
+      try {
+        // Step 1: Find the plan by name to get plan details
+        const plan = await this.planModel.findOne({ name: planName }).exec();
+        
+        if (!plan) {
+          console.log('⚠️ Plan not found by name, trying to save plan name directly to user');
+          // If plan not found, just save the plan name to user
+          await this.userService.updateSubscriptionPlan(userId, planName);
+          console.log('✅ Plan name saved to user:', planName);
+        } else {
+          console.log('✅ Found plan:', { planId: plan._id, planName: plan.name, duration: plan.duration });
+          
+          // Step 2: Save plan name to user.subscriptionPlan field
+          try {
+            await this.userService.createSubscriptionPlan(userId, planName);
+            console.log('✅ Plan name saved to user.subscriptionPlan:', planName);
+          } catch (userPlanError) {
+            console.log('⚠️ User plan save failed, updating instead:', userPlanError.message);
+            await this.userService.updateSubscriptionPlan(userId, planName);
+            console.log('✅ Plan name updated in user.subscriptionPlan:', planName);
+          }
+          
+          // Step 3: Create subscription record in subscriptions table
+          try {
+            // Calculate expiration date based on plan duration
+            const expirationDate = new Date();
+            expirationDate.setMonth(expirationDate.getMonth() + plan.duration);
+            
+            // Create subscription record
+            const subscription = new this.subscriptionModel({
+              id: `${userId}-${Date.now()}`, // Unique ID
+              user: userId,
+              plan: plan._id,
+              expiresAt: expirationDate,
+            });
+            
+            await subscription.save();
+            console.log('✅ Subscription record created in subscriptions table:', {
+              subscriptionId: subscription._id,
+              userId: userId,
+              planId: plan._id,
+              planName: planName,
+              expiresAt: expirationDate
+            });
+          } catch (subscriptionError) {
+            console.error('❌ Failed to create subscription record:', subscriptionError);
+            // Don't fail the whole process if subscription record creation fails
+            // The plan name is already saved to user table
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error processing subscription plan:', error);
+        // Even if there's an error, try to save the plan name to user
+        try {
+          await this.userService.updateSubscriptionPlan(userId, planName);
+          console.log('✅ Plan name saved to user as fallback:', planName);
+        } catch (fallbackError) {
+          console.error('❌ Failed to save plan name even as fallback:', fallbackError);
+        }
+      }
+    } else {
+      console.log('⚠️ No subscription plan provided in request');
+      console.log('🔍 Request body keys:', Object.keys(req.body || {}));
+    }
 
     return identity;
   }
@@ -429,13 +517,83 @@ export class IdentityController {
     });
 
     // Handle subscription plan if provided
-    if (body.plan) {
+    // Extract plan from body or req.body (FormData text fields are in req.body)
+    // With multer/FormData, text fields are accessible via req.body
+    const planName = body?.plan || (req.body?.plan as string) || (req.body as any)?.plan;
+    
+    console.log('🔍 Checking for subscription plan:', {
+      'body.plan': body?.plan,
+      'req.body.plan': req.body?.plan,
+      'req.body': req.body,
+      'plan extracted': planName
+    });
+    
+    if (planName) {
+      console.log('✅ Processing subscription plan:', { userId, planName });
+      
       try {
-        await this.userService.createSubscriptionPlan(userId, body.plan);
-      } catch (subscriptionError) {
-        console.log('Subscription plan creation failed, trying to update:', subscriptionError.message);
-        await this.userService.updateSubscriptionPlan(userId, body.plan);
+        // Step 1: Find the plan by name to get plan details
+        const plan = await this.planModel.findOne({ name: planName }).exec();
+        
+        if (!plan) {
+          console.log('⚠️ Plan not found by name, trying to save plan name directly to user');
+          // If plan not found, just save the plan name to user
+          await this.userService.updateSubscriptionPlan(userId, planName);
+          console.log('✅ Plan name saved to user:', planName);
+        } else {
+          console.log('✅ Found plan:', { planId: plan._id, planName: plan.name, duration: plan.duration });
+          
+          // Step 2: Save plan name to user.subscriptionPlan field
+          try {
+            await this.userService.createSubscriptionPlan(userId, planName);
+            console.log('✅ Plan name saved to user.subscriptionPlan:', planName);
+          } catch (userPlanError) {
+            console.log('⚠️ User plan save failed, updating instead:', userPlanError.message);
+            await this.userService.updateSubscriptionPlan(userId, planName);
+            console.log('✅ Plan name updated in user.subscriptionPlan:', planName);
+          }
+          
+          // Step 3: Create subscription record in subscriptions table
+          try {
+            // Calculate expiration date based on plan duration
+            const expirationDate = new Date();
+            expirationDate.setMonth(expirationDate.getMonth() + plan.duration);
+            
+            // Create subscription record
+            const subscription = new this.subscriptionModel({
+              id: `${userId}-${Date.now()}`, // Unique ID
+              user: userId,
+              plan: plan._id,
+              expiresAt: expirationDate,
+            });
+            
+            await subscription.save();
+            console.log('✅ Subscription record created in subscriptions table:', {
+              subscriptionId: subscription._id,
+              userId: userId,
+              planId: plan._id,
+              planName: planName,
+              expiresAt: expirationDate
+            });
+          } catch (subscriptionError) {
+            console.error('❌ Failed to create subscription record:', subscriptionError);
+            // Don't fail the whole process if subscription record creation fails
+            // The plan name is already saved to user table
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error processing subscription plan:', error);
+        // Even if there's an error, try to save the plan name to user
+        try {
+          await this.userService.updateSubscriptionPlan(userId, planName);
+          console.log('✅ Plan name saved to user as fallback:', planName);
+        } catch (fallbackError) {
+          console.error('❌ Failed to save plan name even as fallback:', fallbackError);
+        }
       }
+    } else {
+      console.log('⚠️ No subscription plan provided in request');
+      console.log('🔍 Request body keys:', Object.keys(req.body || {}));
     }
 
     await this.userService.updateUserFields(userId, {

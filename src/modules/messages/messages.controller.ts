@@ -12,9 +12,15 @@ import { diskStorage } from "multer";
 import { extname, join } from "path";
 import * as fs from "fs";
 import { AttachmentService } from "../attachment/attachment.service";
-
-
-
+const resolveApiBaseUrl = (): string => {
+  const envUrl = process.env.API_BASE_URL;
+  if (envUrl && envUrl.trim() !== "") {
+    return envUrl.trim().replace(/\/$/, "");
+  }
+  return (process.env.NODE_ENV === "production"
+    ? "https://mazadclick-server.onrender.com"
+    : "http://localhost:3000").replace(/\/$/, "");
+};
 
 
 @ApiTags('message')
@@ -229,7 +235,8 @@ export class MessageController {
       
       const attachmentInfo = {
         _id: attachmentAny._id || attachmentAny.id || '',
-        url: attachmentAny.fullUrl || attachmentAny.url || `https://mazadclick-server.onrender.com/static/${attachmentAny.filename}`,
+        url: attachmentAny.fullUrl || attachmentAny.url || `${resolveApiBaseUrl()}/static/${attachmentAny.filename}`,
+        // url: attachmentAny.fullUrl || attachmentAny.url || `http://localhost:3000/static/${attachmentAny.filename}`,
         name: attachmentAny.originalname || file.originalname,
         type: attachmentAny.mimetype || file.mimetype,
         size: attachmentAny.size || file.size,

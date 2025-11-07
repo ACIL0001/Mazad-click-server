@@ -52,7 +52,38 @@ export class UserService implements OnModuleInit {
 
   // Helper method to enrich user with avatar URLs
   private enrichUserWithAvatarUrls(user: any): any {
-    const userObj = user.toObject ? user.toObject({ virtuals: true }) : user;
+    // Get subscriptionPlan BEFORE converting to object - try multiple ways to access it
+    let subscriptionPlan: string | null = null;
+    
+    // Try direct access
+    if (user.subscriptionPlan) {
+      subscriptionPlan = user.subscriptionPlan;
+    }
+    // Try as any
+    else if ((user as any)?.subscriptionPlan) {
+      subscriptionPlan = (user as any).subscriptionPlan;
+    }
+    // Try using get() method
+    else if (user.get && typeof user.get === 'function') {
+      try {
+        subscriptionPlan = user.get('subscriptionPlan') || null;
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+    // Try accessing from document
+    else if ((user as any)?._doc?.subscriptionPlan) {
+      subscriptionPlan = (user as any)._doc.subscriptionPlan;
+    }
+    
+    console.log('🔍 enrichUserWithAvatarUrls - subscriptionPlan found:', subscriptionPlan);
+    
+    const userObj = user.toObject ? user.toObject({ virtuals: true, getters: true }) : { ...user };
+    
+    // ALWAYS explicitly set subscriptionPlan field - even if null, so it appears in JSON response
+    userObj.subscriptionPlan = subscriptionPlan || null;
+    
+    console.log('🔍 enrichUserWithAvatarUrls - userObj.subscriptionPlan set to:', userObj.subscriptionPlan);
     
     // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
     const apiBaseUrl = process.env.API_BASE_URL ||
@@ -114,7 +145,12 @@ export class UserService implements OnModuleInit {
       await this.convertSecteurIdToName(user);
       
       // Enrich user with avatar URLs
-      return this.enrichUserWithAvatarUrls(user);
+      const enrichedUser = this.enrichUserWithAvatarUrls(user);
+      // Ensure subscriptionPlan is explicitly included
+      if (user.subscriptionPlan) {
+        enrichedUser.subscriptionPlan = user.subscriptionPlan;
+      }
+      return enrichedUser;
     }
     return null;
   }
@@ -126,7 +162,12 @@ export class UserService implements OnModuleInit {
     const enrichedUsers = [];
     for (const user of users) {
       await this.convertSecteurIdToName(user);
-      enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
+      const enrichedUser = this.enrichUserWithAvatarUrls(user);
+      // Ensure subscriptionPlan is explicitly included
+      if (user.subscriptionPlan) {
+        enrichedUser.subscriptionPlan = user.subscriptionPlan;
+      }
+      enrichedUsers.push(enrichedUser);
     }
     return enrichedUsers;
   }
@@ -152,6 +193,9 @@ export class UserService implements OnModuleInit {
       userID,
       {
         isPhoneVerified: true,
+        isVerified: true, // Auto-verify user after OTP confirmation
+        isHasIdentity: true, // Auto-set identity status (no document upload needed)
+        rate: 3, // Set default rate for verified users
       },
       { new: true },
     ).populate('avatar');
@@ -232,20 +276,29 @@ export class UserService implements OnModuleInit {
   }
 
   async updateSubscriptionPlan(userId: string, plan: string) {
-    const result = await this.userModel.findByIdAndUpdate(userId, { subscriptionPlan: plan }, { new: true }).populate('avatar');
+    console.log('🔍 updateSubscriptionPlan called:', { userId, plan });
+    const result = await this.userModel.findByIdAndUpdate(
+      userId, 
+      { subscriptionPlan: plan }, 
+      { new: true, runValidators: true }
+    ).populate('avatar');
+    console.log('✅ Subscription plan updated in database:', { userId, plan, result: result?.subscriptionPlan });
     return result;
   }
 
   async createSubscriptionPlan(userId: string, plan: string) {
+    console.log('🔍 createSubscriptionPlan called:', { userId, plan });
     const user = await this.userModel.findById(userId).populate('avatar');
     if (!user) {
       throw new BadRequestException('User not found');
     }
     if (user.subscriptionPlan) {
+      console.log('⚠️ User already has subscription plan, will update instead');
       throw new BadRequestException('Subscription plan already exists for this user');
     }
     user.subscriptionPlan = plan;
     await user.save();
+    console.log('✅ Subscription plan saved to database:', { userId, plan, saved: user.subscriptionPlan });
     return user;
   }
 
@@ -265,12 +318,59 @@ export class UserService implements OnModuleInit {
   }
 
   async findUsersByRoles(roles: RoleCode[]) {
-    const users = await this.userModel.find({ type: { $in: roles } }).populate('avatar');
+    // Query users - subscriptionPlan should be included by default
+    const users = await this.userModel.find({ type: { $in: roles } })
+      .populate('avatar')
+      .lean(false); // Don't use lean() to preserve document methods and virtuals
+    
+    console.log('🔍 Found users:', users.length);
+    
     // Convert secteur IDs to names and enrich with avatar URLs for all users
     const enrichedUsers = [];
     for (const user of users) {
       await this.convertSecteurIdToName(user);
-      enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
+      
+      // Get subscriptionPlan from the document - try multiple access methods
+      let planFromDoc: string | null | undefined = undefined;
+      
+      // Try direct access first
+      if ((user as any).subscriptionPlan !== undefined) {
+        planFromDoc = (user as any).subscriptionPlan;
+      } 
+      // Try _doc access
+      else if ((user as any)._doc?.subscriptionPlan !== undefined) {
+        planFromDoc = (user as any)._doc.subscriptionPlan;
+      }
+      // Try get() method
+      else if ((user as any).get && typeof (user as any).get === 'function') {
+        try {
+          planFromDoc = (user as any).get('subscriptionPlan');
+        } catch (e) {
+          // Ignore
+        }
+      }
+      
+      // Convert undefined to null for consistency
+      if (planFromDoc === undefined) {
+        planFromDoc = null;
+      }
+      
+      console.log(`🔍 User ${(user as any)._id} subscriptionPlan from document:`, planFromDoc);
+      
+      const enrichedUser = this.enrichUserWithAvatarUrls(user);
+      
+      // CRITICAL: Always explicitly set subscriptionPlan field - even if null
+      // This ensures it appears in the JSON response
+      enrichedUser.subscriptionPlan = enrichedUser.subscriptionPlan ?? planFromDoc ?? null;
+      
+      // Double-check: ensure the field exists in the object
+      if (!('subscriptionPlan' in enrichedUser)) {
+        enrichedUser.subscriptionPlan = null;
+        console.log('⚠️ subscriptionPlan missing after enrichment, explicitly setting to null');
+      }
+      
+      console.log(`✅ User ${(user as any)._id} final subscriptionPlan:`, enrichedUser.subscriptionPlan);
+      enrichedUsers.push(enrichedUser);
     }
     return enrichedUsers;
   }
@@ -393,7 +493,12 @@ async getRecommendedProfessionals() {
   const enrichedUsers = [];
   for (const user of users) {
     await this.convertSecteurIdToName(user);
-    enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
+    const enrichedUser = this.enrichUserWithAvatarUrls(user);
+    // Ensure subscriptionPlan is explicitly included
+    if (user.subscriptionPlan) {
+      enrichedUser.subscriptionPlan = user.subscriptionPlan;
+    }
+    enrichedUsers.push(enrichedUser);
   }
   return enrichedUsers;
 }

@@ -527,7 +527,18 @@ return { message: 'Admin users initialized successfully' };
     console.log('Getting ALL professionals (verified and unverified)...');
     const professionals = await this.userService.findUsersByRoles([RoleCode.PROFESSIONAL]);
     console.log(`Found ${professionals.length} total professionals`);
-    return professionals;
+    
+    // Ensure subscriptionPlan is in response - explicitly add if missing
+    const professionalsWithPlan = professionals.map((prof: any) => {
+      if (!('subscriptionPlan' in prof)) {
+        console.log(`⚠️ Professional ${prof._id} missing subscriptionPlan field, adding null`);
+        prof.subscriptionPlan = null;
+      }
+      console.log(`Professional ${prof._id}: subscriptionPlan =`, prof.subscriptionPlan);
+      return prof;
+    });
+    
+    return professionalsWithPlan;
   }
 
   @Get('/resellers')
