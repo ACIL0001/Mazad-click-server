@@ -77,6 +77,9 @@ isRecommended: boolean;
   @Prop({ type: String, required: false })
   postOccupé?: string;
 
+  @Prop({ type: String, required: false, trim: true })
+  promoCode?: string;
+
   createdAt: string;
   updatedAt: string;
 

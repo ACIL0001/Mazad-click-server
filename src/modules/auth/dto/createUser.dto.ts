@@ -78,6 +78,10 @@ export class CreateUserDto {
   postOccupé?: string;
 
   @IsOptional()
+  @IsString()
+  promoCode?: string;
+
+  @IsOptional()
   @IsObject()
   @ValidateNested()
   @Type(() => IdentityDto)
