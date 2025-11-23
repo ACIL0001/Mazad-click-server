@@ -64,6 +64,7 @@ import { CommentModule } from './modules/comment/comment.module';
 import { TermsModule } from './modules/terms/terms.module';
 import { SellerStatsModule } from './modules/seller-stats/seller-stats.module';
 import { TenderModule } from './modules/tender/tender.module';
+import { DirectSaleModule } from './modules/direct-sale/direct-sale.module';
 
 @Module({
   imports: [
@@ -224,6 +225,7 @@ import { TenderModule } from './modules/tender/tender.module';
     TermsModule,
     SellerStatsModule,
     TenderModule,
+    DirectSaleModule,
   ],
   providers: [
     {
