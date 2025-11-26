@@ -160,6 +160,20 @@ export class DirectSaleService {
       );
     }
 
+    // Send confirmation notification to direct sale creator
+    if (populatedDirectSale.owner && populatedDirectSale.owner._id) {
+      await this.notificationService.create(
+        populatedDirectSale.owner._id.toString(),
+        NotificationType.BID_CREATED,
+        'Vente directe créée avec succès',
+        `Votre vente directe "${populatedDirectSale.title}" a été créée avec succès et est maintenant disponible pour les acheteurs.`,
+        populatedDirectSale,
+        populatedDirectSale.owner._id.toString(),
+        `${populatedDirectSale.owner?.firstName || 'Unknown'} ${populatedDirectSale.owner?.lastName || 'User'}`,
+        populatedDirectSale.owner?.email
+      );
+    }
+
     return populatedDirectSale;
   }
 
@@ -249,33 +263,66 @@ export class DirectSaleService {
       });
     }
 
-    // Create notification for seller
+    // Create enhanced notification for seller
     const sellerNotificationTitle = 'Nouvelle Commande Reçue';
-    const sellerNotificationMessage = `Vous avez reçu une nouvelle commande de ${purchaseDto.quantity} article(s) pour "${directSale.title}"`;
+    const sellerNotificationMessage = `Vous avez reçu une nouvelle commande de ${purchaseDto.quantity} article(s) pour "${directSale.title}" - Montant total: ${totalPrice} DA${purchaseDto.paymentMethod ? ` (${purchaseDto.paymentMethod})` : ''}`;
 
     await this.notificationService.create(
       directSale.owner._id.toString(),
       NotificationType.NEW_OFFER,
       sellerNotificationTitle,
       sellerNotificationMessage,
-      { directSale, purchase: savedPurchase },
+      { 
+        directSale: {
+          _id: directSale._id,
+          title: directSale.title,
+          price: directSale.price
+        }, 
+        purchase: {
+          _id: savedPurchase._id,
+          quantity: purchaseDto.quantity,
+          unitPrice: directSale.price,
+          totalPrice: totalPrice,
+          paymentMethod: purchaseDto.paymentMethod,
+          paymentReference: purchaseDto.paymentReference,
+          status: savedPurchase.status
+        },
+        buyerId: buyerId
+      },
       buyerId,
-      'Buyer',
+      'Acheteur',
       '',
     );
 
-    // Create notification for buyer
+    // Create enhanced notification for buyer
     const buyerNotificationTitle = 'Commande Confirmée';
-    const buyerNotificationMessage = `Votre commande pour "${directSale.title}" a été enregistrée`;
+    const buyerNotificationMessage = `Votre commande pour "${directSale.title}" a été enregistrée avec succès. Quantité: ${purchaseDto.quantity} article(s), Prix unitaire: ${directSale.price} DA, Montant total: ${totalPrice} DA${purchaseDto.paymentMethod ? `, Méthode de paiement: ${purchaseDto.paymentMethod}` : ''}`;
 
     await this.notificationService.create(
       buyerId,
       NotificationType.NEW_OFFER,
       buyerNotificationTitle,
       buyerNotificationMessage,
-      { directSale, purchase: savedPurchase },
+      { 
+        directSale: {
+          _id: directSale._id,
+          title: directSale.title,
+          price: directSale.price
+        }, 
+        purchase: {
+          _id: savedPurchase._id,
+          quantity: purchaseDto.quantity,
+          unitPrice: directSale.price,
+          totalPrice: totalPrice,
+          paymentMethod: purchaseDto.paymentMethod,
+          paymentReference: purchaseDto.paymentReference,
+          status: savedPurchase.status
+        },
+        sellerId: directSale.owner._id.toString(),
+        sellerName: `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`
+      },
       directSale.owner._id.toString(),
-      `${directSale.owner?.firstName || 'Seller'} ${directSale.owner?.lastName || ''}`,
+      `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`,
       directSale.owner?.email,
     );
 

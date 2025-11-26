@@ -163,6 +163,20 @@ export class TenderService {
       );
     }
 
+    // Send confirmation notification to tender creator
+    if (populatedTender.owner && populatedTender.owner._id) {
+      await this.notificationService.create(
+        populatedTender.owner._id.toString(),
+        NotificationType.BID_CREATED,
+        'Appel d\'offres créé avec succès',
+        `Votre appel d'offres "${populatedTender.title}" a été créé avec succès et est maintenant disponible pour les prestataires.`,
+        populatedTender,
+        populatedTender.owner._id.toString(),
+        `${populatedTender.owner?.firstName || 'Unknown'} ${populatedTender.owner?.lastName || 'User'}`,
+        populatedTender.owner?.email
+      );
+    }
+
     return populatedTender;
   }
 
@@ -433,6 +447,20 @@ export class TenderService {
       );
     } else {
       console.log("Warning: Tender owner is null or missing _id, skipping notification");
+    }
+
+    // Send confirmation notification to bidder
+    if (createTenderBidDto.bidder) {
+      await this.notificationService.create(
+        createTenderBidDto.bidder,
+        NotificationType.NEW_OFFER,
+        'Soumission enregistrée avec succès',
+        `Votre soumission de ${createTenderBidDto.bidAmount}€ a été enregistrée avec succès pour l'appel d'offres "${tender.title}".`,
+        { tender: tender, tenderBid: savedTenderBid },
+        tender.owner?._id?.toString(),
+        `${tender.owner?.firstName || 'Unknown'} ${tender.owner?.lastName || 'User'}`,
+        tender.owner?.email
+      );
     }
 
     return savedTenderBid;

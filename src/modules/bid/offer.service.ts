@@ -86,6 +86,20 @@ export class OfferService {
       );
     }
 
+    // Send confirmation notification to bidder
+    if (createOfferDto.user) {
+      await this.notificationService.create(
+        createOfferDto.user,
+        NotificationType.NEW_OFFER,
+        'Offre placée avec succès',
+        `Votre offre de ${createOfferDto.price}€ a été placée avec succès sur l'enchère "${bid.title}".`,
+        { bid: updatedBid, offer: savedOffer },
+        bid.owner?._id?.toString(),
+        `${bid.owner?.firstName || 'Unknown'} ${bid.owner?.lastName || 'User'}`,
+        bid.owner?.email
+      );
+    }
+
     return savedOffer;
   }
 

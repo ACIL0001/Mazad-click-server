@@ -148,6 +148,20 @@ export class BidService {
       );
     }
 
+    // Send confirmation notification to auction creator
+    if (populatedBid.owner && populatedBid.owner._id) {
+      await this.notificationService.create(
+        populatedBid.owner._id.toString(),
+        NotificationType.BID_CREATED,
+        'Enchère créée avec succès',
+        `Votre enchère "${populatedBid.title}" a été créée avec succès et est maintenant disponible pour les acheteurs.`,
+        populatedBid,
+        populatedBid.owner._id.toString(),
+        `${populatedBid.owner?.firstName || 'Unknown'} ${populatedBid.owner?.lastName || 'User'}`,
+        populatedBid.owner?.email
+      );
+    }
+
     return populatedBid;
   }
 
@@ -330,6 +344,31 @@ export class BidService {
 
              this.ChatGateWay.sendNotificationChatCreateToOne(max.user._id.toString())
 
+             // Notify all losing bidders
+             for (const offer of getOffers) {
+               const offerUserId = offer.user._id ? offer.user._id.toString() : offer.user.toString();
+               const winnerUserId = max.user._id ? max.user._id.toString() : max.user.toString();
+               
+               // Skip notification for the winner
+               if (offerUserId !== winnerUserId) {
+                 await this.notificationService.create(
+                   offerUserId,
+                   NotificationType.AUCTION_LOST,
+                   'Enchère terminée',
+                   `L'enchère "${getAllBids[index].title || 'le produit'}" a été remportée par un autre participant. Merci d'avoir participé !`,
+                   {
+                     bidId: getAllBids[index]._id,
+                     productTitle: getAllBids[index].title,
+                     winnerId: winnerUserId,
+                     finalPrice: max.price
+                   },
+                   getUser._id.toString(),
+                   `${getUser.firstName} ${getUser.lastName}`,
+                   getUser.email
+                 );
+               }
+             }
+
              // Send auction end notification to seller
             //  await this.notificationService.create(
             //    getUser._id.toString(),
@@ -488,6 +527,31 @@ export class BidService {
              );
 
              this.ChatGateWay.sendNotificationChatCreateToOne(users[1].toString())
+
+             // Notify all losing bidders
+             for (const offer of getOffers) {
+               const offerUserId = offer.user._id ? offer.user._id.toString() : offer.user.toString();
+               const winnerUserId = max.user._id ? max.user._id.toString() : max.user.toString();
+               
+               // Skip notification for the winner
+               if (offerUserId !== winnerUserId) {
+                 await this.notificationService.create(
+                   offerUserId,
+                   NotificationType.AUCTION_LOST,
+                   'Enchère terminée',
+                   `L'enchère "${getAllBids[index].title || 'le service'}" a été remportée par un autre participant. Merci d'avoir participé !`,
+                   {
+                     bidId: getAllBids[index]._id,
+                     productTitle: getAllBids[index].title,
+                     winnerId: winnerUserId,
+                     finalPrice: max.price
+                   },
+                   getUser._id.toString(),
+                   `${getUser.firstName} ${getUser.lastName}`,
+                   getUser.email
+                 );
+               }
+             }
 
              // Send auction end notification to seller
             //  await this.notificationService.create(
