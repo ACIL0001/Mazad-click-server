@@ -29,27 +29,84 @@ import { Types } from 'mongoose';
 import { OfferService } from './offer.service';
 import { UserService } from '../user/user.service';
 import { AuctionNotificationService } from './auction-notification.service';
+import { ConfigService } from '@nestjs/config';
 
 
-// Helper to transform attachment(s) to minimal shape
-function transformAttachment(att) {
+// Helper to transform attachment(s) to minimal shape with fullUrl
+function transformAttachment(att, baseUrl?: string) {
   if (!att) return null;
+  
+  // Compute base URL if not provided
+  const apiBase = baseUrl || (() => {
+    const apiBaseUrl = process.env.API_BASE_URL ||
+      (() => {
+        const appHost = process.env.APP_HOST || 'http://localhost';
+        const appPort = process.env.APP_PORT || '3000';
+        const isProduction = process.env.NODE_ENV === 'production';
+        
+        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+          return 'https://mazadclick-server.onrender.com';
+        }
+        
+        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+      })();
+    return apiBaseUrl.replace(/\/$/, '');
+  })();
+  
   if (Array.isArray(att)) {
-    return att.filter(Boolean).map(a => a && a.url ? ({ url: a.url, _id: a._id, filename: a.filename }) : null).filter(Boolean);
+    return att.filter(Boolean).map(a => {
+      if (!a || !a.url) return null;
+      const fullUrl = a.fullUrl || `${apiBase}${a.url}`;
+      return { 
+        url: a.url, 
+        fullUrl: fullUrl,
+        _id: a._id, 
+        filename: a.filename 
+      };
+    }).filter(Boolean);
   }
-  return att.url ? { url: att.url, _id: att._id, filename: att.filename } : null;
+  
+  if (!att.url) return null;
+  const fullUrl = att.fullUrl || `${apiBase}${att.url}`;
+  return { 
+    url: att.url, 
+    fullUrl: fullUrl,
+    _id: att._id, 
+    filename: att.filename 
+  };
 }
 
 
 @ApiTags('Bids')
 @Controller('bid')
 export class BidController {
+  private readonly baseUrl: string;
+
   constructor(
     private readonly bidService: BidService,
     private readonly attachmentService: AttachmentService,
     private readonly userService: UserService,
     private readonly auctionNotificationService: AuctionNotificationService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    // Compute base URL for fullUrl construction
+    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') || 
+                      process.env.API_BASE_URL ||
+                      (() => {
+                        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
+                        const appPort = this.configService.get<number>('APP_PORT', 3000);
+                        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+                        
+                        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+                          return 'https://mazadclick-server.onrender.com';
+                        }
+                        
+                        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+                        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+                      })();
+    this.baseUrl = apiBaseUrl.replace(/\/$/, '');
+  }
 
   @Get()
   @Public()
@@ -61,8 +118,8 @@ export class BidController {
   })));
     return bids.map((bid) => ({
       ...JSON.parse(JSON.stringify(bid)),
-      thumbs: transformAttachment(bid.thumbs),
-      videos: transformAttachment(bid.videos),
+      thumbs: transformAttachment(bid.thumbs, this.baseUrl),
+      videos: transformAttachment(bid.videos, this.baseUrl),
     }));
   }
 
@@ -119,8 +176,8 @@ export class BidController {
       
       return {
         ...JSON.parse(JSON.stringify(bid)),
-        thumbs: transformAttachment(bid.thumbs),
-        videos: transformAttachment(bid.videos),
+        thumbs: transformAttachment(bid.thumbs, this.baseUrl),
+        videos: transformAttachment(bid.videos, this.baseUrl),
         user: vl
       };
     } catch (error) {
@@ -191,54 +248,172 @@ export class BidController {
     }
 
     console.log('Creating bid with data:', rawData);
-    console.log('Uploaded files:', files?.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
+    console.log('Uploaded files count:', files?.length || 0);
+    console.log('Uploaded files details:', files?.map(f => ({ 
+      fieldname: f.fieldname, 
+      originalname: f.originalname, 
+      mimetype: f.mimetype,
+      size: f.size,
+      filename: f.filename
+    })));
 
     const createBidDto: CreateBidDto = JSON.parse(rawData);
+    
+    // Initialize thumbs and videos arrays if not present
+    if (!createBidDto.thumbs) {
+      createBidDto.thumbs = [];
+    }
+    if (!createBidDto.videos) {
+      createBidDto.videos = [];
+    }
 
     if (files && files.length > 0) {
-      // Separate images and videos based on fieldname
-      const imageFiles = files.filter(file => 
-        file.fieldname === 'thumbs[]' && file.mimetype.startsWith('image/')
-      );
-      const videoFiles = files.filter(file => 
-        file.fieldname === 'videos[]' && file.mimetype.startsWith('video/')
-      );
+      // Log all file fieldnames to debug
+      const allFieldnames = [...new Set(files.map(f => f.fieldname))];
+      console.log('All unique fieldnames received:', allFieldnames);
+      
+      // Separate images and videos based on fieldname (handle both 'thumbs[]' and 'thumbs')
+      // Multer might process the fieldname differently
+      let imageFiles = files.filter(file => {
+        const isThumbsField = file.fieldname === 'thumbs[]' || 
+                             file.fieldname === 'thumbs' ||
+                             file.fieldname.startsWith('thumbs');
+        const isImage = file.mimetype.startsWith('image/');
+        return isThumbsField && isImage;
+      });
+      
+      // Fallback: if no images found with thumbs fieldname, check all image files
+      if (imageFiles.length === 0) {
+        console.warn('No images found with thumbs fieldname, checking all image files...');
+        const allImages = files.filter(file => file.mimetype.startsWith('image/'));
+        if (allImages.length > 0) {
+          console.warn('Found', allImages.length, 'image files with fieldnames:', allImages.map(f => f.fieldname));
+          imageFiles = allImages; // Use all images as fallback
+        }
+      }
+      
+      let videoFiles = files.filter(file => {
+        const isVideosField = file.fieldname === 'videos[]' || 
+                            file.fieldname === 'videos' ||
+                            file.fieldname.startsWith('videos');
+        const isVideo = file.mimetype.startsWith('video/');
+        return isVideosField && isVideo;
+      });
+      
+      // Fallback: if no videos found with videos fieldname, check all video files
+      if (videoFiles.length === 0) {
+        console.warn('No videos found with videos fieldname, checking all video files...');
+        const allVideos = files.filter(file => file.mimetype.startsWith('video/'));
+        if (allVideos.length > 0) {
+          console.warn('Found', allVideos.length, 'video files with fieldnames:', allVideos.map(f => f.fieldname));
+          videoFiles = allVideos; // Use all videos as fallback
+        }
+      }
 
-      console.log('Image files:', imageFiles.length);
-      console.log('Video files:', videoFiles.length);
+      console.log('Filtered image files:', imageFiles.length);
+      console.log('Filtered video files:', videoFiles.length);
+      console.log('Image file details:', imageFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
+      console.log('Video file details:', videoFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
 
       // Handle image uploads
       if (imageFiles.length > 0) {
-        const imageAttachmentPromises = imageFiles.map(async (file) => {
-          const att = await this.attachmentService.upload(
-            file,
-            AttachmentAs.BID,
-            userId,
-          );
-          return att;
-        });
-        const imageAttachments = await Promise.all(imageAttachmentPromises);
-        createBidDto.thumbs = imageAttachments.map((att) => att._id.toString());
+        try {
+          const imageAttachmentPromises = imageFiles.map(async (file) => {
+            try {
+              console.log('Uploading image file:', file.originalname);
+              const att = await this.attachmentService.upload(
+                file,
+                AttachmentAs.BID,
+                userId,
+              );
+              console.log('Image attachment created:', att._id, att.url);
+              return att;
+            } catch (error) {
+              console.error('Error uploading image file:', file.originalname, error);
+              throw error;
+            }
+          });
+          const imageAttachments = await Promise.all(imageAttachmentPromises);
+          const thumbIds = imageAttachments
+            .filter(att => att && att._id)
+            .map((att) => {
+              const id = att._id.toString();
+              console.log('Adding thumb ID:', id, 'from attachment:', att._id);
+              return id;
+            });
+          createBidDto.thumbs = thumbIds;
+          console.log('Thumbs IDs set (count:', thumbIds.length, '):', createBidDto.thumbs);
+          if (thumbIds.length === 0 && imageFiles.length > 0) {
+            console.error('WARNING: No valid thumb IDs were extracted from', imageAttachments.length, 'attachments');
+            console.error('Attachment details:', imageAttachments.map(a => ({ 
+              hasId: !!a?._id, 
+              id: a?._id?.toString(),
+              url: a?.url 
+            })));
+          }
+        } catch (error) {
+          console.error('Error processing image uploads:', error);
+          throw new Error(`Failed to upload images: ${error.message}`);
+        }
       }
 
       // Handle video uploads
       if (videoFiles.length > 0) {
-        const videoAttachmentPromises = videoFiles.map(async (file) => {
-          const att = await this.attachmentService.upload(
-            file,
-            AttachmentAs.BID,
-            userId,
-          );
-          return att;
-        });
-        const videoAttachments = await Promise.all(videoAttachmentPromises);
-        createBidDto.videos = videoAttachments.map((att) => att._id.toString());
+        try {
+          const videoAttachmentPromises = videoFiles.map(async (file) => {
+            try {
+              console.log('Uploading video file:', file.originalname);
+              const att = await this.attachmentService.upload(
+                file,
+                AttachmentAs.BID,
+                userId,
+              );
+              console.log('Video attachment created:', att._id, att.url);
+              return att;
+            } catch (error) {
+              console.error('Error uploading video file:', file.originalname, error);
+              throw error;
+            }
+          });
+          const videoAttachments = await Promise.all(videoAttachmentPromises);
+          const videoIds = videoAttachments
+            .filter(att => att && att._id)
+            .map((att) => {
+              const id = att._id.toString();
+              console.log('Adding video ID:', id, 'from attachment:', att._id);
+              return id;
+            });
+          createBidDto.videos = videoIds;
+          console.log('Videos IDs set (count:', videoIds.length, '):', createBidDto.videos);
+          if (videoIds.length === 0 && videoFiles.length > 0) {
+            console.error('WARNING: No valid video IDs were extracted from', videoAttachments.length, 'attachments');
+            console.error('Attachment details:', videoAttachments.map(a => ({ 
+              hasId: !!a?._id, 
+              id: a?._id?.toString(),
+              url: a?.url 
+            })));
+          }
+        } catch (error) {
+          console.error('Error processing video uploads:', error);
+          throw new Error(`Failed to upload videos: ${error.message}`);
+        }
       }
+    } else {
+      console.warn('No files received in the request');
     }
 
     if (!createBidDto.owner) {
       createBidDto.owner = userId;
     }
+
+    // Final validation before creating bid
+    console.log('Final bid DTO before service call:', {
+      title: createBidDto.title,
+      thumbsCount: createBidDto.thumbs?.length || 0,
+      thumbs: createBidDto.thumbs,
+      videosCount: createBidDto.videos?.length || 0,
+      videos: createBidDto.videos
+    });
 
     return this.bidService.create(createBidDto);
   }

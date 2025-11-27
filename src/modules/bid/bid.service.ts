@@ -102,13 +102,44 @@ export class BidService {
 
     createBidDto.currentPrice = createBidDto.startingPrice;
 
-    // Only log in development mode
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Creating bid:', createBidDto.title);
+    // Log bid creation details including thumbs
+    console.log('Creating bid:', createBidDto.title);
+    console.log('Bid DTO thumbs (type:', typeof createBidDto.thumbs, ', isArray:', Array.isArray(createBidDto.thumbs), '):', createBidDto.thumbs);
+    console.log('Bid DTO videos (type:', typeof createBidDto.videos, ', isArray:', Array.isArray(createBidDto.videos), '):', createBidDto.videos);
+    console.log('Bid DTO thumbs length:', createBidDto.thumbs?.length || 0);
+    console.log('Bid DTO videos length:', createBidDto.videos?.length || 0);
+
+    // Ensure thumbs and videos are arrays
+    if (!Array.isArray(createBidDto.thumbs)) {
+      console.warn('WARNING: thumbs is not an array, converting:', createBidDto.thumbs);
+      createBidDto.thumbs = createBidDto.thumbs ? [createBidDto.thumbs] : [];
+    }
+    if (!Array.isArray(createBidDto.videos)) {
+      console.warn('WARNING: videos is not an array, converting:', createBidDto.videos);
+      createBidDto.videos = createBidDto.videos ? [createBidDto.videos] : [];
     }
 
+    console.log('Bid DTO full object (thumbs/videos only):', {
+      thumbs: createBidDto.thumbs,
+      videos: createBidDto.videos,
+      thumbsCount: createBidDto.thumbs.length,
+      videosCount: createBidDto.videos.length
+    });
+
     const createdBid = new this.bidModel(createBidDto);
+    console.log('Bid model before save - thumbs (raw):', createdBid.thumbs);
+    console.log('Bid model before save - thumbs (type):', typeof createdBid.thumbs, Array.isArray(createdBid.thumbs));
+    console.log('Bid model before save - thumbs (length):', createdBid.thumbs?.length || 0);
+    
     const savedBid = await createdBid.save();
+    console.log('Bid saved - thumbs (raw):', savedBid.thumbs);
+    console.log('Bid saved - thumbs (type):', typeof savedBid.thumbs, Array.isArray(savedBid.thumbs));
+    console.log('Bid saved - thumbs (length):', savedBid.thumbs?.length || 0);
+    
+    // Verify the saved bid has thumbs
+    const verificationBid = await this.bidModel.findById(savedBid._id).select('thumbs videos').lean();
+    console.log('Verification query - thumbs:', verificationBid?.thumbs);
+    console.log('Verification query - thumbs length:', verificationBid?.thumbs?.length || 0);
     const populatedBid = await this.bidModel
       .findById(savedBid._id)
       .populate('productCategory')

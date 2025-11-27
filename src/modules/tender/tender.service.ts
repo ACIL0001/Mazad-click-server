@@ -117,18 +117,30 @@ export class TenderService {
       auctionType: createTenderDto.auctionType,
       evaluationType: createTenderDto.evaluationType,
       hasEvaluationType: !!createTenderDto.evaluationType,
+      attachmentsCount: createTenderDto.attachments?.length || 0,
+      attachments: createTenderDto.attachments,
       allKeys: Object.keys(createTenderDto)
     });
     
-    const createdTender = new this.tenderModel(createTenderDto);
+    // Ensure attachments is an array
+    if (!Array.isArray(createTenderDto.attachments)) {
+      console.warn('WARNING: attachments is not an array, converting:', createTenderDto.attachments);
+      createTenderDto.attachments = createTenderDto.attachments ? [createTenderDto.attachments] : [];
+    }
     
-    console.log('🔍 [TenderService] Tender model before save:', {
-      title: createdTender.title,
-      evaluationType: createdTender.evaluationType,
-      evaluationTypeValue: (createdTender as any).evaluationType
-    });
+    const createdTender = new this.tenderModel(createTenderDto);
+    console.log('🔍 [TenderService] Tender model before save - attachments (raw):', createdTender.attachments);
+    console.log('🔍 [TenderService] Tender model before save - attachments (type):', typeof createdTender.attachments, Array.isArray(createdTender.attachments));
+    console.log('🔍 [TenderService] Tender model before save - attachments (length):', createdTender.attachments?.length || 0);
     
     const savedTender = await createdTender.save();
+    console.log('✅ [TenderService] Tender saved - attachments (raw):', savedTender.attachments);
+    console.log('✅ [TenderService] Tender saved - attachments (length):', savedTender.attachments?.length || 0);
+    
+    // Verify the saved tender has attachments
+    const verificationTender = await this.tenderModel.findById(savedTender._id).select('attachments').lean();
+    console.log('✅ [TenderService] Verification query - attachments:', verificationTender?.attachments);
+    console.log('✅ [TenderService] Verification query - attachments length:', verificationTender?.attachments?.length || 0);
     
     console.log('✅ [TenderService] Tender saved with evaluationType:', savedTender.evaluationType);
     const populatedTender = await this.tenderModel

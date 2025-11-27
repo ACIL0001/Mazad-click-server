@@ -37,7 +37,10 @@ export class DirectSaleService {
 
   async findAll(): Promise<DirectSaleDocument[]> {
     return this.directSaleModel
-      .find({ status: DIRECT_SALE_STATUS.ACTIVE, hidden: false })
+      .find({ 
+        status: { $nin: [DIRECT_SALE_STATUS.ARCHIVED, DIRECT_SALE_STATUS.INACTIVE] },
+        hidden: false 
+      })
       .populate({
         path: 'owner',
         populate: {
@@ -117,13 +120,40 @@ export class DirectSaleService {
   }
 
   async create(createDirectSaleDto: CreateDirectSaleDto): Promise<DirectSale> {
+    console.log('Creating direct sale:', createDirectSaleDto.title);
+    console.log('Direct sale DTO thumbs (type:', typeof createDirectSaleDto.thumbs, ', isArray:', Array.isArray(createDirectSaleDto.thumbs), '):', createDirectSaleDto.thumbs);
+    console.log('Direct sale DTO videos (type:', typeof createDirectSaleDto.videos, ', isArray:', Array.isArray(createDirectSaleDto.videos), '):', createDirectSaleDto.videos);
+    console.log('Direct sale DTO thumbs length:', createDirectSaleDto.thumbs?.length || 0);
+    console.log('Direct sale DTO videos length:', createDirectSaleDto.videos?.length || 0);
+
+    // Ensure thumbs and videos are arrays
+    if (!Array.isArray(createDirectSaleDto.thumbs)) {
+      console.warn('WARNING: thumbs is not an array, converting:', createDirectSaleDto.thumbs);
+      createDirectSaleDto.thumbs = createDirectSaleDto.thumbs ? [createDirectSaleDto.thumbs] : [];
+    }
+    if (!Array.isArray(createDirectSaleDto.videos)) {
+      console.warn('WARNING: videos is not an array, converting:', createDirectSaleDto.videos);
+      createDirectSaleDto.videos = createDirectSaleDto.videos ? [createDirectSaleDto.videos] : [];
+    }
+
     const createdDirectSale = new this.directSaleModel({
       ...createDirectSaleDto,
       soldQuantity: 0,
       status: DIRECT_SALE_STATUS.ACTIVE,
     });
-
+    console.log('Direct sale model before save - thumbs (raw):', createdDirectSale.thumbs);
+    console.log('Direct sale model before save - thumbs (type):', typeof createdDirectSale.thumbs, Array.isArray(createdDirectSale.thumbs));
+    console.log('Direct sale model before save - thumbs (length):', createdDirectSale.thumbs?.length || 0);
+    
     const savedDirectSale = await createdDirectSale.save();
+    console.log('Direct sale saved - thumbs (raw):', savedDirectSale.thumbs);
+    console.log('Direct sale saved - thumbs (type):', typeof savedDirectSale.thumbs, Array.isArray(savedDirectSale.thumbs));
+    console.log('Direct sale saved - thumbs (length):', savedDirectSale.thumbs?.length || 0);
+    
+    // Verify the saved direct sale has thumbs
+    const verificationDirectSale = await this.directSaleModel.findById(savedDirectSale._id).select('thumbs videos').lean();
+    console.log('Verification query - thumbs:', verificationDirectSale?.thumbs);
+    console.log('Verification query - thumbs length:', verificationDirectSale?.thumbs?.length || 0);
     const populatedDirectSale = await this.directSaleModel
       .findById(savedDirectSale._id)
       .populate('productCategory')

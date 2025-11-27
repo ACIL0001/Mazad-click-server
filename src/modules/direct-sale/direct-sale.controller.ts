@@ -24,28 +24,83 @@ import { AttachmentService } from '../attachment/attachment.service';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import { ProtectedRequest } from 'src/types/request.type';
 import { AttachmentAs } from '../attachment/schema/attachment.schema';
+import { ConfigService } from '@nestjs/config';
 
-// Helper to transform attachment(s) to minimal shape
-function transformAttachment(att) {
+// Helper to transform attachment(s) to minimal shape with fullUrl
+function transformAttachment(att, baseUrl?: string) {
   if (!att) return null;
+  
+  // Compute base URL if not provided
+  const apiBase = baseUrl || (() => {
+    const apiBaseUrl = process.env.API_BASE_URL ||
+      (() => {
+        const appHost = process.env.APP_HOST || 'http://localhost';
+        const appPort = process.env.APP_PORT || '3000';
+        const isProduction = process.env.NODE_ENV === 'production';
+        
+        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+          return 'https://mazadclick-server.onrender.com';
+        }
+        
+        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+      })();
+    return apiBaseUrl.replace(/\/$/, '');
+  })();
+  
   if (Array.isArray(att)) {
     return att
       .filter(Boolean)
-      .map((a) =>
-        a && a.url ? { url: a.url, _id: a._id, filename: a.filename } : null,
-      )
+      .map((a) => {
+        if (!a || !a.url) return null;
+        const fullUrl = a.fullUrl || `${apiBase}${a.url}`;
+        return { 
+          url: a.url, 
+          fullUrl: fullUrl,
+          _id: a._id, 
+          filename: a.filename 
+        };
+      })
       .filter(Boolean);
   }
-  return att.url ? { url: att.url, _id: att._id, filename: att.filename } : null;
+  
+  if (!att.url) return null;
+  const fullUrl = att.fullUrl || `${apiBase}${att.url}`;
+  return { 
+    url: att.url, 
+    fullUrl: fullUrl,
+    _id: att._id, 
+    filename: att.filename 
+  };
 }
 
 @ApiTags('Direct Sales')
 @Controller('direct-sale')
 export class DirectSaleController {
+  private readonly baseUrl: string;
+
   constructor(
     private readonly directSaleService: DirectSaleService,
     private readonly attachmentService: AttachmentService,
-  ) { }
+    private readonly configService: ConfigService,
+  ) {
+    // Compute base URL for fullUrl construction
+    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') || 
+                      process.env.API_BASE_URL ||
+                      (() => {
+                        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
+                        const appPort = this.configService.get<number>('APP_PORT', 3000);
+                        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+                        
+                        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+                          return 'https://mazadclick-server.onrender.com';
+                        }
+                        
+                        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+                        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+                      })();
+    this.baseUrl = apiBaseUrl.replace(/\/$/, '');
+  }
 
   @Get()
   @Public()
@@ -54,8 +109,8 @@ export class DirectSaleController {
     const directSales = await this.directSaleService.findAll();
     return directSales.map((directSale) => ({
       ...JSON.parse(JSON.stringify(directSale)),
-      thumbs: transformAttachment(directSale.thumbs),
-      videos: transformAttachment(directSale.videos),
+      thumbs: transformAttachment(directSale.thumbs, this.baseUrl),
+      videos: transformAttachment(directSale.videos, this.baseUrl),
     }));
   }
 
@@ -66,8 +121,8 @@ export class DirectSaleController {
     const directSales = await this.directSaleService.findAllForAdmin();
     return directSales.map((directSale) => ({
       ...JSON.parse(JSON.stringify(directSale)),
-      thumbs: transformAttachment(directSale.thumbs),
-      videos: transformAttachment(directSale.videos),
+      thumbs: transformAttachment(directSale.thumbs, this.baseUrl),
+      videos: transformAttachment(directSale.videos, this.baseUrl),
     }));
   }
 
@@ -106,8 +161,8 @@ export class DirectSaleController {
       const directSale = await this.directSaleService.findOne(id);
       return {
         ...JSON.parse(JSON.stringify(directSale)),
-        thumbs: transformAttachment(directSale.thumbs),
-        videos: transformAttachment(directSale.videos),
+        thumbs: transformAttachment(directSale.thumbs, this.baseUrl),
+        videos: transformAttachment(directSale.videos, this.baseUrl),
       };
     } catch (error) {
       console.error('Error in findOne:', error);
@@ -179,37 +234,167 @@ export class DirectSaleController {
     }
 
     console.log('Creating direct sale with data:', rawData);
+    console.log('Uploaded files count:', files?.length || 0);
+    console.log('Uploaded files details:', files?.map(f => ({ 
+      fieldname: f.fieldname, 
+      originalname: f.originalname, 
+      mimetype: f.mimetype,
+      size: f.size,
+      filename: f.filename
+    })));
 
     const createDirectSaleDto: CreateDirectSaleDto = JSON.parse(rawData);
+    
+    // Initialize thumbs and videos arrays
+    if (!createDirectSaleDto.thumbs) {
+      createDirectSaleDto.thumbs = [];
+    }
+    if (!createDirectSaleDto.videos) {
+      createDirectSaleDto.videos = [];
+    }
 
     if (files && files.length > 0) {
-      const thumbPromises = files
-        .filter((file) => file.mimetype.startsWith('image/'))
-        .map(async (file) => {
-          const att = await this.attachmentService.upload(
-            file,
-            AttachmentAs.BID,
-            userId,
-          );
-          return att;
-        });
-      const thumbs = await Promise.all(thumbPromises);
+      // Log all file fieldnames to debug
+      const allFieldnames = [...new Set(files.map(f => f.fieldname))];
+      console.log('All unique fieldnames received:', allFieldnames);
+      
+      // Separate images and videos based on fieldname (handle both 'thumbs[]' and 'thumbs')
+      let imageFiles = files.filter(file => {
+        const isThumbsField = file.fieldname === 'thumbs[]' || 
+                             file.fieldname === 'thumbs' ||
+                             file.fieldname.startsWith('thumbs');
+        const isImage = file.mimetype.startsWith('image/');
+        return isThumbsField && isImage;
+      });
+      
+      // Fallback: if no images found with thumbs fieldname, check all image files
+      if (imageFiles.length === 0) {
+        console.warn('No images found with thumbs fieldname, checking all image files...');
+        const allImages = files.filter(file => file.mimetype.startsWith('image/'));
+        if (allImages.length > 0) {
+          console.warn('Found', allImages.length, 'image files with fieldnames:', allImages.map(f => f.fieldname));
+          imageFiles = allImages;
+        }
+      }
+      
+      let videoFiles = files.filter(file => {
+        const isVideosField = file.fieldname === 'videos[]' || 
+                            file.fieldname === 'videos' ||
+                            file.fieldname.startsWith('videos');
+        const isVideo = file.mimetype.startsWith('video/');
+        return isVideosField && isVideo;
+      });
+      
+      // Fallback: if no videos found with videos fieldname, check all video files
+      if (videoFiles.length === 0) {
+        console.warn('No videos found with videos fieldname, checking all video files...');
+        const allVideos = files.filter(file => file.mimetype.startsWith('video/'));
+        if (allVideos.length > 0) {
+          console.warn('Found', allVideos.length, 'video files with fieldnames:', allVideos.map(f => f.fieldname));
+          videoFiles = allVideos;
+        }
+      }
 
-      const videoPromises = files
-        .filter((file) => file.mimetype.startsWith('video/'))
-        .map(async (file) => {
-          const att = await this.attachmentService.upload(
-            file,
-            AttachmentAs.BID,
-            userId,
-          );
-          return att;
-        });
-      const videos = await Promise.all(videoPromises);
+      console.log('Filtered image files:', imageFiles.length);
+      console.log('Filtered video files:', videoFiles.length);
+      console.log('Image file details:', imageFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
+      console.log('Video file details:', videoFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
 
-      createDirectSaleDto.thumbs = thumbs.map((att) => att._id.toString());
-      createDirectSaleDto.videos = videos.map((att) => att._id.toString());
+      // Handle image uploads
+      if (imageFiles.length > 0) {
+        try {
+          const thumbPromises = imageFiles.map(async (file) => {
+            try {
+              console.log('Uploading image file:', file.originalname);
+              const att = await this.attachmentService.upload(
+                file,
+                AttachmentAs.BID,
+                userId,
+              );
+              console.log('Image attachment created:', att._id, att.url);
+              return att;
+            } catch (error) {
+              console.error('Error uploading image file:', file.originalname, error);
+              throw error;
+            }
+          });
+          const thumbs = await Promise.all(thumbPromises);
+          const thumbIds = thumbs
+            .filter(att => att && att._id)
+            .map((att) => {
+              const id = att._id.toString();
+              console.log('Adding thumb ID:', id, 'from attachment:', att._id);
+              return id;
+            });
+          createDirectSaleDto.thumbs = thumbIds;
+          console.log('Thumbs IDs set (count:', thumbIds.length, '):', createDirectSaleDto.thumbs);
+          if (thumbIds.length === 0 && imageFiles.length > 0) {
+            console.error('WARNING: No valid thumb IDs were extracted from', thumbs.length, 'attachments');
+            console.error('Attachment details:', thumbs.map(a => ({ 
+              hasId: !!a?._id, 
+              id: a?._id?.toString(),
+              url: a?.url 
+            })));
+          }
+        } catch (error) {
+          console.error('Error processing image uploads:', error);
+          throw new Error(`Failed to upload images: ${error.message}`);
+        }
+      }
+
+      // Handle video uploads
+      if (videoFiles.length > 0) {
+        try {
+          const videoPromises = videoFiles.map(async (file) => {
+            try {
+              console.log('Uploading video file:', file.originalname);
+              const att = await this.attachmentService.upload(
+                file,
+                AttachmentAs.BID,
+                userId,
+              );
+              console.log('Video attachment created:', att._id, att.url);
+              return att;
+            } catch (error) {
+              console.error('Error uploading video file:', file.originalname, error);
+              throw error;
+            }
+          });
+          const videos = await Promise.all(videoPromises);
+          const videoIds = videos
+            .filter(att => att && att._id)
+            .map((att) => {
+              const id = att._id.toString();
+              console.log('Adding video ID:', id, 'from attachment:', att._id);
+              return id;
+            });
+          createDirectSaleDto.videos = videoIds;
+          console.log('Videos IDs set (count:', videoIds.length, '):', createDirectSaleDto.videos);
+          if (videoIds.length === 0 && videoFiles.length > 0) {
+            console.error('WARNING: No valid video IDs were extracted from', videos.length, 'attachments');
+            console.error('Attachment details:', videos.map(a => ({ 
+              hasId: !!a?._id, 
+              id: a?._id?.toString(),
+              url: a?.url 
+            })));
+          }
+        } catch (error) {
+          console.error('Error processing video uploads:', error);
+          throw new Error(`Failed to upload videos: ${error.message}`);
+        }
+      }
+    } else {
+      console.warn('No files received in the request');
     }
+    
+    // Final validation before creating direct sale
+    console.log('Final direct sale DTO before service call:', {
+      title: createDirectSaleDto.title,
+      thumbsCount: createDirectSaleDto.thumbs?.length || 0,
+      thumbs: createDirectSaleDto.thumbs,
+      videosCount: createDirectSaleDto.videos?.length || 0,
+      videos: createDirectSaleDto.videos
+    });
 
     if (!createDirectSaleDto.owner) {
       createDirectSaleDto.owner = userId;
