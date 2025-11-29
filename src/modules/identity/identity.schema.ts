@@ -6,7 +6,7 @@ import { User } from 'src/modules/user/schema/user.schema';
 export enum IDE_TYPE {
   DONE = 'DONE',
   WAITING = 'WAITING',
-
+  DRAFT = 'DRAFT',
   REJECTED = 'REJECTED',
 }
 
@@ -35,10 +35,17 @@ export class Identity {
   commercialRegister: Attachment;
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
+  carteAutoEntrepreneur: Attachment;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
   nif: Attachment;
 
-  @Prop({ type: String, enum: Object.values(IDE_TYPE), default: IDE_TYPE.WAITING })
+  @Prop({ type: String, enum: Object.values(IDE_TYPE), default: IDE_TYPE.DRAFT })
   status: IDE_TYPE;
+
+  // Certification status (separate from verification status)
+  @Prop({ type: String, enum: Object.values(IDE_TYPE), default: IDE_TYPE.DRAFT })
+  certificationStatus: IDE_TYPE;
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: Attachment.name })
   nis: Attachment;
@@ -105,7 +112,13 @@ export const IdentitySchema = SchemaFactory.createForClass(Identity);
 
 // Add custom validation for conditionally required fields
 IdentitySchema.pre('save', function(next) {
-  // Only validate for professional identity submissions
+  // Skip validation if status is DRAFT - documents can be uploaded incrementally
+  // Validation will happen when user clicks "Soumettre" (status changes to WAITING)
+  if (this.status === IDE_TYPE.DRAFT) {
+    return next();
+  }
+  
+  // Only validate for professional identity submissions when status is WAITING or DONE
   if (this.conversionType === CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL || 
       this.conversionType === CONVERSION_TYPE.PROFESSIONAL_VERIFICATION) {
     

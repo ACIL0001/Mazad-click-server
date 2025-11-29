@@ -193,9 +193,7 @@ export class UserService implements OnModuleInit {
       userID,
       {
         isPhoneVerified: true,
-        isVerified: true, // Auto-verify user after OTP confirmation
-        isHasIdentity: true, // Auto-set identity status (no document upload needed)
-        rate: 3, // Set default rate for verified users
+        rate: 1, // Set default rate for unverified users
       },
       { new: true },
     ).populate('avatar');

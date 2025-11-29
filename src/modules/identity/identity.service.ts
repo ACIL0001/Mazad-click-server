@@ -24,7 +24,7 @@ export class IdentityService {
       const identity = new this.identityModel({ 
         ...identityData, 
         user: userId,
-        status: identityData.status || IDE_TYPE.WAITING,
+        status: identityData.status || IDE_TYPE.DRAFT,
         // Ensure conversionType is set
         conversionType: identityData.conversionType || CONVERSION_TYPE.PROFESSIONAL_VERIFICATION
       });
@@ -33,20 +33,35 @@ export class IdentityService {
       const savedIdentity = await identity.save();
       console.log('Identity saved successfully:', savedIdentity._id);
       
-      // Update user verification status if required documents are present
-      await this.updateUserVerificationStatus(savedIdentity);
+      // Don't update verification status on creation - wait for admin approval
+      // Verification status will be set after admin approves (status becomes DONE)
       
       // Create notification for admins about new identity verification
-      try {
-        await this.createIdentityVerificationNotification(savedIdentity);
-      } catch (notificationError) {
-        console.error('Error creating identity verification notification:', notificationError);
-        // Don't throw error here as identity creation should still succeed
+      // Only send notification if status is WAITING (submitted for review), not DRAFT
+      if (savedIdentity.status === IDE_TYPE.WAITING) {
+        try {
+          await this.createIdentityVerificationNotification(savedIdentity);
+        } catch (notificationError) {
+          console.error('Error creating identity verification notification:', notificationError);
+          // Don't throw error here as identity creation should still succeed
+        }
       }
       
       return savedIdentity;
     } catch (error) {
-      console.error('Error creating identity:', error);
+      console.error('❌ Error creating identity in service:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        userId,
+        identityData: {
+          ...identityData,
+          // Don't log full attachment objects
+          registreCommerceCarteAuto: identityData.registreCommerceCarteAuto ? 'present' : 'missing',
+          nifRequired: identityData.nifRequired ? 'present' : 'missing',
+          carteFellah: identityData.carteFellah ? 'present' : 'missing',
+        },
+      });
       throw error;
     }
   }
@@ -155,6 +170,7 @@ export class IdentityService {
     return this.identityModel.find({ status })
       .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
       .populate('commercialRegister')
+      .populate('carteAutoEntrepreneur')
       .populate('nif')
       .populate('nis')
       .populate('last3YearsBalanceSheet')
@@ -172,14 +188,46 @@ export class IdentityService {
       .exec();
   }
 
+  // Get identities with pending review (either verification or certification)
+  async getIdentitiesWithPendingReview(): Promise<IdentityDocument[]> {
+    return this.identityModel.find({
+      $or: [
+        { status: IDE_TYPE.WAITING },
+        { certificationStatus: IDE_TYPE.WAITING }
+      ]
+    })
+      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('commercialRegister')
+      .populate('carteAutoEntrepreneur')
+      .populate('nif')
+      .populate('nis')
+      .populate('last3YearsBalanceSheet')
+      .populate('certificates')
+      .populate('identityCard')
+      // NEW REQUIRED FIELDS
+      .populate('registreCommerceCarteAuto')
+      .populate('nifRequired')
+      .populate('numeroArticle')
+      .populate('c20')
+      .populate('misesAJourCnas')
+      .populate('carteFellah')
+      // NEW PAYMENT PROOF FIELD
+      .populate('paymentProof')
+      .exec();
+  }
+
   // Get identities by conversion type
   async getIdentitiesByConversionType(conversionTypes: CONVERSION_TYPE[]): Promise<IdentityDocument[]> {
     return this.identityModel.find({ 
       conversionType: { $in: conversionTypes },
-      status: IDE_TYPE.WAITING 
+      $or: [
+        { status: IDE_TYPE.WAITING },
+        { certificationStatus: IDE_TYPE.WAITING }
+      ]
     })
       .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
       .populate('commercialRegister')
+      .populate('carteAutoEntrepreneur')
       .populate('nif')
       .populate('nis')
       .populate('last3YearsBalanceSheet')
@@ -218,6 +266,28 @@ export class IdentityService {
       .populate('c20')
       .populate('misesAJourCnas')
       .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
+  }
+
+  async updateCertificationStatus(identityId: string, status: IDE_TYPE): Promise<IdentityDocument | null> {
+    return this.identityModel.findByIdAndUpdate(
+      identityId,
+      { certificationStatus: status },
+      { new: true }
+    )
+      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('commercialRegister')
+      .populate('carteAutoEntrepreneur')
+      .populate('nif')
+      .populate('nis')
+      .populate('last3YearsBalanceSheet')
+      .populate('certificates')
+      .populate('identityCard')
+      .populate('registreCommerceCarteAuto')
+      .populate('nifRequired')
+      .populate('numeroArticle')
+      .populate('c20')
+      .populate('misesAJourCnas')
+      .populate('carteFellah')
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
@@ -348,8 +418,9 @@ export class IdentityService {
       
       console.log('Document update result:', result?.[field]);
       
-      // Check if user should be verified or certified after document update
-      if (result && result.user) {
+      // Only update verification status if identity is already approved (DONE)
+      // If status is WAITING, documents are pending admin review
+      if (result && result.user && result.status === IDE_TYPE.DONE) {
         await this.updateUserVerificationStatus(result);
       }
       
@@ -363,6 +434,13 @@ export class IdentityService {
   // Update user verification and certification status based on identity documents
   async updateUserVerificationStatus(identity: IdentityDocument): Promise<void> {
     if (!identity || !identity.user) {
+      return;
+    }
+
+    // Only update verification status if identity has been approved by admin (status is DONE)
+    // Users should not be verified just by uploading documents - they need admin approval first
+    if (identity.status !== IDE_TYPE.DONE) {
+      console.log(`⏸️ Skipping verification status update - identity status is ${identity.status}, not DONE`);
       return;
     }
 
