@@ -759,6 +759,18 @@ async recommendUser(
   return this.userService.setUserRecommended(userId, isRecommended);
 }
 
+@Put('certified/:userId')
+@UseGuards(AdminGuard)
+async setCertified(
+  @Param('userId') userId: string,
+  @Body('isCertified') isCertified: boolean
+) {
+  if (typeof isCertified !== 'boolean') {
+    throw new BadRequestException('isCertified must be provided and must be a boolean');
+  }
+  return this.userService.setUserCertified(userId, isCertified);
+}
+
 // Get recommended professionals
 @Get('/professionals/recommended')
 @Public()

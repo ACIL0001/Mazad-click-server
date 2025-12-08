@@ -7,6 +7,7 @@ import { DeleteOneMessageDto } from "./dto/deleteOne.Message";
 import { GetMessageDto } from "./dto/get.Message";
 import { Public } from "src/common/decorators/public.decorator";
 import { ChatService } from "../chat/chat.service";
+import { UserService } from "../user/user.service";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { diskStorage } from "multer";
 import { extname, join } from "path";
@@ -29,16 +30,101 @@ export class MessageController {
   constructor(
     private readonly MessageService: MessageService,
     private readonly ChatService: ChatService,
-    private readonly AttachmentService: AttachmentService
+    private readonly AttachmentService: AttachmentService,
+    private readonly UserService: UserService
   ) {}
 
   @Post('create')
   async create(@Body() dto: CrateMessageDto): Promise<Message> {
+    let chatId = dto.idChat;
+    
+    // If no chat ID provided or chat doesn't exist, create a new chat
+    if (!chatId || chatId === 'undefined' || chatId === 'null') {
+      console.log('📝 No chat ID provided, creating new chat for users:', dto.sender, dto.reciver);
+      
+      try {
+        // Fetch user details for both sender and receiver
+        let senderUser: any = null;
+        let receiverUser: any = null;
+        
+        try {
+          senderUser = await this.UserService.findUserById(dto.sender);
+          receiverUser = await this.UserService.findUserById(dto.reciver);
+        } catch (error) {
+          console.warn('⚠️ Could not fetch user details, using minimal info:', error);
+        }
+        
+        // Check if chat already exists between these two users
+        // Try both sender and receiver perspectives
+        let foundExistingChat: any = null;
+        try {
+          const senderChats = await this.ChatService.getChat(dto.sender, 'seller');
+          foundExistingChat = senderChats.find((chat: any) => 
+            chat.users?.some((u: any) => {
+              const userId = u._id?.toString() || u._id;
+              return userId === dto.sender?.toString() || userId === dto.sender;
+            }) &&
+            chat.users?.some((u: any) => {
+              const userId = u._id?.toString() || u._id;
+              return userId === dto.reciver?.toString() || userId === dto.reciver;
+            })
+          );
+          
+          // If not found from sender perspective, try receiver perspective
+          if (!foundExistingChat) {
+            const receiverChats = await this.ChatService.getChat(dto.reciver, 'seller');
+            foundExistingChat = receiverChats.find((chat: any) => 
+              chat.users?.some((u: any) => {
+                const userId = u._id?.toString() || u._id;
+                return userId === dto.sender?.toString() || userId === dto.sender;
+              }) &&
+              chat.users?.some((u: any) => {
+                const userId = u._id?.toString() || u._id;
+                return userId === dto.reciver?.toString() || userId === dto.reciver;
+              })
+            );
+          }
+        } catch (error) {
+          console.warn('⚠️ Error checking for existing chat:', error);
+        }
+        
+        if (foundExistingChat) {
+          console.log('✅ Found existing chat:', foundExistingChat._id);
+          chatId = foundExistingChat._id;
+        } else {
+          // Create new chat with user details
+          const chatUsers = [
+            {
+              _id: senderUser?._id?.toString() || dto.sender,
+              firstName: senderUser?.firstName || '',
+              lastName: senderUser?.lastName || '',
+              AccountType: senderUser?.AccountType || '',
+              phone: senderUser?.phone || ''
+            },
+            {
+              _id: receiverUser?._id?.toString() || dto.reciver,
+              firstName: receiverUser?.firstName || '',
+              lastName: receiverUser?.lastName || '',
+              AccountType: receiverUser?.AccountType || '',
+              phone: receiverUser?.phone || ''
+            }
+          ];
+          
+          const newChat = await this.ChatService.create(chatUsers, new Date().toISOString());
+          chatId = newChat._id;
+          console.log('✅ Created new chat:', chatId, 'between users:', dto.sender, 'and', dto.reciver);
+        }
+      } catch (error) {
+        console.error('❌ Error creating chat:', error);
+        // Continue with original chatId (might be invalid, but let message service handle it)
+      }
+    }
+    
     return this.MessageService.create(
       dto.sender,
       dto.reciver,
       dto.message,
-      dto.idChat,
+      chatId,
       { attachment: dto.attachment }
     );
   }

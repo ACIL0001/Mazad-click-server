@@ -20,6 +20,7 @@ export enum NotificationType {
   OFFER_ACCEPTED = 'OFFER_ACCEPTED',
   OFFER_DECLINED = 'OFFER_DECLINED',
   IDENTITY_VERIFICATION = 'IDENTITY_VERIFICATION',
+  ORDER = 'ORDER',
 }
 
 @Schema({ timestamps: true })

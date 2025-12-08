@@ -10,6 +10,7 @@ export enum AttachmentAs {
   BID = 'BID',
   CATEGORY = 'CATEGORY',
   SUBCATEGORY = 'SUBCATEGORY',
+  AD = 'AD',
 }
 
 @Schema({ versionKey: false, timestamps: true })

@@ -96,6 +96,46 @@ export class ChatService {
     
     // Original logic for non-admin chats or fallback
     console.log("Using original chat creation logic");
+    
+    // Check if chat already exists between these two users
+    if (users.length >= 2) {
+      const userId1 = users[0]._id?.toString() || users[0]._id;
+      const userId2 = users[1]._id?.toString() || users[1]._id;
+      
+      const existingChat = await this.chatModel.findOne({
+        $and: [
+          { 'users._id': { $in: [userId1, userId2] } },
+          { 'users._id': { $in: [userId1, userId2] } }
+        ],
+        $expr: {
+          $eq: [
+            { $size: { $setIntersection: ['$users._id', [userId1, userId2]] } },
+            2
+          ]
+        }
+      }).lean();
+      
+      // Alternative simpler query
+      if (!existingChat) {
+        const existingChat2 = await this.chatModel.findOne({
+          $and: [
+            { 'users._id': userId1 },
+            { 'users._id': userId2 }
+          ]
+        }).lean();
+        
+        if (existingChat2) {
+          console.log("✅ Found existing chat between users:", userId1, userId2);
+          return existingChat2 as Chat;
+        }
+      } else {
+        console.log("✅ Found existing chat between users:", userId1, userId2);
+        return existingChat as Chat;
+      }
+    }
+    
+    // Create new chat if it doesn't exist
+    console.log("📝 Creating new chat between users");
     const chat = new this.chatModel({users , createdAt})
     await chat.save()
     
@@ -109,15 +149,48 @@ export class ChatService {
 
 
   async getChat(id: string, from: string): Promise<any[]> {
+    console.log('🔍 ChatService.getChat called with:', { id, from, idType: typeof id });
+    
     // Handle both string and ObjectId types for users._id
+    // Try multiple query formats to ensure we find all chats
     let queryId: any = id;
-    if (require('mongoose').Types.ObjectId.isValid(id)) {
-      queryId = new (require('mongoose').Types.ObjectId)(id);
-    }
-
+    const mongoose = require('mongoose');
+    
+    // Try as string first
     let chats: Chat[] = [];
+    
     if (from == 'seller') {
-      chats = await this.chatModel.find({ 'users._id': queryId });
+      // For seller, try multiple query formats to ensure we find all chats
+      // Query 1: Try with string ID
+      chats = await this.chatModel.find({ 
+        $or: [
+          { 'users._id': id },
+          { 'users._id': id.toString() }
+        ]
+      }).lean();
+      
+      // Query 2: If valid ObjectId, also try with ObjectId
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        const objectIdQuery = await this.chatModel.find({ 
+          'users._id': new mongoose.Types.ObjectId(id)
+        }).lean();
+        
+        // Merge results and deduplicate
+        const allChats = [...chats, ...objectIdQuery];
+        const uniqueChats = allChats.filter((chat, index, self) => 
+          index === self.findIndex(c => c._id.toString() === chat._id.toString())
+        );
+        chats = uniqueChats;
+      }
+      
+      console.log(`📊 Found ${chats.length} chats for seller ${id}`);
+      if (chats.length > 0) {
+        console.log('📋 Sample chat structure:', {
+          _id: chats[0]._id,
+          usersCount: chats[0].users?.length,
+          users: chats[0].users?.map((u: any) => ({ _id: u._id, firstName: u.firstName, AccountType: u.AccountType }))
+        });
+      }
     } else if (from == 'admin') {
       // For admin, find chats where either:
       // 1. One user has _id === 'admin' OR AccountType === 'admin'
@@ -132,28 +205,68 @@ export class ChatService {
             { 'users.AccountType': 'admin' },
             { 'users._id': { $in: adminUserIds } }
           ]
-        });
+        }).lean();
       } catch (error) {
         console.error('Error finding admin users:', error);
         // Fallback to original logic
-        chats = await this.chatModel.find({ 'users._id': 'admin' });
+        chats = await this.chatModel.find({ 'users._id': 'admin' }).lean();
       }
     } else {
-      chats = await this.chatModel.find({ 'users._id': queryId }).exec();
+      // For buyer or other users
+      chats = await this.chatModel.find({ 
+        $or: [
+          { 'users._id': id },
+          { 'users._id': id.toString() }
+        ]
+      }).lean();
+      
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        const objectIdQuery = await this.chatModel.find({ 
+          'users._id': new mongoose.Types.ObjectId(id)
+        }).lean();
+        
+        const allChats = [...chats, ...objectIdQuery];
+        const uniqueChats = allChats.filter((chat, index, self) => 
+          index === self.findIndex(c => c._id.toString() === chat._id.toString())
+        );
+        chats = uniqueChats;
+      }
     }
 
+    // Ensure chats have proper structure and filter out invalid ones
+    const validChats = chats.filter(chat => {
+      const isValid = chat && 
+                     chat._id && 
+                     Array.isArray(chat.users) && 
+                     chat.users.length >= 2; // Each chat should have exactly 2 users
+      if (!isValid) {
+        console.warn('⚠️ Invalid chat found:', chat);
+      }
+      return isValid;
+    });
+
     // Add isAdminChat property to each chat
-    const chatsWithAdminFlag = chats.map(chat => {
+    const chatsWithAdminFlag = validChats.map(chat => {
       const isAdminChat = chat.users.some((user: any) => 
         user._id === 'admin' || 
         user.AccountType === 'admin' ||
         user.type === 'ADMIN'
       );
-      // Cast chat as ChatDocument to access toObject
-      return { ...(chat as any).toObject(), isAdminChat };
+      return { 
+        ...chat, 
+        isAdminChat,
+        // Ensure users array is properly formatted
+        users: chat.users.map((user: any) => ({
+          _id: user._id?.toString() || user._id,
+          firstName: user.firstName || '',
+          lastName: user.lastName || '',
+          AccountType: user.AccountType || '',
+          phone: user.phone || ''
+        }))
+      };
     });
     
-    console.log("✅ Returning chats with admin flag:", chatsWithAdminFlag.length);
+    console.log(`✅ Returning ${chatsWithAdminFlag.length} valid chats (filtered from ${chats.length} total)`);
     return chatsWithAdminFlag;
   }
 

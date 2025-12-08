@@ -393,6 +393,16 @@ export class UserService implements OnModuleInit {
     return user;
   }
 
+  async setUserCertified(userId: string, isCertified: boolean) {
+    const user = await this.userModel.findByIdAndUpdate(
+      userId,
+      { isCertified },
+      { new: true }
+    ).populate('avatar');
+    if (!user) throw new BadRequestException('User not found');
+    return user;
+  }
+
   async getUserById(id: string) {
     const user = await this.userModel.findById(id).populate('avatar');
     if (user && user.avatar && typeof user.avatar === 'object' && !Array.isArray(user.avatar)) {

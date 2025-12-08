@@ -302,7 +302,7 @@ export class BidService {
                getUser._id.toString(),
                NotificationType.ITEM_SOLD,
                'Félicitations! Votre article a été vendu',
-               `Votre article "${getAllBids[index].title || 'le produit'}" a été vendu à ${getAther.firstName} ${getAther.lastName} pour ${max.price}€. Un chat a été créé pour finaliser la vente.`,
+               `Votre article "${getAllBids[index].title || 'le produit'}" a été vendu à ${getAther.firstName} ${getAther.lastName} pour ${max.price} DA. Un chat a été créé pour finaliser la vente.`,
                {
                  bidId: getAllBids[index]._id,
                  productTitle: getAllBids[index].title,
@@ -492,7 +492,7 @@ export class BidService {
                getUser._id.toString(),
                NotificationType.ITEM_SOLD,
                'Félicitations! Votre service a été vendu',
-               `Votre service "${getAllBids[index].title || 'le service'}" a été vendu à ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour ${max.price}€. Un chat a été créé pour finaliser la vente.`,
+               `Votre service "${getAllBids[index].title || 'le service'}" a été vendu à ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour ${max.price} DA. Un chat a été créé pour finaliser la vente.`,
                {
                  bidId: getAllBids[index]._id,
                  productTitle: getAllBids[index].title,

@@ -263,7 +263,7 @@ export class TenderService {
               {
                 type: 'TENDER_WON',
                 title: 'Félicitations! Vous avez remporté l\'appel d\'offres',
-                message: `Vous avez remporté l'appel d'offres pour "${getAllTenders[index].title || 'le projet'}" avec votre offre de ${lowestBid.bidAmount}€. Un chat a été créé avec l'acheteur pour finaliser la transaction.`,
+                message: `Vous avez remporté l'appel d'offres pour "${getAllTenders[index].title || 'le projet'}" avec votre offre de ${lowestBid.bidAmount} DA. Un chat a été créé avec l'acheteur pour finaliser la transaction.`,
                 chatId: chat._id,
                 buyerName: getUser.firstName + ' ' + getUser.lastName,
                 tenderTitle: getAllTenders[index].title
@@ -276,7 +276,7 @@ export class TenderService {
               {
                 type: 'TENDER_AWARDED',
                 title: 'Votre appel d\'offres a été attribué',
-                message: `Votre appel d'offres "${getAllTenders[index].title || 'le projet'}" a été attribué à ${getWinner.firstName} ${getWinner.lastName} pour ${lowestBid.bidAmount}€. Un chat a été créé pour finaliser la transaction.`,
+                message: `Votre appel d'offres "${getAllTenders[index].title || 'le projet'}" a été attribué à ${getWinner.firstName} ${getWinner.lastName} pour ${lowestBid.bidAmount} DA. Un chat a été créé pour finaliser la transaction.`,
                 chatId: chat._id,
                 winnerName: getWinner.firstName + ' ' + getWinner.lastName,
                 tenderTitle: getAllTenders[index].title
@@ -303,7 +303,7 @@ export class TenderService {
               getUser._id.toString(),
               NotificationType.ITEM_SOLD,
               'Votre appel d\'offres a été attribué',
-              `Votre appel d'offres "${getAllTenders[index].title || 'le projet'}" a été attribué à ${getWinner.firstName} ${getWinner.lastName} pour ${lowestBid.bidAmount}€. Un chat a été créé pour finaliser la transaction.`,
+              `Votre appel d'offres "${getAllTenders[index].title || 'le projet'}" a été attribué à ${getWinner.firstName} ${getWinner.lastName} pour ${lowestBid.bidAmount} DA. Un chat a été créé pour finaliser la transaction.`,
               {
                 tenderId: getAllTenders[index]._id,
                 tenderTitle: getAllTenders[index].title,
@@ -445,7 +445,7 @@ export class TenderService {
 
     // Create notification for tender owner
     const tenderOwnerTitle = "Nouvelle offre reçue";
-    const tenderOwnerMessage = `Une nouvelle offre de ${createTenderBidDto.bidAmount}€ a été soumise pour votre appel d'offres "${tender.title}"`;
+    const tenderOwnerMessage = `Une nouvelle offre de ${createTenderBidDto.bidAmount} DA a été soumise pour votre appel d'offres "${tender.title}"`;
 
     // Check if tender.owner exists and has _id before trying to access it
     if (tender.owner && tender.owner._id) {
@@ -467,7 +467,7 @@ export class TenderService {
         createTenderBidDto.bidder,
         NotificationType.NEW_OFFER,
         'Soumission enregistrée avec succès',
-        `Votre soumission de ${createTenderBidDto.bidAmount}€ a été enregistrée avec succès pour l'appel d'offres "${tender.title}".`,
+        `Votre soumission de ${createTenderBidDto.bidAmount} DA a été enregistrée avec succès pour l'appel d'offres "${tender.title}".`,
         { tender: tender, tenderBid: savedTenderBid },
         tender.owner?._id?.toString(),
         `${tender.owner?.firstName || 'Unknown'} ${tender.owner?.lastName || 'User'}`,
@@ -536,16 +536,22 @@ export class TenderService {
       // Send notification to the bidder
       try {
         const notificationTitle = "Offre Acceptée";
-        const notificationMessage = `Votre offre de ${tenderBid.bidAmount} DA pour l'appel d'offres "${tender.title}" a été acceptée!`;
+        const notificationMessage = `Votre soumission de ${tenderBid.bidAmount} DA pour l'appel d'offres "${tender.title}" a été acceptée. Félicitations! Vous pouvez maintenant discuter avec l'acheteur.`;
         
         // Extract the bidder ID properly from the populated object
         const bidderId = tenderBid.bidder._id ? tenderBid.bidder._id.toString() : tenderBid.bidder.toString();
+        
+        // Fetch tender owner details for notification data
+        const tenderOwner = await this.userService.findUserById(ownerId);
+        const ownerName = tenderOwner ? `${tenderOwner.firstName || ''} ${tenderOwner.lastName || ''}`.trim() : 'Acheteur';
         
         console.log('🔔 TenderService: Creating notification for bidder:', {
           bidderId: tenderBid.bidder,
           bidderIdString: bidderId,
           bidderIdType: typeof tenderBid.bidder,
           tenderTitle: tender.title,
+          ownerId: ownerId.toString(),
+          ownerName,
           notificationTitle,
           notificationMessage
         });
@@ -559,11 +565,13 @@ export class TenderService {
             tenderBid: updatedBid, 
             tender: tender,
             bidAmount: tenderBid.bidAmount,
-            tenderTitle: tender.title
+            tenderTitle: tender.title,
+            ownerId: ownerId.toString(), // Add tender owner ID for chat navigation
+            ownerName: ownerName // Add tender owner name for display
           },
           ownerId, // senderId (tender owner)
-          undefined, // senderName (will be populated by notification service)
-          undefined  // senderEmail (will be populated by notification service)
+          ownerName, // senderName
+          tenderOwner?.email || undefined  // senderEmail
         );
         
         console.log('TenderService: Notification sent to bidder:', tenderBid.bidder);

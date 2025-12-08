@@ -250,9 +250,22 @@ export class DirectSaleService {
       );
     }
 
-    // Check quantity availability
+    // Check quantity availability (considering pending purchases that will be confirmed)
     if (directSale.quantity > 0) {
-      const availableQuantity = directSale.quantity - directSale.soldQuantity;
+      // Get all pending purchases for this direct sale
+      const pendingPurchases = await this.directSalePurchaseModel
+        .find({
+          directSale: directSale._id,
+          status: PURCHASE_STATUS.PENDING,
+        })
+        .exec();
+      
+      const pendingQuantity = pendingPurchases.reduce(
+        (sum, p) => sum + p.quantity,
+        0,
+      );
+      
+      const availableQuantity = directSale.quantity - directSale.soldQuantity - pendingQuantity;
       if (purchaseDto.quantity > availableQuantity) {
         throw new BadRequestException(
           `Only ${availableQuantity} items available. Requested: ${purchaseDto.quantity}`,
@@ -263,7 +276,7 @@ export class DirectSaleService {
     // Calculate total price
     const totalPrice = directSale.price * purchaseDto.quantity;
 
-    // Create purchase record
+    // Create purchase record (DO NOT update soldQuantity here - wait for confirmation)
     const purchase = new this.directSalePurchaseModel({
       directSale: directSale._id,
       buyer: buyerId,
@@ -278,24 +291,11 @@ export class DirectSaleService {
 
     const savedPurchase = await purchase.save();
 
-    // Update sold quantity
-    await this.directSaleModel.findByIdAndUpdate(directSale._id, {
-      $inc: { soldQuantity: purchaseDto.quantity },
-    });
-
-    // Check if sold out
-    if (
-      directSale.quantity > 0 &&
-      directSale.soldQuantity + purchaseDto.quantity >= directSale.quantity
-    ) {
-      await this.directSaleModel.findByIdAndUpdate(directSale._id, {
-        status: DIRECT_SALE_STATUS.SOLD_OUT,
-      });
-    }
+    // DO NOT update soldQuantity here - it will be updated when seller confirms the purchase
 
     // Create enhanced notification for seller
-    const sellerNotificationTitle = 'Nouvelle Commande Reçue';
-    const sellerNotificationMessage = `Vous avez reçu une nouvelle commande de ${purchaseDto.quantity} article(s) pour "${directSale.title}" - Montant total: ${totalPrice} DA${purchaseDto.paymentMethod ? ` (${purchaseDto.paymentMethod})` : ''}`;
+    const sellerNotificationTitle = `Nouvelle Commande - ${totalPrice} DA`;
+    const sellerNotificationMessage = `${purchaseDto.quantity} article(s) de "${directSale.title}"${purchaseDto.paymentMethod ? ` • ${purchaseDto.paymentMethod}` : ''}`;
 
     await this.notificationService.create(
       directSale.owner._id.toString(),
@@ -325,8 +325,8 @@ export class DirectSaleService {
     );
 
     // Create enhanced notification for buyer
-    const buyerNotificationTitle = 'Commande Confirmée';
-    const buyerNotificationMessage = `Votre commande pour "${directSale.title}" a été enregistrée avec succès. Quantité: ${purchaseDto.quantity} article(s), Prix unitaire: ${directSale.price} DA, Montant total: ${totalPrice} DA${purchaseDto.paymentMethod ? `, Méthode de paiement: ${purchaseDto.paymentMethod}` : ''}`;
+    const buyerNotificationTitle = `Commande Effectuée - ${totalPrice} DA`;
+    const buyerNotificationMessage = `Vous avez effectué une commande de ${purchaseDto.quantity} article(s) de "${directSale.title}". En attente de confirmation du vendeur.${purchaseDto.paymentMethod ? ` • ${purchaseDto.paymentMethod}` : ''}`;
 
     await this.notificationService.create(
       buyerId,
@@ -366,6 +366,7 @@ export class DirectSaleService {
     const purchase = await this.directSalePurchaseModel
       .findById(purchaseId)
       .populate('directSale')
+      .populate('buyer')
       .exec();
 
     if (!purchase) {
@@ -373,6 +374,7 @@ export class DirectSaleService {
     }
 
     const directSale = purchase.directSale as any;
+    const buyer = purchase.buyer as any;
 
     // Verify seller owns this direct sale
     if (directSale.owner.toString() !== sellerId) {
@@ -385,9 +387,93 @@ export class DirectSaleService {
       throw new BadRequestException('Purchase is not in pending status');
     }
 
+    // Update sold quantity when purchase is confirmed
+    await this.directSaleModel.findByIdAndUpdate(directSale._id, {
+      $inc: { soldQuantity: purchase.quantity },
+    });
+
+    // Check if sold out after confirmation
+    const updatedDirectSale = await this.directSaleModel.findById(directSale._id).exec();
+    if (
+      updatedDirectSale &&
+      updatedDirectSale.quantity > 0 &&
+      updatedDirectSale.soldQuantity >= updatedDirectSale.quantity
+    ) {
+      await this.directSaleModel.findByIdAndUpdate(directSale._id, {
+        status: DIRECT_SALE_STATUS.SOLD_OUT,
+      });
+    }
+
     purchase.status = PURCHASE_STATUS.CONFIRMED;
     purchase.paidAt = new Date();
     await purchase.save();
+
+    // Create notification for buyer when order is confirmed
+    if (buyer && buyer._id) {
+      const totalPrice = purchase.quantity * purchase.unitPrice;
+      const buyerNotificationTitle = `Commande Confirmée - ${totalPrice} DA`;
+      const buyerNotificationMessage = `Votre commande a été confirmée. Félicitations! Vous pouvez maintenant discuter avec le vendeur.`;
+
+      await this.notificationService.create(
+        buyer._id.toString(),
+        NotificationType.ORDER,
+        buyerNotificationTitle,
+        buyerNotificationMessage,
+        {
+          directSale: {
+            _id: directSale._id,
+            title: directSale.title,
+            price: directSale.price
+          },
+          purchase: {
+            _id: purchase._id,
+            quantity: purchase.quantity,
+            unitPrice: purchase.unitPrice,
+            totalPrice: totalPrice,
+            status: purchase.status
+          },
+          sellerId: sellerId,
+          sellerName: `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`,
+          buyerId: buyer._id.toString()
+        },
+        sellerId,
+        `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`,
+        directSale.owner?.email || '',
+      );
+    }
+
+    // Create notification for seller when order is confirmed
+    const totalPrice = purchase.quantity * purchase.unitPrice;
+    const sellerNotificationTitle = `Commande Confirmée - ${totalPrice} DA`;
+    const sellerNotificationMessage = `Vous avez confirmé la commande de ${purchase.quantity} article(s) de "${directSale.title}" de ${buyer?.firstName || 'Acheteur'} ${buyer?.lastName || ''}. Vous pouvez maintenant discuter avec l'acheteur.`;
+
+    await this.notificationService.create(
+      sellerId,
+      NotificationType.ORDER,
+      sellerNotificationTitle,
+      sellerNotificationMessage,
+      {
+        directSale: {
+          _id: directSale._id,
+          title: directSale.title,
+          price: directSale.price
+        },
+        purchase: {
+          _id: purchase._id,
+          quantity: purchase.quantity,
+          unitPrice: purchase.unitPrice,
+          totalPrice: totalPrice,
+          status: purchase.status
+        },
+        sellerId: sellerId,
+        sellerName: `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`,
+        buyerId: buyer?._id?.toString() || '',
+        buyerName: `${buyer?.firstName || 'Acheteur'} ${buyer?.lastName || ''}`
+      },
+      buyer?._id?.toString() || '',
+      `${buyer?.firstName || 'Acheteur'} ${buyer?.lastName || ''}`,
+      buyer?.email || '',
+    );
 
     return purchase;
   }
