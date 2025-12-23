@@ -22,6 +22,8 @@ import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/schema/notification.schema';
 import { ClientService } from '../user/services/client.service';
 import { AttachmentService } from '../attachment/attachment.service';
+import { ChatService } from '../chat/chat.service';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class DirectSaleService {
@@ -33,13 +35,15 @@ export class DirectSaleService {
     private notificationService: NotificationService,
     private clientService: ClientService,
     private attachmentService: AttachmentService,
+    private chatService: ChatService,
+    private userService: UserService,
   ) { }
 
   async findAll(): Promise<DirectSaleDocument[]> {
     return this.directSaleModel
-      .find({ 
+      .find({
         status: { $nin: [DIRECT_SALE_STATUS.ARCHIVED, DIRECT_SALE_STATUS.INACTIVE] },
-        hidden: false 
+        hidden: false
       })
       .populate({
         path: 'owner',
@@ -144,12 +148,12 @@ export class DirectSaleService {
     console.log('Direct sale model before save - thumbs (raw):', createdDirectSale.thumbs);
     console.log('Direct sale model before save - thumbs (type):', typeof createdDirectSale.thumbs, Array.isArray(createdDirectSale.thumbs));
     console.log('Direct sale model before save - thumbs (length):', createdDirectSale.thumbs?.length || 0);
-    
+
     const savedDirectSale = await createdDirectSale.save();
     console.log('Direct sale saved - thumbs (raw):', savedDirectSale.thumbs);
     console.log('Direct sale saved - thumbs (type):', typeof savedDirectSale.thumbs, Array.isArray(savedDirectSale.thumbs));
     console.log('Direct sale saved - thumbs (length):', savedDirectSale.thumbs?.length || 0);
-    
+
     // Verify the saved direct sale has thumbs
     const verificationDirectSale = await this.directSaleModel.findById(savedDirectSale._id).select('thumbs videos').lean();
     console.log('Verification query - thumbs:', verificationDirectSale?.thumbs);
@@ -161,6 +165,10 @@ export class DirectSaleService {
       .populate('thumbs')
       .exec();
 
+    // Remove broadcast notification to all buyers as per user request
+    // Notifications should only be sent to the creator upon successful creation
+
+    /*
     // Get all buyers (clients) to send notifications
     const buyers = await this.clientService.findAllSellers();
 
@@ -189,12 +197,13 @@ export class DirectSaleService {
         populatedDirectSale.owner?.email,
       );
     }
+    */
 
     // Send confirmation notification to direct sale creator
     if (populatedDirectSale.owner && populatedDirectSale.owner._id) {
       await this.notificationService.create(
         populatedDirectSale.owner._id.toString(),
-        NotificationType.BID_CREATED,
+        NotificationType.DIRECT_SALE_CREATED,
         'Vente directe créée avec succès',
         `Votre vente directe "${populatedDirectSale.title}" a été créée avec succès et est maintenant disponible pour les acheteurs.`,
         populatedDirectSale,
@@ -259,12 +268,12 @@ export class DirectSaleService {
           status: PURCHASE_STATUS.PENDING,
         })
         .exec();
-      
+
       const pendingQuantity = pendingPurchases.reduce(
         (sum, p) => sum + p.quantity,
         0,
       );
-      
+
       const availableQuantity = directSale.quantity - directSale.soldQuantity - pendingQuantity;
       if (purchaseDto.quantity > availableQuantity) {
         throw new BadRequestException(
@@ -299,15 +308,15 @@ export class DirectSaleService {
 
     await this.notificationService.create(
       directSale.owner._id.toString(),
-      NotificationType.NEW_OFFER,
+      NotificationType.ORDER_RECEIVED,
       sellerNotificationTitle,
       sellerNotificationMessage,
-      { 
+      {
         directSale: {
           _id: directSale._id,
           title: directSale.title,
           price: directSale.price
-        }, 
+        },
         purchase: {
           _id: savedPurchase._id,
           quantity: purchaseDto.quantity,
@@ -330,15 +339,15 @@ export class DirectSaleService {
 
     await this.notificationService.create(
       buyerId,
-      NotificationType.NEW_OFFER,
+      NotificationType.ORDER,
       buyerNotificationTitle,
       buyerNotificationMessage,
-      { 
+      {
         directSale: {
           _id: directSale._id,
           title: directSale.title,
           price: directSale.price
-        }, 
+        },
         purchase: {
           _id: savedPurchase._id,
           quantity: purchaseDto.quantity,
@@ -408,6 +417,40 @@ export class DirectSaleService {
     purchase.paidAt = new Date();
     await purchase.save();
 
+    // Create chat between seller and buyer
+    let chatId = null;
+    try {
+      const sellerUser = await this.userService.findOne(sellerId);
+      const buyerUser = await this.userService.findOne(buyer._id.toString());
+
+      if (sellerUser && buyerUser) {
+        // Prepare users in the format ChatService expects (IUser[])
+        const chatUsers = [
+          {
+            _id: sellerUser._id.toString(),
+            AccountType: sellerUser.AccountType,
+            firstName: sellerUser.firstName,
+            lastName: sellerUser.lastName,
+            phone: sellerUser.phone || '',
+          },
+          {
+            _id: buyerUser._id.toString(),
+            AccountType: buyerUser.AccountType,
+            firstName: buyerUser.firstName,
+            lastName: buyerUser.lastName,
+            phone: buyerUser.phone || '',
+          }
+        ];
+
+        const chat = await this.chatService.create(chatUsers, new Date().toISOString());
+        chatId = chat._id.toString();
+        console.log(`✅ Chat created between ${sellerUser.firstName} and ${buyerUser.firstName} (ID: ${chatId})`);
+      }
+    } catch (chatError) {
+      console.error('❌ Error creating chat on confirm purchase:', chatError);
+      // Failsafe: Continue without chat, just log error
+    }
+
     // Create notification for buyer when order is confirmed
     if (buyer && buyer._id) {
       const totalPrice = purchase.quantity * purchase.unitPrice;
@@ -434,7 +477,8 @@ export class DirectSaleService {
           },
           sellerId: sellerId,
           sellerName: `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`,
-          buyerId: buyer._id.toString()
+          buyerId: buyer._id.toString(),
+          chatId: chatId // Include chat ID for redirection
         },
         sellerId,
         `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`,
@@ -468,7 +512,8 @@ export class DirectSaleService {
         sellerId: sellerId,
         sellerName: `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`,
         buyerId: buyer?._id?.toString() || '',
-        buyerName: `${buyer?.firstName || 'Acheteur'} ${buyer?.lastName || ''}`
+        buyerName: `${buyer?.firstName || 'Acheteur'} ${buyer?.lastName || ''}`,
+        chatId: chatId // Include chat ID for redirection
       },
       buyer?._id?.toString() || '',
       `${buyer?.firstName || 'Acheteur'} ${buyer?.lastName || ''}`,

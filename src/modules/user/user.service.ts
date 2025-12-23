@@ -20,7 +20,7 @@ export class UserService implements OnModuleInit {
     @InjectModel(Category.name) private readonly categoryModel: Model<Category>,
     private readonly configService: ConfigService,
     private readonly attachmentService: AttachmentService,
-  ) {}
+  ) { }
 
   // async create(userData: CreateUserDto) {
   //   const emailExist = await this.userModel.findOne({
@@ -54,7 +54,7 @@ export class UserService implements OnModuleInit {
   private enrichUserWithAvatarUrls(user: any): any {
     // Get subscriptionPlan BEFORE converting to object - try multiple ways to access it
     let subscriptionPlan: string | null = null;
-    
+
     // Try direct access
     if (user.subscriptionPlan) {
       subscriptionPlan = user.subscriptionPlan;
@@ -75,51 +75,51 @@ export class UserService implements OnModuleInit {
     else if ((user as any)?._doc?.subscriptionPlan) {
       subscriptionPlan = (user as any)._doc.subscriptionPlan;
     }
-    
+
     console.log('🔍 enrichUserWithAvatarUrls - subscriptionPlan found:', subscriptionPlan);
-    
+
     const userObj = user.toObject ? user.toObject({ virtuals: true, getters: true }) : { ...user };
-    
+
     // ALWAYS explicitly set subscriptionPlan field - even if null, so it appears in JSON response
     userObj.subscriptionPlan = subscriptionPlan || null;
-    
+
     console.log('🔍 enrichUserWithAvatarUrls - userObj.subscriptionPlan set to:', userObj.subscriptionPlan);
-    
+
     // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
     const apiBaseUrl = process.env.API_BASE_URL ||
-                      (() => {
-                        const appHost = process.env.APP_HOST || 'http://localhost';
-                        const appPort = process.env.APP_PORT || 3000;
-                        const isProduction = process.env.NODE_ENV === 'production';
-                        
-                        // In production, use https://api.mazad.click if APP_HOST is not explicitly set
-                        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                          return 'https://api.mazad.click';
-                        }
-                        
-                        // Parse the host to check if it already has a port
-                        let hostPart = appHost.replace(/\/$/, '');
-                        
-                        // Check if hostname (after ://) already has a port number
-                        // Example: http://localhost:3000 -> has port
-                        // Example: http://localhost -> needs port
-                        const hostnameMatch = hostPart.match(/:\/\/([^\/]+)/);
-                        if (hostnameMatch) {
-                          const hostname = hostnameMatch[1];
-                          // If hostname doesn't contain a colon (which would indicate a port), add it
-                          if (!hostname.includes(':') && appPort) {
-                            hostPart = hostPart.replace(/:\/\/[^\/]+/, `://${hostname}:${appPort}`);
-                          }
-                        } else if (appPort) {
-                          // If no protocol, just append port
-                          hostPart = `${hostPart}:${appPort}`;
-                        }
-                        
-                        return hostPart;
-                      })();
-    
+      (() => {
+        const appHost = process.env.APP_HOST || 'http://localhost';
+        const appPort = process.env.APP_PORT || 3000;
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        // In production, use https://api.mazad.click if APP_HOST is not explicitly set
+        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+          return 'https://api.mazad.click';
+        }
+
+        // Parse the host to check if it already has a port
+        let hostPart = appHost.replace(/\/$/, '');
+
+        // Check if hostname (after ://) already has a port number
+        // Example: http://localhost:3000 -> has port
+        // Example: http://localhost -> needs port
+        const hostnameMatch = hostPart.match(/:\/\/([^\/]+)/);
+        if (hostnameMatch) {
+          const hostname = hostnameMatch[1];
+          // If hostname doesn't contain a colon (which would indicate a port), add it
+          if (!hostname.includes(':') && appPort) {
+            hostPart = hostPart.replace(/:\/\/[^\/]+/, `://${hostname}:${appPort}`);
+          }
+        } else if (appPort) {
+          // If no protocol, just append port
+          hostPart = `${hostPart}:${appPort}`;
+        }
+
+        return hostPart;
+      })();
+
     const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
-    
+
     // Ensure avatar has fullUrl and photoURL if it exists
     if (userObj.avatar && typeof userObj.avatar === 'object' && !Array.isArray(userObj.avatar)) {
       const avatarUrl = (userObj.avatar as any).url || `/static/${(userObj.avatar as any).filename}`;
@@ -134,7 +134,7 @@ export class UserService implements OnModuleInit {
         userObj.photoURL = null;
       }
     }
-    
+
     return userObj;
   }
 
@@ -143,7 +143,7 @@ export class UserService implements OnModuleInit {
     if (user) {
       // Convert secteur ID to name if needed
       await this.convertSecteurIdToName(user);
-      
+
       // Enrich user with avatar URLs
       const enrichedUser = this.enrichUserWithAvatarUrls(user);
       // Ensure subscriptionPlan is explicitly included
@@ -178,12 +178,12 @@ export class UserService implements OnModuleInit {
     // Anchor the regex with ^ (start) and $ (end) to match the *entire* string.
     const user = await this.userModel.findOne({
       $or: [
-        { email: { $regex: new RegExp(`^${login}$`, 'i') } }, 
+        { email: { $regex: new RegExp(`^${login}$`, 'i') } },
         { phone: login }
       ],
     }).populate('avatar');
     // ▲▲▲ CORRECTION ENDS ▲▲▲
-    
+
     // if (!user) throw new BadRequestException('Invalid login'); // FIXME: TRANSLATE THIS
     return user;
   }
@@ -276,8 +276,8 @@ export class UserService implements OnModuleInit {
   async updateSubscriptionPlan(userId: string, plan: string) {
     console.log('🔍 updateSubscriptionPlan called:', { userId, plan });
     const result = await this.userModel.findByIdAndUpdate(
-      userId, 
-      { subscriptionPlan: plan }, 
+      userId,
+      { subscriptionPlan: plan },
       { new: true, runValidators: true }
     ).populate('avatar');
     console.log('✅ Subscription plan updated in database:', { userId, plan, result: result?.subscriptionPlan });
@@ -320,21 +320,21 @@ export class UserService implements OnModuleInit {
     const users = await this.userModel.find({ type: { $in: roles } })
       .populate('avatar')
       .lean(false); // Don't use lean() to preserve document methods and virtuals
-    
+
     console.log('🔍 Found users:', users.length);
-    
+
     // Convert secteur IDs to names and enrich with avatar URLs for all users
     const enrichedUsers = [];
     for (const user of users) {
       await this.convertSecteurIdToName(user);
-      
+
       // Get subscriptionPlan from the document - try multiple access methods
       let planFromDoc: string | null | undefined = undefined;
-      
+
       // Try direct access first
       if ((user as any).subscriptionPlan !== undefined) {
         planFromDoc = (user as any).subscriptionPlan;
-      } 
+      }
       // Try _doc access
       else if ((user as any)._doc?.subscriptionPlan !== undefined) {
         planFromDoc = (user as any)._doc.subscriptionPlan;
@@ -347,26 +347,26 @@ export class UserService implements OnModuleInit {
           // Ignore
         }
       }
-      
+
       // Convert undefined to null for consistency
       if (planFromDoc === undefined) {
         planFromDoc = null;
       }
-      
+
       console.log(`🔍 User ${(user as any)._id} subscriptionPlan from document:`, planFromDoc);
-      
+
       const enrichedUser = this.enrichUserWithAvatarUrls(user);
-      
+
       // CRITICAL: Always explicitly set subscriptionPlan field - even if null
       // This ensures it appears in the JSON response
       enrichedUser.subscriptionPlan = enrichedUser.subscriptionPlan ?? planFromDoc ?? null;
-      
+
       // Double-check: ensure the field exists in the object
       if (!('subscriptionPlan' in enrichedUser)) {
         enrichedUser.subscriptionPlan = null;
         console.log('⚠️ subscriptionPlan missing after enrichment, explicitly setting to null');
       }
-      
+
       console.log(`✅ User ${(user as any)._id} final subscriptionPlan:`, enrichedUser.subscriptionPlan);
       enrichedUsers.push(enrichedUser);
     }
@@ -408,33 +408,37 @@ export class UserService implements OnModuleInit {
     if (user && user.avatar && typeof user.avatar === 'object' && !Array.isArray(user.avatar)) {
       // Ensure avatar has fullUrl
       const userWithFullUrl = user.toObject() as any;
-      
+
       // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
       const apiBaseUrl = process.env.API_BASE_URL ||
-                        (() => {
-                          const appHost = process.env.APP_HOST || 'http://localhost';
-                          const appPort = process.env.APP_PORT || 3000;
-                          const isProduction = process.env.NODE_ENV === 'production';
-                          
-                          // In production, use https://api.mazad.click if APP_HOST is not explicitly set
-                          if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                            return 'https://api.mazad.click';
-                          }
-                          
-                          const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-                          return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-                        })();
-      
+        (() => {
+          const appHost = process.env.APP_HOST || 'http://localhost';
+          const appPort = process.env.APP_PORT || 3000;
+          const isProduction = process.env.NODE_ENV === 'production';
+
+          // In production, use https://api.mazad.click if APP_HOST is not explicitly set
+          if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+            return 'https://api.mazad.click';
+          }
+
+          const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+          return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+        })();
+
       const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
       const avatarUrl = (user.avatar as any).url || `/static/${(user.avatar as any).filename}`;
       userWithFullUrl.avatar.fullUrl = `${fullBaseUrl}${avatarUrl}`;
-      
+
       // Also set photoURL for backward compatibility
       userWithFullUrl.photoURL = userWithFullUrl.avatar.fullUrl;
-      
+
       return userWithFullUrl;
     }
     return user;
+  }
+
+  async findOne(id: string) {
+    return this.getUserById(id);
   }
 
   async findUserByIdWithAvatar(userId: string) {
@@ -442,23 +446,23 @@ export class UserService implements OnModuleInit {
     if (user && user.avatar) {
       // Construct the full URL for the avatar using the same logic as AttachmentService
       const userWithFullUrl = user.toObject() as any;
-      
+
       // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
       const apiBaseUrl = process.env.API_BASE_URL ||
-                        (() => {
-                          const appHost = process.env.APP_HOST || 'http://localhost';
-                          const appPort = process.env.APP_PORT || 3000;
-                          const isProduction = process.env.NODE_ENV === 'production';
-                          
-                          // In production, use https://api.mazad.click if APP_HOST is not explicitly set
-                          if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                            return 'https://api.mazad.click';
-                          }
-                          
-                          const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-                          return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-                        })();
-      
+        (() => {
+          const appHost = process.env.APP_HOST || 'http://localhost';
+          const appPort = process.env.APP_PORT || 3000;
+          const isProduction = process.env.NODE_ENV === 'production';
+
+          // In production, use https://api.mazad.click if APP_HOST is not explicitly set
+          if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+            return 'https://api.mazad.click';
+          }
+
+          const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+          return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+        })();
+
       const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
       userWithFullUrl.avatar.fullUrl = `${fullBaseUrl}${user.avatar.url}`;
       return userWithFullUrl;
@@ -479,54 +483,54 @@ export class UserService implements OnModuleInit {
     return { message: 'User deleted successfully', user };
   }
 
-async setUserRecommended(userId: string, isRecommended: boolean) {
-  const user = await this.userModel.findByIdAndUpdate(
-    userId,
-    { isRecommended },
-    { new: true }
-  ).populate('avatar');
-  if (!user) throw new BadRequestException('User not found');
-  return user;
-}
+  async setUserRecommended(userId: string, isRecommended: boolean) {
+    const user = await this.userModel.findByIdAndUpdate(
+      userId,
+      { isRecommended },
+      { new: true }
+    ).populate('avatar');
+    if (!user) throw new BadRequestException('User not found');
+    return user;
+  }
 
-async getRecommendedProfessionals() {
-  const users = await this.userModel.find({ 
-    type: RoleCode.PROFESSIONAL, 
-    isRecommended: true,
-    isVerified: true,
-    isActive: true,
-    isBanned: false
-  }).populate('avatar');
-  // Convert secteur IDs to names and enrich with avatar URLs for all users
-  const enrichedUsers = [];
-  for (const user of users) {
-    await this.convertSecteurIdToName(user);
-    const enrichedUser = this.enrichUserWithAvatarUrls(user);
-    // Ensure subscriptionPlan is explicitly included
-    if (user.subscriptionPlan) {
-      enrichedUser.subscriptionPlan = user.subscriptionPlan;
+  async getRecommendedProfessionals() {
+    const users = await this.userModel.find({
+      type: RoleCode.PROFESSIONAL,
+      isRecommended: true,
+      isVerified: true,
+      isActive: true,
+      isBanned: false
+    }).populate('avatar');
+    // Convert secteur IDs to names and enrich with avatar URLs for all users
+    const enrichedUsers = [];
+    for (const user of users) {
+      await this.convertSecteurIdToName(user);
+      const enrichedUser = this.enrichUserWithAvatarUrls(user);
+      // Ensure subscriptionPlan is explicitly included
+      if (user.subscriptionPlan) {
+        enrichedUser.subscriptionPlan = user.subscriptionPlan;
+      }
+      enrichedUsers.push(enrichedUser);
     }
-    enrichedUsers.push(enrichedUser);
+    return enrichedUsers;
   }
-  return enrichedUsers;
-}
 
-async getRecommendedResellers() {
-  const users = await this.userModel.find({ 
-    type: RoleCode.RESELLER, 
-    isRecommended: true,
-    isVerified: true,
-    isActive: true,
-    isBanned: false
-  }).populate('avatar');
-  // Convert secteur IDs to names and enrich with avatar URLs for all users
-  const enrichedUsers = [];
-  for (const user of users) {
-    await this.convertSecteurIdToName(user);
-    enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
+  async getRecommendedResellers() {
+    const users = await this.userModel.find({
+      type: RoleCode.RESELLER,
+      isRecommended: true,
+      isVerified: true,
+      isActive: true,
+      isBanned: false
+    }).populate('avatar');
+    // Convert secteur IDs to names and enrich with avatar URLs for all users
+    const enrichedUsers = [];
+    for (const user of users) {
+      await this.convertSecteurIdToName(user);
+      enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
+    }
+    return enrichedUsers;
   }
-  return enrichedUsers;
-}
 
   /**
    * Converts secteur field from category ID to category name if needed
@@ -557,17 +561,17 @@ async getRecommendedResellers() {
     }
   }
 
-async updateUserType(userId: string, newType: RoleCode): Promise<User> {
-  const user = await this.userModel.findByIdAndUpdate(
-    userId,
-    { type: newType },
-    { new: true }
-  ).populate('avatar');
-  
-  if (!user) {
-    throw new BadRequestException('User not found');
+  async updateUserType(userId: string, newType: RoleCode): Promise<User> {
+    const user = await this.userModel.findByIdAndUpdate(
+      userId,
+      { type: newType },
+      { new: true }
+    ).populate('avatar');
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    return user;
   }
-  
-  return user;
-}
 }

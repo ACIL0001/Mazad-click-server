@@ -13,6 +13,7 @@ import { SessionModule } from '../session/session.module';
 import { NotificationModule } from '../notification/notification.module';
 import { UserModule } from '../user/user.module';
 import { AttachmentModule } from '../attachment/attachment.module';
+import { ChatModule } from '../chat/chat.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { AttachmentModule } from '../attachment/attachment.module';
     NotificationModule,
     UserModule,
     AttachmentModule,
+    ChatModule,
   ],
   controllers: [DirectSaleController],
   providers: [DirectSaleService],

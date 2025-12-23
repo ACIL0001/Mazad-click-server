@@ -32,7 +32,7 @@ import { ConfigService } from '@nestjs/config';
 // Helper to transform attachment(s) to minimal shape with fullUrl
 function transformAttachment(att, baseUrl?: string) {
   if (!att) return null;
-  
+
   // Compute base URL if not provided
   const apiBase = baseUrl || (() => {
     const apiBaseUrl = process.env.API_BASE_URL ||
@@ -40,37 +40,37 @@ function transformAttachment(att, baseUrl?: string) {
         const appHost = process.env.APP_HOST || 'http://localhost';
         const appPort = process.env.APP_PORT || '3000';
         const isProduction = process.env.NODE_ENV === 'production';
-        
+
         if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
           return 'https://mazadclick-server.onrender.com';
         }
-        
+
         const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
         return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
       })();
     return apiBaseUrl.replace(/\/$/, '');
   })();
-  
+
   if (Array.isArray(att)) {
     return att.filter(Boolean).map(a => {
       if (!a || !a.url) return null;
       const fullUrl = a.fullUrl || `${apiBase}${a.url}`;
-      return { 
-        url: a.url, 
+      return {
+        url: a.url,
         fullUrl: fullUrl,
-        _id: a._id, 
-        filename: a.filename 
+        _id: a._id,
+        filename: a.filename
       };
     }).filter(Boolean);
   }
-  
+
   if (!att.url) return null;
   const fullUrl = att.fullUrl || `${apiBase}${att.url}`;
-  return { 
-    url: att.url, 
+  return {
+    url: att.url,
     fullUrl: fullUrl,
-    _id: att._id, 
-    filename: att.filename 
+    _id: att._id,
+    filename: att.filename
   };
 }
 
@@ -86,20 +86,20 @@ export class TenderController {
     private readonly configService: ConfigService,
   ) {
     // Compute base URL for fullUrl construction
-    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') || 
-                      process.env.API_BASE_URL ||
-                      (() => {
-                        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
-                        const appPort = this.configService.get<number>('APP_PORT', 3000);
-                        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-                        
-                        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                          return 'https://mazadclick-server.onrender.com';
-                        }
-                        
-                        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-                        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-                      })();
+    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') ||
+      process.env.API_BASE_URL ||
+      (() => {
+        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
+        const appPort = this.configService.get<number>('APP_PORT', 3000);
+        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+
+        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+          return 'https://mazadclick-server.onrender.com';
+        }
+
+        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+      })();
     this.baseUrl = apiBaseUrl.replace(/\/$/, '');
   }
 
@@ -113,12 +113,12 @@ export class TenderController {
     })));
     return tenders.map((tender) => {
       const tenderData = JSON.parse(JSON.stringify(tender));
-      
+
       // Ensure evaluationType is always present (default to MOINS_DISANT for old tenders)
       if (!tenderData.evaluationType) {
         tenderData.evaluationType = 'MOINS_DISANT';
       }
-      
+
       return {
         ...tenderData,
         attachments: transformAttachment(tender.attachments, this.baseUrl),
@@ -180,7 +180,7 @@ export class TenderController {
     try {
       const tender = await this.tenderService.findOne(id);
       let awardedUser: any = null;
-      
+
       if (tender.awardedTo) {
         try {
           const getUser = await this.userService.getUserById(tender.awardedTo.toString());
@@ -190,19 +190,19 @@ export class TenderController {
           // Continue without the user data if there's an error
         }
       }
-      
+
       console.log('awardedUser:', awardedUser);
-      
+
       const tenderData = JSON.parse(JSON.stringify(tender));
-      
+
       // Ensure evaluationType is always present (default to MOINS_DISANT for old tenders)
       if (!tenderData.evaluationType) {
         tenderData.evaluationType = 'MOINS_DISANT';
         console.log('⚠️ Tender missing evaluationType, defaulting to MOINS_DISANT');
       }
-      
+
       console.log('✅ Tender evaluation type:', tenderData.evaluationType);
-      
+
       return {
         ...tenderData,
         attachments: transformAttachment(tender.attachments, this.baseUrl),
@@ -255,27 +255,34 @@ export class TenderController {
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
     const userId = req.session?.user?._id?.toString();
+    console.log('TenderController.create - Session User ID:', userId);
+
     if (!userId) {
+      console.error('TenderController.create - No User ID in Session!', { session: req.session });
       throw new Error('User ID not found in session. Cannot create tender.');
+    }
+
+    if (!rawData) {
+      console.error('TenderController.create - No "data" field in body!');
+      throw new Error('Missing "data" field in request body');
     }
 
     console.log('Creating tender with data:', rawData);
     console.log('Uploaded files count:', files?.length || 0);
-    console.log('Uploaded files details:', files?.map(f => ({ 
-      fieldname: f.fieldname, 
-      originalname: f.originalname, 
-      mimetype: f.mimetype,
-      size: f.size,
-      filename: f.filename
-    })));
 
-    const createTenderDto: CreateTenderDto = JSON.parse(rawData);
-    
+    let createTenderDto: CreateTenderDto;
+    try {
+      createTenderDto = JSON.parse(rawData);
+    } catch (e) {
+      console.error('TenderController.create - JSON Parse Error:', e.message);
+      throw new Error('Invalid JSON format in "data" field');
+    }
+
     // Initialize attachments array
     if (!createTenderDto.attachments) {
       createTenderDto.attachments = [];
     }
-    
+
     console.log('📋 CreateTenderDto parsed:', {
       title: createTenderDto.title,
       tenderType: createTenderDto.tenderType,
@@ -288,21 +295,21 @@ export class TenderController {
       // Log all file fieldnames to debug
       const allFieldnames = [...new Set(files.map(f => f.fieldname))];
       console.log('All unique fieldnames received:', allFieldnames);
-      
+
       // Filter files - handle both 'attachments[]' and 'attachments'
       let attachmentFiles = files.filter(file => {
-        const isAttachmentsField = file.fieldname === 'attachments[]' || 
-                                  file.fieldname === 'attachments' ||
-                                  file.fieldname.startsWith('attachments');
+        const isAttachmentsField = file.fieldname === 'attachments[]' ||
+          file.fieldname === 'attachments' ||
+          file.fieldname.startsWith('attachments');
         return isAttachmentsField;
       });
-      
+
       // Fallback: if no files found with attachments fieldname, use all files
       if (attachmentFiles.length === 0) {
         console.warn('No files found with attachments fieldname, using all files...');
         attachmentFiles = files;
       }
-      
+
       console.log('Filtered attachment files:', attachmentFiles.length);
       console.log('Attachment file details:', attachmentFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
 
@@ -334,10 +341,10 @@ export class TenderController {
         console.log('Attachments IDs set (count:', attachmentIds.length, '):', createTenderDto.attachments);
         if (attachmentIds.length === 0 && attachmentFiles.length > 0) {
           console.error('WARNING: No valid attachment IDs were extracted from', attachments.length, 'attachments');
-          console.error('Attachment details:', attachments.map(a => ({ 
-            hasId: !!a?._id, 
+          console.error('Attachment details:', attachments.map(a => ({
+            hasId: !!a?._id,
             id: a?._id?.toString(),
-            url: a?.url 
+            url: a?.url
           })));
         }
       } catch (error) {
@@ -347,7 +354,7 @@ export class TenderController {
     } else {
       console.warn('No files received in the request');
     }
-    
+
     // Final validation before creating tender
     console.log('Final tender DTO before service call:', {
       title: createTenderDto.title,
@@ -389,7 +396,7 @@ export class TenderController {
     // Validate required fields based on tender evaluation type
     const tender = await this.tenderService.findOne(tenderId);
     const isMieuxDisant = tender.evaluationType === 'MIEUX_DISANT';
-    
+
     console.log('🔍 [TenderController] Bid validation:', {
       tenderId,
       evaluationType: tender.evaluationType,
@@ -398,7 +405,7 @@ export class TenderController {
       hasProposal: !!createTenderBidDto.proposal,
       proposalLength: createTenderBidDto.proposal?.length
     });
-    
+
     if (isMieuxDisant) {
       // For MIEUX_DISANT: Proposal is required, bidAmount can be 0
       if (!createTenderBidDto.proposal || createTenderBidDto.proposal.trim().length < 10) {
@@ -478,7 +485,7 @@ export class TenderController {
   ) {
     try {
       console.log('TenderController: Accepting tender bid:', { bidId, userId: req.session?.user?._id });
-      
+
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         throw new BadRequestException('User ID not found in session');
@@ -504,7 +511,7 @@ export class TenderController {
   ) {
     try {
       console.log('TenderController: Rejecting tender bid:', { bidId, userId: req.session?.user?._id });
-      
+
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         throw new BadRequestException('User ID not found in session');
@@ -530,7 +537,7 @@ export class TenderController {
   ) {
     try {
       console.log('TenderController: Deleting tender bid:', { bidId, userId: req.session?.user?._id });
-      
+
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         throw new BadRequestException('User ID not found in session');

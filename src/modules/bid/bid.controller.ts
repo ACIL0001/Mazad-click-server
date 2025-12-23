@@ -35,7 +35,7 @@ import { ConfigService } from '@nestjs/config';
 // Helper to transform attachment(s) to minimal shape with fullUrl
 function transformAttachment(att, baseUrl?: string) {
   if (!att) return null;
-  
+
   // Compute base URL if not provided
   const apiBase = baseUrl || (() => {
     const apiBaseUrl = process.env.API_BASE_URL ||
@@ -43,37 +43,37 @@ function transformAttachment(att, baseUrl?: string) {
         const appHost = process.env.APP_HOST || 'http://localhost';
         const appPort = process.env.APP_PORT || '3000';
         const isProduction = process.env.NODE_ENV === 'production';
-        
+
         if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
           return 'https://mazadclick-server.onrender.com';
         }
-        
+
         const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
         return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
       })();
     return apiBaseUrl.replace(/\/$/, '');
   })();
-  
+
   if (Array.isArray(att)) {
     return att.filter(Boolean).map(a => {
       if (!a || !a.url) return null;
       const fullUrl = a.fullUrl || `${apiBase}${a.url}`;
-      return { 
-        url: a.url, 
+      return {
+        url: a.url,
         fullUrl: fullUrl,
-        _id: a._id, 
-        filename: a.filename 
+        _id: a._id,
+        filename: a.filename
       };
     }).filter(Boolean);
   }
-  
+
   if (!att.url) return null;
   const fullUrl = att.fullUrl || `${apiBase}${att.url}`;
-  return { 
-    url: att.url, 
+  return {
+    url: att.url,
     fullUrl: fullUrl,
-    _id: att._id, 
-    filename: att.filename 
+    _id: att._id,
+    filename: att.filename
   };
 }
 
@@ -91,20 +91,20 @@ export class BidController {
     private readonly configService: ConfigService,
   ) {
     // Compute base URL for fullUrl construction
-    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') || 
-                      process.env.API_BASE_URL ||
-                      (() => {
-                        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
-                        const appPort = this.configService.get<number>('APP_PORT', 3000);
-                        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-                        
-                        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                          return 'https://mazadclick-server.onrender.com';
-                        }
-                        
-                        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-                        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-                      })();
+    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') ||
+      process.env.API_BASE_URL ||
+      (() => {
+        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
+        const appPort = this.configService.get<number>('APP_PORT', 3000);
+        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+
+        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+          return 'https://mazadclick-server.onrender.com';
+        }
+
+        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+      })();
     this.baseUrl = apiBaseUrl.replace(/\/$/, '');
   }
 
@@ -113,9 +113,9 @@ export class BidController {
   async findAll() {
     const bids = await this.bidService.findAll();
     console.log('Bids with populated thumbs:', bids.map(bid => ({
-    id: bid._id,
-    thumbs: bid.thumbs,
-  })));
+      id: bid._id,
+      thumbs: bid.thumbs,
+    })));
     return bids.map((bid) => ({
       ...JSON.parse(JSON.stringify(bid)),
       thumbs: transformAttachment(bid.thumbs, this.baseUrl),
@@ -150,8 +150,8 @@ export class BidController {
   async checkBidsToUser(@Body('id') id: any) {
     let vl = this.bidService.checkBids(id);
     return {
-       message:'done' ,
-       vl
+      message: 'done',
+      vl
     }
   }
 
@@ -161,7 +161,7 @@ export class BidController {
     try {
       const bid = await this.bidService.findOne(id);
       let vl: any = null;
-      
+
       if (bid.winner) {
         try {
           const getuser = await this.userService.getUserById(bid.winner.toString());
@@ -171,9 +171,9 @@ export class BidController {
           // Continue without the user data if there's an error
         }
       }
-      
+
       console.log('vl :', vl);
-      
+
       return {
         ...JSON.parse(JSON.stringify(bid)),
         thumbs: transformAttachment(bid.thumbs, this.baseUrl),
@@ -243,22 +243,29 @@ export class BidController {
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
     const userId = req.session?.user?._id?.toString();
+    console.log('BidController.create - Session User ID:', userId);
+
     if (!userId) {
+      console.error('BidController.create - No User ID in Session!', { session: req.session });
       throw new Error('User ID not found in session. Cannot create bid.');
+    }
+
+    if (!rawData) {
+      console.error('BidController.create - No "data" field in body!');
+      throw new Error('Missing "data" field in request body');
     }
 
     console.log('Creating bid with data:', rawData);
     console.log('Uploaded files count:', files?.length || 0);
-    console.log('Uploaded files details:', files?.map(f => ({ 
-      fieldname: f.fieldname, 
-      originalname: f.originalname, 
-      mimetype: f.mimetype,
-      size: f.size,
-      filename: f.filename
-    })));
 
-    const createBidDto: CreateBidDto = JSON.parse(rawData);
-    
+    let createBidDto: CreateBidDto;
+    try {
+      createBidDto = JSON.parse(rawData);
+    } catch (e) {
+      console.error('BidController.create - JSON Parse Error:', e.message);
+      throw new Error('Invalid JSON format in "data" field');
+    }
+
     // Initialize thumbs and videos arrays if not present
     if (!createBidDto.thumbs) {
       createBidDto.thumbs = [];
@@ -271,17 +278,17 @@ export class BidController {
       // Log all file fieldnames to debug
       const allFieldnames = [...new Set(files.map(f => f.fieldname))];
       console.log('All unique fieldnames received:', allFieldnames);
-      
+
       // Separate images and videos based on fieldname (handle both 'thumbs[]' and 'thumbs')
       // Multer might process the fieldname differently
       let imageFiles = files.filter(file => {
-        const isThumbsField = file.fieldname === 'thumbs[]' || 
-                             file.fieldname === 'thumbs' ||
-                             file.fieldname.startsWith('thumbs');
+        const isThumbsField = file.fieldname === 'thumbs[]' ||
+          file.fieldname === 'thumbs' ||
+          file.fieldname.startsWith('thumbs');
         const isImage = file.mimetype.startsWith('image/');
         return isThumbsField && isImage;
       });
-      
+
       // Fallback: if no images found with thumbs fieldname, check all image files
       if (imageFiles.length === 0) {
         console.warn('No images found with thumbs fieldname, checking all image files...');
@@ -291,15 +298,15 @@ export class BidController {
           imageFiles = allImages; // Use all images as fallback
         }
       }
-      
+
       let videoFiles = files.filter(file => {
-        const isVideosField = file.fieldname === 'videos[]' || 
-                            file.fieldname === 'videos' ||
-                            file.fieldname.startsWith('videos');
+        const isVideosField = file.fieldname === 'videos[]' ||
+          file.fieldname === 'videos' ||
+          file.fieldname.startsWith('videos');
         const isVideo = file.mimetype.startsWith('video/');
         return isVideosField && isVideo;
       });
-      
+
       // Fallback: if no videos found with videos fieldname, check all video files
       if (videoFiles.length === 0) {
         console.warn('No videos found with videos fieldname, checking all video files...');
@@ -345,10 +352,10 @@ export class BidController {
           console.log('Thumbs IDs set (count:', thumbIds.length, '):', createBidDto.thumbs);
           if (thumbIds.length === 0 && imageFiles.length > 0) {
             console.error('WARNING: No valid thumb IDs were extracted from', imageAttachments.length, 'attachments');
-            console.error('Attachment details:', imageAttachments.map(a => ({ 
-              hasId: !!a?._id, 
+            console.error('Attachment details:', imageAttachments.map(a => ({
+              hasId: !!a?._id,
               id: a?._id?.toString(),
-              url: a?.url 
+              url: a?.url
             })));
           }
         } catch (error) {
@@ -387,10 +394,10 @@ export class BidController {
           console.log('Videos IDs set (count:', videoIds.length, '):', createBidDto.videos);
           if (videoIds.length === 0 && videoFiles.length > 0) {
             console.error('WARNING: No valid video IDs were extracted from', videoAttachments.length, 'attachments');
-            console.error('Attachment details:', videoAttachments.map(a => ({ 
-              hasId: !!a?._id, 
+            console.error('Attachment details:', videoAttachments.map(a => ({
+              hasId: !!a?._id,
               id: a?._id?.toString(),
-              url: a?.url 
+              url: a?.url
             })));
           }
         } catch (error) {
@@ -439,10 +446,10 @@ export class BidController {
     console.log('Relaunch endpoint called with:', JSON.stringify(relaunchBidDto, null, 2));
     console.log('Request session:', request.session);
     console.log('Request headers:', request.headers);
-    
+
     const userId = request.session?.user?._id?.toString();
     console.log('User ID:', userId);
-    
+
     if (!userId) {
       console.log('No user ID found in session');
       throw new Error('User ID not found in session. Cannot relaunch bid.');
@@ -460,7 +467,7 @@ export class BidController {
       console.log('endingAt:', relaunchBidDto.endingAt, typeof relaunchBidDto.endingAt);
       console.log('isPro:', relaunchBidDto.isPro, typeof relaunchBidDto.isPro);
       console.log('auctionType:', relaunchBidDto.auctionType);
-      
+
       const result = await this.bidService.relaunchBid(relaunchBidDto, userId);
       console.log('Relaunch successful, returning result:', result);
       return result;
@@ -472,7 +479,7 @@ export class BidController {
         name: error.name,
         cause: error.cause
       });
-      
+
       // Return a more specific error message
       if (error.message) {
         throw new Error(`Relaunch failed: ${error.message}`);
