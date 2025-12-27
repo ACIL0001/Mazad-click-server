@@ -1,8 +1,6 @@
 import { Controller, Get, Post, Put, UseGuards, Request, Body, Patch, Param, BadRequestException, UseInterceptors, UploadedFile, Delete } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { Multer } from 'multer';
+
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import { ProtectedRequest } from 'src/types/request.type';
 import { ProService } from './services/pro.service';
@@ -25,7 +23,7 @@ export class UserController {
     private readonly attachmentService: AttachmentService,
     private readonly adminService: AdminService,
     private readonly identityService: IdentityService,
-  ) {}
+  ) { }
 
   @Get('test')
   @Public()
@@ -37,7 +35,7 @@ export class UserController {
   @UseGuards(AuthGuard)
   async testDashboardAccess(@Request() request: ProtectedRequest) {
     const user = request.session.user;
-    return { 
+    return {
       message: 'Dashboard access successful',
       userType: user.type,
       userId: user._id,
@@ -53,7 +51,7 @@ export class UserController {
     // Always return fresh user data from database
     const userId = request.session.user._id.toString();
     const freshUser = await this.userService.findUserById(userId);
-    
+
     if (!freshUser) {
       throw new BadRequestException('User not found');
     }
@@ -69,11 +67,11 @@ export class UserController {
   @UseGuards(AuthGuard)
   async updateProfile(@Request() req: ProtectedRequest, @Body() updateData: any) {
     const userId = req.session.user._id.toString();
-    
+
     // Validate input data
-    const allowedFields = ['firstName', 'lastName', 'phone'];
+    const allowedFields = ['firstName', 'lastName', 'phone', 'wilaya', 'secteur', 'socialReason', 'jobTitle', 'entity'];
     const filteredData = {};
-    
+
     for (const field of allowedFields) {
       if (updateData[field] !== undefined) {
         filteredData[field] = updateData[field];
@@ -88,7 +86,7 @@ export class UserController {
 
     // Update the user
     const updatedUser = await this.userService.updateUserFields(userId, filteredData);
-    
+
     if (!updatedUser) {
       throw new BadRequestException('Failed to update user profile');
     }
@@ -106,15 +104,7 @@ export class UserController {
 
   @Post('/me/avatar')
   @UseGuards(AuthGuard)
-  @UseInterceptors(FileInterceptor('avatar', {
-    storage: diskStorage({
-      destination: './uploads',
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, uniqueSuffix + extname(file.originalname));
-      },
-    }),
-  }))
+  @UseInterceptors(FileInterceptor('avatar'))
   async updateAvatar(
     @Request() req: ProtectedRequest,
     @UploadedFile() avatar: Express.Multer.File
@@ -168,6 +158,63 @@ export class UserController {
       throw new BadRequestException(`Failed to update avatar: ${error.message}`);
     }
   }
+  @Post('/me/cover')
+  @UseGuards(AuthGuard)
+  @UseInterceptors(FileInterceptor('cover'))
+  async updateCover(
+    @Request() req: ProtectedRequest,
+    @UploadedFile() cover: Express.Multer.File
+  ) {
+    console.log('🖼️ User.Controller: updateCover endpoint hit');
+    if (!cover) {
+      throw new BadRequestException('Cover file is required');
+    }
+
+    const userId = req.session.user._id.toString();
+
+    console.log('Updating cover for user:', userId);
+
+    try {
+      // Check if user already has a cover attachment
+      const existingCover = await this.attachmentService.findByUserAndType(userId, AttachmentAs.COVER);
+
+      let attachment;
+      if (existingCover) {
+        console.log('Updating existing cover attachment:', existingCover._id);
+        attachment = await this.attachmentService.updateAttachment(existingCover._id.toString(), cover, userId);
+      } else {
+        console.log('Creating new cover attachment');
+        attachment = await this.attachmentService.upload(cover, AttachmentAs.COVER, userId);
+
+        await this.userService.updateUserFields(userId, {
+          coverPhoto: attachment._id as any
+        });
+      }
+
+      // Always return fresh user data from database
+      const userWithCover = await this.userService.findUserById(userId);
+
+      if (!userWithCover) {
+        throw new BadRequestException('Failed to fetch updated user data');
+      }
+
+      return {
+        success: true,
+        message: existingCover ? 'Cover updated successfully' : 'Cover uploaded successfully',
+        user: userWithCover,
+        data: userWithCover, // Include both formats for compatibility
+        attachment: {
+          _id: attachment._id,
+          url: attachment.url,
+          filename: attachment.filename
+        }
+      };
+
+    } catch (error) {
+      console.error('Error updating cover:', error);
+      throw new BadRequestException(`Failed to update cover: ${error.message}`);
+    }
+  }
 
   // NEW: Client to Professional conversion
   @Post('/convert-to-professional')
@@ -177,7 +224,7 @@ export class UserController {
     @Body() conversionData: { plan?: string; paymentDetails?: any }
   ) {
     console.log('🏢 === CONVERT TO PROFESSIONAL ENDPOINT CALLED ===');
-    
+
     const user = req.session.user;
     console.log('convertToProfessional called with user:', user);
     console.log('User type:', user.type);
@@ -258,7 +305,7 @@ export class UserController {
     @Body() conversionData: { plan: string; paymentDetails: any }
   ) {
     console.log('🚀 === CONVERT TO RESELLER ENDPOINT CALLED ===');
-    
+
     const user = req.session.user;
     console.log('convertToReseller called with user:', user);
     console.log('User type:', user.type);
@@ -355,7 +402,7 @@ export class UserController {
   @UseGuards(AuthGuard)
   async verifyProfessionalIdentity(@Request() req: ProtectedRequest) {
     console.log('🔍 === VERIFY PROFESSIONAL IDENTITY ENDPOINT CALLED ===');
-    
+
     const user = req.session.user;
     console.log('verifyProfessionalIdentity called with user:', user);
     console.log('User type:', user.type);
@@ -413,15 +460,7 @@ export class UserController {
 
   @Post('/me/reseller-identity')
   @UseGuards(AuthGuard)
-  @UseInterceptors(FileInterceptor('identityCard', {
-    storage: diskStorage({
-      destination: './uploads/identity',
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, uniqueSuffix + extname(file.originalname));
-      },
-    }),
-  }))
+  @UseInterceptors(FileInterceptor('identityCard'))
   async uploadResellerIdentity(
     @Request() req: ProtectedRequest,
     @UploadedFile() identityCard: Express.Multer.File
@@ -470,7 +509,7 @@ export class UserController {
   @Post('/admin')
   async createAdmin() {
     await this.adminService.initializeAdminUsers();
-return { message: 'Admin users initialized successfully' };
+    return { message: 'Admin users initialized successfully' };
   }
 
   @Post('/subscription-plan')
@@ -503,7 +542,7 @@ return { message: 'Admin users initialized successfully' };
     const userId = req.session.user._id.toString();
     const result = await this.userService.changePassword(userId, data.currentPassword, data.newPassword);
     console.log('Change password result:', result);
-    
+
     return {
       success: true,
       message: result.message || 'Password changed successfully',
@@ -527,7 +566,7 @@ return { message: 'Admin users initialized successfully' };
     console.log('Getting ALL professionals (verified and unverified)...');
     const professionals = await this.userService.findUsersByRoles([RoleCode.PROFESSIONAL]);
     console.log(`Found ${professionals.length} total professionals`);
-    
+
     // Ensure subscriptionPlan is in response - explicitly add if missing
     const professionalsWithPlan = professionals.map((prof: any) => {
       if (!('subscriptionPlan' in prof)) {
@@ -537,7 +576,7 @@ return { message: 'Admin users initialized successfully' };
       console.log(`Professional ${prof._id}: subscriptionPlan =`, prof.subscriptionPlan);
       return prof;
     });
-    
+
     return professionalsWithPlan;
   }
 
@@ -556,22 +595,22 @@ return { message: 'Admin users initialized successfully' };
   @Public()
   async getVerifiedProfessionals() {
     console.log('Getting verified professionals...');
-    
+
     try {
       // Get all accepted/done identities
       const acceptedIdentities = await this.identityService.getIdentitiesByStatus(IDE_TYPE.DONE);
       console.log('Found accepted identities:', acceptedIdentities.length);
-      
+
       // Filter for professional users only
-      const professionalIdentities = acceptedIdentities.filter(identity => 
+      const professionalIdentities = acceptedIdentities.filter(identity =>
         identity.user && (identity.user as unknown as User).type === RoleCode.PROFESSIONAL
       );
       console.log('Professional identities found:', professionalIdentities.length);
-      
+
       // Extract user IDs and fetch full user details
       const userIds = professionalIdentities.map(identity => (identity.user as unknown as User)._id.toString());
       const professionals = await this.userService.findUsersByIds(userIds);
-      
+
       console.log('Verified professionals found:', professionals.length);
       return professionals;
     } catch (error) {
@@ -584,22 +623,22 @@ return { message: 'Admin users initialized successfully' };
   @Public()
   async getVerifiedResellers() {
     console.log('Getting verified resellers...');
-    
+
     try {
       // Get all users with RESELLER type who have verified identities
       const allResellers = await this.userService.findUsersByRoles([RoleCode.RESELLER]);
       console.log('All resellers found:', allResellers.length);
-      
+
       // Filter resellers who have verified identities (status = DONE)
       const verifiedResellers = [];
-      
+
       for (const reseller of allResellers) {
         const identity = await this.identityService.getIdentityByUser(reseller._id.toString());
         if (identity && identity.status === IDE_TYPE.DONE) {
           verifiedResellers.push(reseller);
         }
       }
-      
+
       console.log('Verified resellers found:', verifiedResellers.length);
       return verifiedResellers;
     } catch (error) {
@@ -678,10 +717,10 @@ return { message: 'Admin users initialized successfully' };
     }
     // Promote to reseller
     const updatedUser = await this.userService.updateUserFields(userId, { type: RoleCode.RESELLER });
-    
+
     // Return fresh user data
     const freshUser = await this.userService.findUserById(userId);
-    
+
     return {
       success: true,
       message: 'User promoted to reseller successfully',
@@ -696,32 +735,32 @@ return { message: 'Admin users initialized successfully' };
     console.log('🆔 === UPDATE USER WITH IDENTITY ENDPOINT CALLED ===');
     console.log('🆔 Request headers:', req.headers);
     console.log('🆔 Session:', req.session);
-    
+
     const user = req.session.user;
     console.log('updateUserWithIdentity called with user:', user);
     console.log('User type:', user.type);
-    
+
     try {
       // Get the user's identity record
       const identity = await this.identityService.getIdentityByUser(user._id.toString());
-      
+
       if (!identity) {
         throw new BadRequestException('No identity record found for this user');
       }
-      
+
       console.log('🆔 Found identity record:', identity._id);
-      
+
       // Update user to mark that they have identity (no type change)
       const updatedUser = await this.userService.updateUserFields(user._id.toString(), {
         isHasIdentity: true,
         identity: identity._id
       });
-      
+
       console.log('🆔 User updated successfully:', updatedUser._id);
-      
+
       // Return fresh user data
       const freshUser = await this.userService.findUserById(user._id.toString());
-      
+
       return {
         success: true,
         message: 'User updated successfully with identity information',
@@ -729,7 +768,7 @@ return { message: 'Admin users initialized successfully' };
         data: freshUser,
         identityId: identity._id
       };
-      
+
     } catch (error) {
       console.error('Error updating user with identity:', error);
       throw new BadRequestException(`Failed to update user with identity: ${error.message}`);
@@ -747,40 +786,41 @@ return { message: 'Admin users initialized successfully' };
     return this.userService.deleteUser(userId);
   }
 
-@Put('recommend/:userId')
-@UseGuards(AdminGuard)
-async recommendUser(
-  @Param('userId') userId: string,
-  @Body('isRecommended') isRecommended: boolean
-) {
-  if (typeof isRecommended !== 'boolean') {
-    throw new BadRequestException('isRecommended must be provided and must be a boolean');
+  @Put('recommend/:userId')
+  @UseGuards(AdminGuard)
+  async recommendUser(
+    @Param('userId') userId: string,
+    @Body('isRecommended') isRecommended: boolean
+  ) {
+    if (typeof isRecommended !== 'boolean') {
+      throw new BadRequestException('isRecommended must be provided and must be a boolean');
+    }
+    return this.userService.setUserRecommended(userId, isRecommended);
   }
-  return this.userService.setUserRecommended(userId, isRecommended);
-}
 
-@Put('certified/:userId')
-@UseGuards(AdminGuard)
-async setCertified(
-  @Param('userId') userId: string,
-  @Body('isCertified') isCertified: boolean
-) {
-  if (typeof isCertified !== 'boolean') {
-    throw new BadRequestException('isCertified must be provided and must be a boolean');
+  @Put('certified/:userId')
+  @UseGuards(AdminGuard)
+  async setCertified(
+    @Param('userId') userId: string,
+    @Body('isCertified') isCertified: boolean
+  ) {
+    if (typeof isCertified !== 'boolean') {
+      throw new BadRequestException('isCertified must be provided and must be a boolean');
+    }
+    return this.userService.setUserCertified(userId, isCertified);
   }
-  return this.userService.setUserCertified(userId, isCertified);
-}
 
-// Get recommended professionals
-@Get('/professionals/recommended')
-@Public()
-async getRecommendedProfessionals() {
-  return this.userService.getRecommendedProfessionals();
-}
+  // Get recommended professionals
+  @Get('/professionals/recommended')
+  @Public()
+  async getRecommendedProfessionals() {
+    return this.userService.getRecommendedProfessionals();
+  }
 
-// Get recommended resellers
-@Get('/resellers/recommended')
-@Public()
-async getRecommendedResellers() {
-  return this.userService.getRecommendedResellers();
-}}
+  // Get recommended resellers
+  @Get('/resellers/recommended')
+  @Public()
+  async getRecommendedResellers() {
+    return this.userService.getRecommendedResellers();
+  }
+}

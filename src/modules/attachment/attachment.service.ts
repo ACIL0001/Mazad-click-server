@@ -17,26 +17,28 @@ export class AttachmentService {
     private readonly configService: ConfigService, // Inject ConfigService
   ) {
     // Construct base URL for serving files. Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
-    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') || 
-                      process.env.API_BASE_URL ||
-                      (() => {
-                        // Fallback: construct from APP_HOST and APP_PORT
-                        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
-                        const appPort = this.configService.get<number>('APP_PORT', 3000);
-                        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-                        
-                        // In production, use http://localhost:3000 if APP_HOST is not explicitly set
-                        // if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                        //   return 'http://localhost:3000';
-                        // }
-                        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                          return 'https://mazadclick-server.onrender.com';
-                        }
-                        
-                        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-                        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-                      })();
-    
+    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') ||
+      process.env.API_BASE_URL ||
+      (() => {
+        // Fallback: construct from APP_HOST and APP_PORT
+        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
+        const appPort = this.configService.get<number>('APP_PORT', 3000);
+        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+
+        // In production, use http://localhost:3000 if APP_HOST is not explicitly set
+        // if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+        //   return 'http://localhost:3000';
+        // }
+        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+          return 'https://mazadclick-server.onrender.com';
+        }
+
+        const hostPart = appHost.replace(/\/$/, '');
+        // Check if host has port (ignore protocol http:// or https://)
+        const hasPort = hostPart.split('://')[1]?.includes(':');
+        return appPort && !hasPort ? `${hostPart}:${appPort}` : hostPart;
+      })();
+
     this.baseUrl = `${apiBaseUrl.replace(/\/$/, '')}/static`;
     this.logger.log(`Base URL for attachments: ${this.baseUrl}`);
   }
@@ -91,7 +93,7 @@ export class AttachmentService {
     };
 
     this.logger.debug(`Saving attachment metadata: ${JSON.stringify(attachmentData)}`);
-    
+
     let attachment;
     try {
       attachment = await this.attachmentModel.create(attachmentData);
@@ -104,7 +106,7 @@ export class AttachmentService {
     // Add full URL to the response
     const attachmentWithFullUrl = attachment.toObject() as any;
     attachmentWithFullUrl.fullUrl = `${this.baseUrl.replace('/static', '')}${publicUrl}`;
-    
+
     // Ensure all required fields are present
     if (!attachmentWithFullUrl.size && attachment.size) {
       attachmentWithFullUrl.size = attachment.size;
@@ -114,7 +116,7 @@ export class AttachmentService {
     this.logger.log(`Full URL: ${attachmentWithFullUrl.fullUrl}`);
     this.logger.log(`Attachment size: ${attachmentWithFullUrl.size} bytes`);
     this.logger.log(`Attachment full response:`, JSON.stringify(attachmentWithFullUrl, null, 2));
-    
+
     return attachmentWithFullUrl;
   }
 
@@ -131,9 +133,9 @@ export class AttachmentService {
 
   async findByUserAndType(userId: string, as: string): Promise<Attachment | null> {
     this.logger.log(`Finding attachment by user: ${userId} and type: ${as}`);
-    const attachment = await this.attachmentModel.findOne({ 
-      user: new Types.ObjectId(userId), 
-      as 
+    const attachment = await this.attachmentModel.findOne({
+      user: new Types.ObjectId(userId),
+      as
     }).exec();
     if (attachment) {
       const attachmentWithFullUrl = attachment.toObject() as any;
@@ -154,7 +156,7 @@ export class AttachmentService {
     userId: string
   ): Promise<Attachment> {
     this.logger.log(`Updating attachment: ${attachmentId} for user: ${userId}`);
-    
+
     // Construct the public URL for the file
     const publicUrl = `/static/${file.filename}`;
 

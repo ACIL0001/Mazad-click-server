@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Professional } from '../schema/pro.schema';
+import { Buyer } from '../schema/client.schema';
 import { Model } from 'mongoose';
 import { UserService } from '../user.service';
 import { CreateUserDto } from 'src/modules/auth/dto/createUser.dto';
@@ -8,9 +8,9 @@ import { CreateUserDto } from 'src/modules/auth/dto/createUser.dto';
 @Injectable()
 export class ClientService {
   constructor(
-    @InjectModel(Professional.name) private readonly sellerModel: Model<Professional>,
+    @InjectModel(Buyer.name) private readonly clientModel: Model<Buyer>,
     private readonly userService: UserService,
-  ) {}
+  ) { }
 
   async create(userDto: CreateUserDto) {
     await this.userService.verifyEmailPhoneNumber({
@@ -18,11 +18,11 @@ export class ClientService {
       phone: userDto.phone,
     });
 
-    const seller = await this.sellerModel.create(userDto);
-    return seller;
+    const client = await this.clientModel.create(userDto);
+    return client;
   }
 
-  async findAllSellers() {
-    return this.sellerModel.find();
+  async findAllClients() {
+    return this.clientModel.find();
   }
 }

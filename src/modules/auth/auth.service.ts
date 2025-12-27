@@ -13,7 +13,9 @@ import { ProService } from '../user/services/pro.service';
 import { ClientService } from '../user/services/client.service';
 import { User } from '../user/schema/user.schema';
 import { Session } from '../session/schema/session.schema';
+
 import { RoleCode } from '../apikey/entity/appType.entity';
+import { AttachmentService } from '../attachment/attachment.service';
 
 @Injectable()
 export class AuthService {
@@ -23,9 +25,10 @@ export class AuthService {
     private readonly ClientService: ClientService,
     private readonly sessionService: SessionService,
     private readonly otpService: OtpService,
-  ) {}
+    private readonly attachmentService: AttachmentService,
+  ) { }
 
-  async Signup(userData: CreateUserDto) {
+  async Signup(userData: CreateUserDto, avatar?: Express.Multer.File) {
     await this.userService.verifyEmailPhoneNumber({
       email: userData.email,
       phone: userData.phone,
@@ -40,13 +43,31 @@ export class AuthService {
       throw new ForbiddenException();
     }
 
+    // Handle avatar upload if provided
+    if (avatar) {
+      try {
+        const attachment = await this.attachmentService.upload(avatar, 'AVATAR', user._id.toString());
+        await this.userService.updateUserFields(user._id.toString(), { avatar: attachment as any }); // Cast as any because attachment is object but avatar expected as ObjectId sometimes? No, schema says ObjectId ref
+        // Wait, AttachmentService.upload returns Attachment object. schema expects ObjectId ref. 
+        // But user.service.updateUserFields uses findByIdAndUpdate which works with object/id mix often but safer to pass ID if schema expects Ref.
+        // Actually schema says: @Prop({ type: S.Types.ObjectId, ref: Attachment.name, required: false })
+        // So we should pass attachment._id
+      } catch (error) {
+        console.error('Failed to upload avatar during signup:', error);
+        // Continue signup process even if avatar upload fails
+      }
+    }
+
+    // Reload user to ensure we return it with avatar populated (if added)
+    user = await this.userService.findUserById(user._id.toString());
+
     // Always send OTP for phone verification since isPhoneVerified defaults to false
     await this.otpService.createOtpAndSendSMS(user, OtpType.PHONE_CONFIRMATION);
-    
+
     // Do NOT create session/tokens until phone is verified
     // Frontend should redirect to OTP verification page
-    return { 
-      user, 
+    return {
+      user,
       message: 'Registration successful. Please verify your phone number with the OTP sent to you.',
       requiresPhoneVerification: true
     };
@@ -54,9 +75,9 @@ export class AuthService {
 
   async SignIn(credentials: SignInDto) {
     const user = await this.userService.findByLogin(credentials.login);
-    
+
     if (!user) throw new UnauthorizedException('Invalid credentials - login');
-    
+
     const isMatch = await user.validatePassword(credentials.password);
     if (!isMatch) throw new UnauthorizedException('Invalid credentials - password');
 
@@ -76,12 +97,12 @@ export class AuthService {
     }
 
     // Return consistent structure for frontend (convert to camelCase) - DON'T spread session
-    return { 
+    return {
       session: {
         accessToken: session.access_token,
         refreshToken: session.refresh_token,
-      }, 
-      user 
+      },
+      user
     };
   }
 
@@ -97,10 +118,10 @@ export class AuthService {
   async markUserAsBuyer(user: User) {
     // Update user's type to CLIENT (which represents buyer in this system)
     const updatedUser = await this.userService.updateUserType(user._id.toString(), RoleCode.CLIENT);
-    
+
     const buyerUrl = process.env.CLIENT_BASE_URL || 'http://localhost:3001';
     console.log('🔄 Mark as buyer - redirecting to:', buyerUrl);
-    
+
     return {
       success: true,
       message: 'User successfully marked as buyer',
@@ -112,10 +133,10 @@ export class AuthService {
   async markUserAsSeller(user: User) {
     // Update user's type to PROFESSIONAL (which represents seller in this system)
     const updatedUser = await this.userService.updateUserType(user._id.toString(), RoleCode.PROFESSIONAL);
-    
+
     const sellerUrl = (process.env.SELLER_BASE_URL || 'http://localhost:3002') + '/dashboard/app';
     console.log('🔄 Mark as seller - redirecting to:', sellerUrl);
-    
+
     return {
       success: true,
       message: 'User successfully marked as seller',

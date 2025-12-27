@@ -1,4 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { MulterModule } from '@nestjs/platform-express';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UserService } from './user.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { User, UserSchema } from './schema/user.schema';
@@ -14,6 +16,7 @@ import { ClientService } from './services/client.service';
 import { AttachmentModule } from '../attachment/attachment.module';
 import { IdentityModule } from '../identity/identity.module';
 import { Category, CategorySchema } from '../category/schema/category.schema';
+import { multerConfigFactory } from '../../configs/multer.config';
 
 @Module({
   imports: [
@@ -27,9 +30,14 @@ import { Category, CategorySchema } from '../category/schema/category.schema';
     SessionModule,
     AttachmentModule,
     forwardRef(() => IdentityModule),
+    MulterModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: multerConfigFactory,
+      inject: [ConfigService],
+    }),
   ],
   providers: [UserService, AdminService, ClientService, ProService],
   controllers: [UserController, AdminController],
   exports: [UserService, AdminService, ClientService, ProService],
 })
-export class UserModule {}
+export class UserModule { }

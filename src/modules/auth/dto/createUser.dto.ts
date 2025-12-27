@@ -55,10 +55,18 @@ export class CreateUserDto {
   @IsNotEmpty()
   password: string;
 
+  @IsOptional()
+  @IsString()
+  birthDate?: string;
+
   @IsString()
   @IsNotEmpty()
   @IsPhoneNumber('DZ')
   phone: string;
+
+  @IsOptional()
+  @IsString()
+  wilaya?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -76,6 +84,18 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   postOccupé?: string;
+
+  @IsOptional()
+  @IsString()
+  socialReason?: string;
+
+  @IsOptional()
+  @IsString()
+  jobTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  entity?: string;
 
   @IsOptional()
   @IsString()

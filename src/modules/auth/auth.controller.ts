@@ -7,7 +7,10 @@ import {
   Put,
   Request,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthService } from './auth.service';
 import { ProtectedRequest, PublicRequest } from 'src/types/request.type';
 import { CreateUserDto } from './dto/createUser.dto';
@@ -28,15 +31,19 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly userService: UserService,
     private readonly otpService: OtpService,
-  ) {}
+  ) { }
 
   @Public()
   @Post('signup')
+  @UseInterceptors(FileInterceptor('avatar'))
   async signup(
     @Request() request: PublicRequest,
     @Body() createUserDto: CreateUserDto,
+    @UploadedFile() avatar?: Express.Multer.File,
   ) {
-    return this.authService.Signup(createUserDto);
+    // If an avatar was uploaded, we might want to process it here or pass it to the service
+    // For now, enabling the interceptor fixes the body parsing issue
+    return this.authService.Signup(createUserDto, avatar);
   }
 
   @Public()
@@ -53,17 +60,17 @@ export class AuthController {
   async signout(@Request() request: ProtectedRequest) {
     return this.authService.SignOut(request.session);
   }
-  
+
   @Get('validate-token')
   @UseGuards(AuthGuard)
   async validateToken(@Request() request: ProtectedRequest) {
-    return { 
-      valid: true, 
+    return {
+      valid: true,
       user: request.session.user,
       message: 'Token is valid'
     };
   }
-  
+
   @Get('status')
   @UseGuards(AuthGuard)
   async status(@Request() request: ProtectedRequest) {

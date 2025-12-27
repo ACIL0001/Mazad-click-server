@@ -18,11 +18,11 @@ async function bootstrap() {
   });
 
   app.use(morgan('combined'));
-
+  // Force restart check 3 - User Service and Schema Fixed
   // CORS Configuration - Enhanced for better compatibility
   const allowedOrigins = [
-    'http://localhost:3001', 
-    'http://localhost:3002', 
+    'http://localhost:3001',
+    'http://localhost:3002',
     'http://localhost:3003',
     'http://localhost:3004',
     'http://localhost:3005', // Backoffice
@@ -40,14 +40,14 @@ async function bootstrap() {
     'https://mazadclick.vercel.app',
     'https://mazadclick.vercel.app/', // Keep both with and without trailing slash
   ];
-  
+
   app.enableCors({
     origin: (origin, callback) => {
-      console.log('🔍 CORS Origin Check:', origin);
-      
+      // console.log('🔍 CORS Origin Check:', origin);
+
       // Allow requests with no origin (like mobile apps, curl, etc.)
       if (!origin) {
-        console.log('✅ CORS: Allowing request with no origin');
+        // console.log('✅ CORS: Allowing request with no origin');
         return callback(null, true);
       }
 
@@ -63,11 +63,11 @@ async function bootstrap() {
         allowedOriginPatterns.some((rx) => rx.test(origin));
 
       if (isAllowed) {
-        console.log('✅ CORS: Origin allowed:', origin);
+        // console.log('✅ CORS: Origin allowed:', origin);
         return callback(null, true);
       }
-      
-      console.log('❌ CORS: Origin rejected:', origin);
+
+      // console.log('❌ CORS: Origin rejected:', origin);
       return callback(new Error('Not allowed by CORS'));
     },
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
@@ -113,36 +113,7 @@ async function bootstrap() {
   // Enhanced CORS middleware for OTP endpoints to ensure proper headers
   app.use('/otp', (req, res, next) => {
     const origin = req.headers.origin;
-    console.log('🔍 OTP CORS Middleware - Origin:', origin);
-    
-    // Check if origin is allowed
-    const isAllowed = allowedOrigins.includes(origin) || 
-      /^https:\/\/mazad-click-(buyer|seller|backoffice|admin)(-[a-z0-9-]+)?\.vercel\.app$/.test(origin) ||
-      /^https:\/\/mazadclick\.vercel\.app\/?$/.test(origin);
-    
-    if (isAllowed) {
-      res.header('Access-Control-Allow-Origin', origin);
-      res.header('Access-Control-Allow-Credentials', 'true');
-      res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, x-api-key, x-access-key, accept-language, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
-      console.log('✅ OTP CORS: Headers set for origin:', origin);
-    } else {
-      console.log('❌ OTP CORS: Origin not allowed:', origin);
-    }
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      res.status(204).end();
-      return;
-    }
-    
-    next();
-  });
-
-  // Dedicated Auth middleware for token validation
-  app.use('/auth', (req, res, next) => {
-    const origin = req.headers.origin;
-    console.log('🔍 Auth CORS Middleware - Origin:', origin, 'Path:', req.path);
+    // console.log('🔍 OTP CORS Middleware - Origin:', origin);
 
     // Check if origin is allowed
     const isAllowed = allowedOrigins.includes(origin) ||
@@ -154,14 +125,43 @@ async function bootstrap() {
       res.header('Access-Control-Allow-Credentials', 'true');
       res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
       res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, x-api-key, x-access-key, accept-language, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
-      console.log('✅ Auth CORS: Headers set for origin:', origin);
+      // console.log('✅ OTP CORS: Headers set for origin:', origin);
     } else {
-      console.log('❌ Auth CORS: Origin not allowed:', origin);
+      // console.log('❌ OTP CORS: Origin not allowed:', origin);
     }
 
     // Handle preflight requests
     if (req.method === 'OPTIONS') {
-      console.log('✅ Auth CORS: Handling OPTIONS request for:', req.path);
+      res.status(204).end();
+      return;
+    }
+
+    next();
+  });
+
+  // Dedicated Auth middleware for token validation
+  app.use('/auth', (req, res, next) => {
+    const origin = req.headers.origin;
+    // console.log('🔍 Auth CORS Middleware - Origin:', origin, 'Path:', req.path);
+
+    // Check if origin is allowed
+    const isAllowed = allowedOrigins.includes(origin) ||
+      /^https:\/\/mazad-click-(buyer|seller|backoffice|admin)(-[a-z0-9-]+)?\.vercel\.app$/.test(origin) ||
+      /^https:\/\/mazadclick\.vercel\.app\/?$/.test(origin);
+
+    if (isAllowed) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, x-api-key, x-access-key, accept-language, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
+      // console.log('✅ Auth CORS: Headers set for origin:', origin);
+    } else {
+      // console.log('❌ Auth CORS: Origin not allowed:', origin);
+    }
+
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      // console.log('✅ Auth CORS: Handling OPTIONS request for:', req.path);
       res.status(204).end();
       return;
     }
@@ -187,10 +187,10 @@ async function bootstrap() {
   SetupSwagger(app);
 
   const configService = app.get<ConfigService>(ConfigService);
-  
+
   // Use PORT from environment variable (Render provides this) or fallback to config
   const port = process.env.PORT || configService.get(ConfigKeys.PORT) || 3000;
-  
+
   await app.listen(port, () => {
     const logger = new Logger('MazadClick System');
     logger.log(`Server is running and listening on port ${port}`);

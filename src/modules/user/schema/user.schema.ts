@@ -16,6 +16,9 @@ export class User {
   @Prop({ type: S.Types.ObjectId, ref: Attachment.name, required: false })
   avatar?: Attachment;
 
+  @Prop({ type: S.Types.ObjectId, ref: Attachment.name, required: false })
+  coverPhoto?: Attachment;
+
 
   @Prop({ type: String, enum: Object.values(GENDER), required: false })
   gender: GENDER;
@@ -28,6 +31,9 @@ export class User {
 
   @Prop({ type: String, required: false })
   email: string;
+
+  @Prop({ type: String, required: false })
+  birthDate?: string;
 
   @Prop({ type: String, required: true, select: false })
   password: string;
@@ -66,7 +72,11 @@ export class User {
   identity?: any;
 
   @Prop({ type: Boolean, default: false })
-isRecommended: boolean;
+  @Prop({ type: Boolean, default: false })
+  isRecommended: boolean;
+
+  @Prop({ type: String, required: false })
+  wilaya?: string;
 
   @Prop({ type: String, required: false })
   secteur?: string;
@@ -76,6 +86,15 @@ isRecommended: boolean;
 
   @Prop({ type: String, required: false })
   postOccupé?: string;
+
+  @Prop({ type: String, required: false })
+  socialReason?: string;
+
+  @Prop({ type: String, required: false })
+  jobTitle?: string;
+
+  @Prop({ type: String, required: false })
+  entity?: string;
 
   @Prop({ type: String, required: false, trim: true })
   promoCode?: string;
@@ -103,7 +122,7 @@ UserSchema.path('rate').default(function () {
   if (user.isVerified) {
     return 3;
   }
-  
+
   switch (user.type) {
     case 'CLIENT':
       return 3;
@@ -162,13 +181,32 @@ UserSchema.virtual('photoURL').get(function () {
   if (user.avatar?.url) {
     const appHost = process.env.APP_HOST || 'http://localhost';
     const appPort = process.env.APP_PORT || 3000;
-    
-    const hostPart = appPort ? appHost.replace(/\/$/, '') : appHost;
-    const baseUrl = appPort ? `${hostPart}:${appPort}` : hostPart;
-    
+
+    const hostPart = appHost.replace(/\/$/, '');
+    // Check if host has port (ignore protocol http:// or https://)
+    const hasPort = hostPart.split('://')[1]?.includes(':');
+    const baseUrl = appPort && !hasPort ? `${hostPart}:${appPort}` : hostPart;
+
     return `${baseUrl}${user.avatar.url}`;
   }
   // Return null if there is no avatar.
+  return null;
+});
+
+// Add virtual field for coverPhotoURL for frontend compatibility
+UserSchema.virtual('coverPhotoURL').get(function () {
+  const user = this as UserDocument;
+  if (user.coverPhoto?.url) {
+    const appHost = process.env.APP_HOST || 'http://localhost';
+    const appPort = process.env.APP_PORT || 3000;
+
+    const hostPart = appHost.replace(/\/$/, '');
+    // Check if host has port (ignore protocol http:// or https://)
+    const hasPort = hostPart.split('://')[1]?.includes(':');
+    const baseUrl = appPort && !hasPort ? `${hostPart}:${appPort}` : hostPart;
+
+    return `${baseUrl}${user.coverPhoto.url}`;
+  }
   return null;
 });
 

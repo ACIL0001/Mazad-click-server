@@ -42,7 +42,7 @@ export class UserService implements OnModuleInit {
   // }
 
   async findUser(user?: RootFilterQuery<User>) {
-    const users = await this.userModel.find(user).populate('avatar');
+    const users = await this.userModel.find(user).populate(['avatar', 'coverPhoto']);
     // Convert secteur IDs to names for all users
     for (const user of users) {
       await this.convertSecteurIdToName(user);
@@ -139,7 +139,7 @@ export class UserService implements OnModuleInit {
   }
 
   async findUserById(id: string) {
-    const user = await this.userModel.findById(id).populate('avatar');
+    const user = await this.userModel.findById(id).populate(['avatar', 'coverPhoto']);
     if (user) {
       // Convert secteur ID to name if needed
       await this.convertSecteurIdToName(user);
@@ -157,7 +157,7 @@ export class UserService implements OnModuleInit {
 
   // NEW: Find users by array of IDs
   async findUsersByIds(ids: string[]) {
-    const users = await this.userModel.find({ _id: { $in: ids } }).populate('avatar');
+    const users = await this.userModel.find({ _id: { $in: ids } }).populate(['avatar', 'coverPhoto']);
     // Convert secteur IDs to names and enrich with avatar URLs for all users
     const enrichedUsers = [];
     for (const user of users) {
@@ -181,7 +181,7 @@ export class UserService implements OnModuleInit {
         { email: { $regex: new RegExp(`^${login}$`, 'i') } },
         { phone: login }
       ],
-    }).populate('avatar');
+    }).populate(['avatar', 'coverPhoto']);
     // ▲▲▲ CORRECTION ENDS ▲▲▲
 
     // if (!user) throw new BadRequestException('Invalid login'); // FIXME: TRANSLATE THIS
@@ -196,7 +196,7 @@ export class UserService implements OnModuleInit {
         rate: 1, // Set default rate for unverified users
       },
       { new: true },
-    ).populate('avatar');
+    ).populate(['avatar', 'coverPhoto']);
 
     return user;
   }
@@ -220,7 +220,7 @@ export class UserService implements OnModuleInit {
   }
 
   async findAllBuyers() {
-    const users = await this.userModel.find({ role: RoleCode.CLIENT }).populate('avatar');
+    const users = await this.userModel.find({ role: RoleCode.CLIENT }).populate(['avatar', 'coverPhoto']);
     // Convert secteur IDs to names and enrich with avatar URLs for all users
     const enrichedUsers = [];
     for (const user of users) {
@@ -259,7 +259,7 @@ export class UserService implements OnModuleInit {
 
   async updateUserFields(userId: string, update: Partial<User>) {
     try {
-      const updatedUser = await this.userModel.findByIdAndUpdate(userId, update, { new: true }).populate('avatar');
+      const updatedUser = await this.userModel.findByIdAndUpdate(userId, update, { new: true }).populate(['avatar', 'coverPhoto']);
       return updatedUser;
     } catch (error) {
       console.error('Error updating user fields:', error);
@@ -270,7 +270,7 @@ export class UserService implements OnModuleInit {
   async updateUserRate(userId: string, newRate: number) {
     // Ensure rate is within valid range (1-10)
     const clampedRate = Math.max(1, Math.min(10, newRate));
-    return this.userModel.findByIdAndUpdate(userId, { rate: clampedRate }, { new: true }).populate('avatar');
+    return this.userModel.findByIdAndUpdate(userId, { rate: clampedRate }, { new: true }).populate(['avatar', 'coverPhoto']);
   }
 
   async updateSubscriptionPlan(userId: string, plan: string) {
@@ -279,14 +279,14 @@ export class UserService implements OnModuleInit {
       userId,
       { subscriptionPlan: plan },
       { new: true, runValidators: true }
-    ).populate('avatar');
+    ).populate(['avatar', 'coverPhoto']);
     console.log('✅ Subscription plan updated in database:', { userId, plan, result: result?.subscriptionPlan });
     return result;
   }
 
   async createSubscriptionPlan(userId: string, plan: string) {
     console.log('🔍 createSubscriptionPlan called:', { userId, plan });
-    const user = await this.userModel.findById(userId).populate('avatar');
+    const user = await this.userModel.findById(userId).populate(['avatar', 'coverPhoto']);
     if (!user) {
       throw new BadRequestException('User not found');
     }
@@ -310,7 +310,7 @@ export class UserService implements OnModuleInit {
       userId,
       { $set: updateFields },
       { new: true }
-    ).populate('avatar');
+    ).populate(['avatar', 'coverPhoto']);
     if (!user) throw new BadRequestException('User not found');
     return user;
   }
@@ -318,7 +318,7 @@ export class UserService implements OnModuleInit {
   async findUsersByRoles(roles: RoleCode[]) {
     // Query users - subscriptionPlan should be included by default
     const users = await this.userModel.find({ type: { $in: roles } })
-      .populate('avatar')
+      .populate(['avatar', 'coverPhoto'])
       .lean(false); // Don't use lean() to preserve document methods and virtuals
 
     console.log('🔍 Found users:', users.length);
@@ -378,7 +378,7 @@ export class UserService implements OnModuleInit {
       userId,
       { isActive },
       { new: true }
-    ).populate('avatar');
+    ).populate(['avatar', 'coverPhoto']);
     if (!user) throw new BadRequestException('User not found');
     return user;
   }
@@ -388,7 +388,7 @@ export class UserService implements OnModuleInit {
       userId,
       { isBanned },
       { new: true }
-    ).populate('avatar'); // Ensure avatar is populated
+    ).populate(['avatar', 'coverPhoto']); // Ensure avatar is populated
     if (!user) throw new BadRequestException('User not found');
     return user;
   }
@@ -398,13 +398,13 @@ export class UserService implements OnModuleInit {
       userId,
       { isCertified },
       { new: true }
-    ).populate('avatar');
+    ).populate(['avatar', 'coverPhoto']);
     if (!user) throw new BadRequestException('User not found');
     return user;
   }
 
   async getUserById(id: string) {
-    const user = await this.userModel.findById(id).populate('avatar');
+    const user = await this.userModel.findById(id).populate(['avatar', 'coverPhoto']);
     if (user && user.avatar && typeof user.avatar === 'object' && !Array.isArray(user.avatar)) {
       // Ensure avatar has fullUrl
       const userWithFullUrl = user.toObject() as any;
@@ -442,7 +442,7 @@ export class UserService implements OnModuleInit {
   }
 
   async findUserByIdWithAvatar(userId: string) {
-    const user = await this.userModel.findById(userId).populate('avatar').exec();
+    const user = await this.userModel.findById(userId).populate(['avatar', 'coverPhoto']).exec();
     if (user && user.avatar) {
       // Construct the full URL for the avatar using the same logic as AttachmentService
       const userWithFullUrl = user.toObject() as any;
@@ -488,7 +488,7 @@ export class UserService implements OnModuleInit {
       userId,
       { isRecommended },
       { new: true }
-    ).populate('avatar');
+    ).populate(['avatar', 'coverPhoto']);
     if (!user) throw new BadRequestException('User not found');
     return user;
   }
@@ -500,7 +500,7 @@ export class UserService implements OnModuleInit {
       isVerified: true,
       isActive: true,
       isBanned: false
-    }).populate('avatar');
+    }).populate(['avatar', 'coverPhoto']);
     // Convert secteur IDs to names and enrich with avatar URLs for all users
     const enrichedUsers = [];
     for (const user of users) {
@@ -522,7 +522,7 @@ export class UserService implements OnModuleInit {
       isVerified: true,
       isActive: true,
       isBanned: false
-    }).populate('avatar');
+    }).populate(['avatar', 'coverPhoto']);
     // Convert secteur IDs to names and enrich with avatar URLs for all users
     const enrichedUsers = [];
     for (const user of users) {
@@ -566,7 +566,7 @@ export class UserService implements OnModuleInit {
       userId,
       { type: newType },
       { new: true }
-    ).populate('avatar');
+    ).populate(['avatar', 'coverPhoto']);
 
     if (!user) {
       throw new BadRequestException('User not found');
