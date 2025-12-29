@@ -23,7 +23,7 @@ import { ProtectedRequest } from 'src/types/request.type';
 @UseGuards(AuthGuard)
 @Controller('offers')
 export class OfferController {
-  constructor(private readonly offerService: OfferService) {}
+  constructor(private readonly offerService: OfferService) { }
 
   /**
    * Get all offers (simple endpoint for backward compatibility)
@@ -33,7 +33,7 @@ export class OfferController {
   @Public()
   async getAllOffers() {
     console.log('Controller: Getting all offers');
-    
+
     try {
       const offers = await this.offerService.getAllOffersForTesting();
       console.log('Controller: Returning all offers:', offers.length);
@@ -56,7 +56,7 @@ export class OfferController {
   async getAllOffersForUser(@Body('data') data: any) {
     console.log('Controller: Getting offers for user ID:', data._id);
     console.log('Controller: Full request body:', data);
-    
+
     try {
       const offers = await this.offerService.getOffers(data);
       console.log('Controller: Returning offers:', offers.length);
@@ -74,7 +74,7 @@ export class OfferController {
   @Get('test/all')
   async getAllOffersTest() {
     console.log('Controller: Getting all offers for testing');
-    
+
     try {
       const allOffers = await this.offerService.getAllOffersForTesting();
       console.log('Controller: Returning all offers:', allOffers.length);
@@ -156,9 +156,10 @@ export class OfferController {
   ) {
     try {
       console.log('Controller: Accepting offer:', { offerId, userId: req.session?.user?._id });
-      
+
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
+        console.error('Controller: User ID not found in session. properties:', Object.keys(req.session?.user || {}), 'session:', !!req.session);
         throw new BadRequestException('User ID not found in session');
       }
 
@@ -185,9 +186,10 @@ export class OfferController {
   ) {
     try {
       console.log('Controller: Rejecting offer:', { offerId, userId: req.session?.user?._id });
-      
+
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
+        console.error('Controller: User ID not found in session. properties:', Object.keys(req.session?.user || {}), 'session:', !!req.session);
         throw new BadRequestException('User ID not found in session');
       }
 
@@ -214,7 +216,7 @@ export class OfferController {
   ) {
     try {
       console.log('Controller: Deleting offer:', { offerId, userId: req.session?.user?._id });
-      
+
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         throw new BadRequestException('User ID not found in session');

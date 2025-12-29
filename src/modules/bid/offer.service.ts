@@ -319,13 +319,54 @@ export class OfferService {
         price: offer.price
       });
 
-      // Check if the user is the owner of the offer
-      if (offer.owner.toString() !== ownerId) {
+      // Check if the user is the owner of the offer (strict check on offer document)
+      let isAuthorized = false;
+
+      // 1. Direct ownership check
+      if (offer.owner && offer.owner.toString() === ownerId) {
+        isAuthorized = true;
+      }
+
+      // 2. If not authorized yet, check against the parent Bid/Tender owner
+      // This handles legacy data issues where offer.owner might have been set to bidder
+      if (!isAuthorized) {
+        console.log('Service: Direct ownership check failed, checking parent Bid/Tender...');
+
+        // We need to fetch the bid/tender to check its owner
+        // In the schema, 'bid' can be an ID or reference. For tenders, it's also stored in 'bid' often.
+        if (offer.bid) {
+          try {
+            // Use any to bypass TS strict typing for the populated/loose check
+            const parentBid = await this.bidService.findOne(offer.bid.toString());
+
+            if (parentBid && parentBid.owner) {
+              const parentOwnerId = typeof parentBid.owner === 'object' && parentBid.owner._id
+                ? parentBid.owner._id.toString()
+                : parentBid.owner.toString();
+
+              if (parentOwnerId === ownerId) {
+                console.log('Service: Authorized via parent Bid/Tender ownership');
+                isAuthorized = true;
+
+                // AUTO-HEAL: Update the offer owner to be correct
+                offer.owner = parentBid.owner; // or ownerId, but kept safe
+                // We don't save yet, it will be saved downstream
+              } else {
+                console.log('Service: Parent owner mismatch:', { parentOwnerId, requestingUser: ownerId });
+              }
+            }
+          } catch (err) {
+            console.warn('Service: Could not fetch parent bid for auth check:', err.message);
+          }
+        }
+      }
+
+      if (!isAuthorized) {
         console.error('Service: Unauthorized access attempt:', {
           offerOwner: offer.owner,
           requestingUser: ownerId
         });
-        throw new Error('Unauthorized: You can only update your own offers');
+        throw new ForbiddenException('Unauthorized: You can only update your own offers');
       }
 
       // Update the offer status using proper enum values
