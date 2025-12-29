@@ -527,6 +527,21 @@ export class TenderController {
   }
 
   /**
+   * Get a tender bid by ID
+   */
+  @Get('bids/:bidId')
+  @Public()
+  async getTenderBidById(@Param('bidId') bidId: string) {
+    return this.tenderService.getTenderBidById(bidId);
+  }
+
+  @Get('debug/version')
+  @Public()
+  getVersion() {
+    return { version: '1.0.1-fix-offer-404-400', date: new Date().toISOString() };
+  }
+
+  /**
    * Delete a tender bid
    */
   @Delete('bids/:bidId')

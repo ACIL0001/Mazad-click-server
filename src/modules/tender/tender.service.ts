@@ -527,6 +527,23 @@ export class TenderService {
       .exec();
   }
 
+  async getTenderBidById(bidId: string): Promise<TenderBid> {
+    const bid = await this.tenderBidModel
+      .findById(bidId)
+      .populate('bidder', 'firstName lastName phone email username')
+      .populate({
+        path: 'bidder',
+        populate: { path: 'avatar' }
+      })
+      .populate('tender', 'title category')
+      .exec();
+
+    if (!bid) {
+      throw new NotFoundException(`Tender bid with ID ${bidId} not found`);
+    }
+    return bid;
+  }
+
   /**
    * Accept a tender bid
    */

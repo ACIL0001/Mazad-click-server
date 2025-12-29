@@ -309,7 +309,7 @@ export class OfferService {
       if (!offer) {
         console.error('Service: Offer not found:', offerId);
         console.error('Service: Available offer IDs:', allOffers.map(o => o._id));
-        throw new BadRequestException(`Offer with ID ${offerId} not found`);
+        throw new NotFoundException(`Offer with ID ${offerId} not found`);
       }
 
       console.log('Service: Found offer:', {
