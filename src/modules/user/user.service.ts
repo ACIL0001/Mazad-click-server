@@ -220,7 +220,7 @@ export class UserService implements OnModuleInit {
 
   async onModuleInit() {
     // Admin user initialization is now handled by AdminService
-    this.logger.log('UserService initialized - admin creation delegated to AdminService');
+    this.logger.log('UserService initialized - admin creation delegated to AdminService. Deploying fix.');
   }
 
   async findAllBuyers() {
