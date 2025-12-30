@@ -574,4 +574,8 @@ export class UserService implements OnModuleInit {
 
     return user;
   }
+
+  async incrementLoginCount(userId: string) {
+    return this.userModel.findByIdAndUpdate(userId, { $inc: { loginCount: 1 } });
+  }
 }

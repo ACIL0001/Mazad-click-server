@@ -69,12 +69,20 @@ export class UserController {
     const userId = req.session.user._id.toString();
 
     // Validate input data
-    const allowedFields = ['firstName', 'lastName', 'phone', 'wilaya', 'secteur', 'socialReason', 'jobTitle', 'entity'];
+    // Validate input data
+    const allowedFields = ['firstName', 'lastName', 'phone', 'wilaya', 'activitySector', 'companyName', 'secteur', 'socialReason', 'jobTitle'];
     const filteredData = {};
 
     for (const field of allowedFields) {
       if (updateData[field] !== undefined) {
-        filteredData[field] = updateData[field];
+        // Map old fields to new ones if present
+        if (field === 'secteur') {
+          filteredData['activitySector'] = updateData[field];
+        } else if (field === 'socialReason') {
+          filteredData['companyName'] = updateData[field];
+        } else {
+          filteredData[field] = updateData[field];
+        }
       }
     }
 
@@ -157,6 +165,51 @@ export class UserController {
       console.error('Error updating avatar:', error);
       throw new BadRequestException(`Failed to update avatar: ${error.message}`);
     }
+  }
+
+  @Put('/me/profile-completion-note')
+  @UseGuards(AuthGuard)
+  async updateProfileCompletionNote(
+    @Request() req: ProtectedRequest,
+    @Body() body: { action: 'dismiss' | 'postpone' }
+  ) {
+    const userId = req.session.user._id.toString();
+    const { action } = body;
+
+    console.log(`Updating profile completion note for user ${userId}: ${action}`);
+
+    if (action === 'dismiss') {
+      await this.userService.updateUserFields(userId, {
+        "profileCompletionNote.dismissed": true
+      } as any);
+    } else if (action === 'postpone') {
+      // We need to get current count first or use $inc if logic was in service
+      // But updateUserFields does a simple set. 
+      // Ideally we should use findByIdAndUpdate with $inc
+      // For now, simpler implies reading and writing or direct update.
+      // Let's rely on flexible service or just update payload.
+      // Since userService.updateUserFields uses Mongoose update, we can't easily use $inc via it unless allowed.
+      // So we will fetch user first.
+      const user = await this.userService.findUserById(userId);
+      const currentCount = user.profileCompletionNote?.postponedCount || 0;
+
+      await this.userService.updateUserFields(userId, {
+        profileCompletionNote: {
+          dismissed: false,
+          postponedCount: currentCount + 1,
+          lastPostponedAt: new Date()
+        }
+      });
+    } else {
+      throw new BadRequestException('Invalid action');
+    }
+
+    const freshUser = await this.userService.findUserById(userId);
+    return {
+      success: true,
+      user: freshUser,
+      data: freshUser
+    };
   }
   @Post('/me/cover')
   @UseGuards(AuthGuard)

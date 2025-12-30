@@ -6,8 +6,8 @@ export class CreateTermsDto {
   title: string;
 
   @IsString()
-  @IsNotEmpty()
-  content: string;
+  @IsOptional()
+  content?: string;
 
   @IsString()
   @IsNotEmpty()

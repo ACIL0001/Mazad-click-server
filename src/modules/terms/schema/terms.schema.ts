@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
+import { Attachment } from '../../attachment/schema/attachment.schema';
 
 export type TermsDocument = Terms & Document;
 
@@ -8,8 +9,11 @@ export class Terms {
   @Prop({ required: true })
   title: string;
 
-  @Prop({ required: true })
-  content: string;
+  @Prop({ required: false })
+  content?: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'Attachment', required: false })
+  attachment?: Attachment | Types.ObjectId;
 
   @Prop({ required: true })
   version: string;

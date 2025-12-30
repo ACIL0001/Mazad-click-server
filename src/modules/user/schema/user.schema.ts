@@ -79,7 +79,7 @@ export class User {
   wilaya?: string;
 
   @Prop({ type: String, required: false })
-  secteur?: string;
+  activitySector?: string; // Formerly 'secteur'
 
   @Prop({ type: String, required: false })
   entreprise?: string;
@@ -87,17 +87,32 @@ export class User {
   @Prop({ type: String, required: false })
   postOccupé?: string;
 
-  @Prop({ type: String, required: false })
-  socialReason?: string;
+  @Prop({ type: String, required: false, unique: true, sparse: true })
+  companyName?: string; // Formerly 'socialReason'. Unique.
 
   @Prop({ type: String, required: false })
   jobTitle?: string;
 
-  @Prop({ type: String, required: false })
-  entity?: string;
-
   @Prop({ type: String, required: false, trim: true })
   promoCode?: string;
+
+  @Prop({ type: Number, default: 0 })
+  loginCount: number;
+
+  @Prop({
+    type: {
+      dismissed: { type: Boolean, default: false },
+      postponedCount: { type: Number, default: 0 },
+      lastPostponedAt: Date,
+    },
+    default: { dismissed: false, postponedCount: 0 },
+    _id: false,
+  })
+  profileCompletionNote: {
+    dismissed: boolean;
+    postponedCount: number;
+    lastPostponedAt?: Date;
+  };
 
   createdAt: string;
   updatedAt: string;

@@ -64,8 +64,8 @@ export class CreateUserDto {
   @IsPhoneNumber('DZ')
   phone: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   wilaya?: string;
 
   @IsString()
@@ -73,9 +73,9 @@ export class CreateUserDto {
   @IsEnum(Object.values(RoleCode))
   type: RoleCode;
 
-  @IsOptional()
   @IsString()
-  secteur?: string;
+  @IsOptional()
+  activitySector?: string;
 
   @IsOptional()
   @IsString()
@@ -87,15 +87,11 @@ export class CreateUserDto {
 
   @IsOptional()
   @IsString()
-  socialReason?: string;
+  companyName?: string;
 
   @IsOptional()
   @IsString()
   jobTitle?: string;
-
-  @IsOptional()
-  @IsString()
-  entity?: string;
 
   @IsOptional()
   @IsString()

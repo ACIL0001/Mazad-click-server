@@ -8,8 +8,11 @@ import {
   Delete,
   UseGuards,
   Request,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 import { TermsService } from './terms.service';
 import { CreateTermsDto, UpdateTermsDto } from './dto/terms.dto';
 import { AuthGuard } from 'src/common/guards/auth.guard';
@@ -20,17 +23,20 @@ import { ProtectedRequest, PublicRequest } from '../../types/request.type';
 @ApiTags('terms')
 @Controller('terms')
 export class TermsController {
-  constructor(private readonly termsService: TermsService) {}
+  constructor(private readonly termsService: TermsService) { }
 
   @Post()
   @UseGuards(AuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Create new terms and conditions (Admin only)' })
   @ApiResponse({ status: 201, description: 'Terms created successfully' })
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
   async create(
     @Request() request: ProtectedRequest,
     @Body() createTermsDto: CreateTermsDto,
+    @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.termsService.create(createTermsDto, request.session.user._id.toString());
+    return this.termsService.create(createTermsDto, request.session.user._id.toString(), file);
   }
 
   @Get()
@@ -73,12 +79,15 @@ export class TermsController {
   @ApiOperation({ summary: 'Update terms and conditions (Admin only)' })
   @ApiResponse({ status: 200, description: 'Terms updated successfully' })
   @ApiResponse({ status: 404, description: 'Terms not found' })
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
   async update(
     @Request() request: ProtectedRequest,
     @Param('id') id: string,
     @Body() updateTermsDto: UpdateTermsDto,
+    @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.termsService.update(id, updateTermsDto, request.session.user._id.toString());
+    return this.termsService.update(id, updateTermsDto, request.session.user._id.toString(), file);
   }
 
   @Delete(':id')

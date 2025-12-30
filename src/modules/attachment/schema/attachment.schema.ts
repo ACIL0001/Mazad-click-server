@@ -11,6 +11,7 @@ export enum AttachmentAs {
   CATEGORY = 'CATEGORY',
   SUBCATEGORY = 'SUBCATEGORY',
   AD = 'AD',
+  TERMS = 'TERMS',
 }
 
 @Schema({ versionKey: false, timestamps: true })

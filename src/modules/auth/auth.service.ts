@@ -74,7 +74,7 @@ export class AuthService {
   }
 
   async SignIn(credentials: SignInDto) {
-    const user = await this.userService.findByLogin(credentials.login);
+    let user = await this.userService.findByLogin(credentials.login);
 
     if (!user) throw new UnauthorizedException('Invalid credentials - login');
 
@@ -87,6 +87,11 @@ export class AuthService {
       await this.otpService.createOtpAndSendSMS(user, OtpType.PHONE_CONFIRMATION);
       throw new UnauthorizedException('Phone number not verified. Please verify your phone number with the OTP sent to you.');
     }
+
+    // Increment login count
+    await this.userService.incrementLoginCount(user._id.toString());
+    // Reload user to get updated count (or just manual increment in object)
+    user = await this.userService.findUserById(user._id.toString());
 
     const session = await this.sessionService.CreateSession(user);
 
@@ -102,7 +107,10 @@ export class AuthService {
         accessToken: session.access_token,
         refreshToken: session.refresh_token,
       },
-      user
+      user: {
+        ...user.toObject(),
+        loginCount: user.loginCount
+      }
     };
   }
 
