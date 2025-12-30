@@ -28,11 +28,11 @@ export class AuctionNotificationService {
     // Only log every 5 minutes to reduce noise
     const now = new Date();
     const shouldLog = now.getMinutes() % 5 === 0;
-    
+
     if (shouldLog) {
       this.logger.log('🔔 Checking for auctions in last 5% of time...');
     }
-    
+
     try {
       // Find all active auctions
       const activeAuctions = await this.bidModel
@@ -64,11 +64,11 @@ export class AuctionNotificationService {
       const totalDuration = auction.endingAt.getTime() - auction.startingAt.getTime();
       const elapsedTime = now.getTime() - auction.startingAt.getTime();
       const remainingTime = auction.endingAt.getTime() - now.getTime();
-      
+
       // Calculate if we're in the last 5% of the auction
       const last5PercentTime = totalDuration * 0.05; // 5% of total duration
       const isInLast5Percent = remainingTime <= last5PercentTime && remainingTime > 0;
-      
+
       if (shouldLog) {
         this.logger.log(`Auction ${auction._id} calculation:`);
         this.logger.log(`- Total duration: ${totalDuration}ms (${Math.round(totalDuration / (1000 * 60))} minutes)`);
@@ -78,7 +78,7 @@ export class AuctionNotificationService {
         this.logger.log(`- Is in last 5%: ${isInLast5Percent}`);
         this.logger.log(`- Notification already sent: ${auction.last5PercentNotificationSent}`);
       }
-      
+
       if (!isInLast5Percent) {
         if (shouldLog) {
           this.logger.log(`Auction ${auction._id} is not in last 5%, skipping`);
@@ -109,7 +109,7 @@ export class AuctionNotificationService {
       const remainingMinutes = Math.ceil(remainingTime / (1000 * 60));
       const remainingHours = Math.floor(remainingMinutes / 60);
       const remainingMins = remainingMinutes % 60;
-      
+
       let timeRemainingText = '';
       if (remainingHours > 0) {
         timeRemainingText = `${remainingHours}h ${remainingMins}min`;
@@ -128,7 +128,7 @@ export class AuctionNotificationService {
           try {
             await this.notificationService.create(
               offer.user._id.toString(),
-              NotificationType.BID_CREATED, // Using BID_CREATED as it's the most appropriate type
+              NotificationType.AUCTION_ENDING_SOON,
               notificationTitle,
               notificationMessage,
               auction,
@@ -143,7 +143,7 @@ export class AuctionNotificationService {
 
       // Mark that we've sent notifications for this auction
       await this.markNotificationSent(auction._id.toString());
-      
+
       this.logger.log(`✅ Sent ${notificationsSent} notifications for auction ${auction._id} in last 5%`);
     } catch (error) {
       this.logger.error(`Error processing auction ${auction._id} for last 5% notification:`, error);
@@ -173,7 +173,7 @@ export class AuctionNotificationService {
   async getAuctionsEndingSoon(hours: number = 1) {
     const now = new Date();
     const endTime = new Date(now.getTime() + (hours * 60 * 60 * 1000));
-    
+
     return this.bidModel
       .find({
         status: { $in: [BID_STATUS.OPEN, BID_STATUS.ON_AUCTION] },
@@ -196,7 +196,7 @@ export class AuctionNotificationService {
    */
   async getActiveAuctionsWithTiming() {
     const now = new Date();
-    
+
     const activeAuctions = await this.bidModel
       .find({
         status: { $in: [BID_STATUS.OPEN, BID_STATUS.ON_AUCTION] },
@@ -211,7 +211,7 @@ export class AuctionNotificationService {
       const remainingTime = auction.endingAt.getTime() - now.getTime();
       const last5PercentTime = totalDuration * 0.05;
       const isInLast5Percent = remainingTime <= last5PercentTime && remainingTime > 0;
-      
+
       return {
         _id: auction._id,
         title: auction.title,

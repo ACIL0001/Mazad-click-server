@@ -17,7 +17,7 @@ async function bootstrap() {
     logger: WinstonModule.createLogger(winstonLoggerOptions),
   });
 
-  app.use(morgan('combined'));
+  // app.use(morgan('combined'));
   // Force restart check 3 - User Service and Schema Fixed
   // CORS Configuration - Enhanced for better compatibility
   const allowedOrigins = [

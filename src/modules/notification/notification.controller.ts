@@ -23,19 +23,19 @@ export class NotificationController {
   @Get('auction')
   @UseGuards(AuthGuard)
   async findAuctionsForBuyer(@Req() req: ProtectedRequest) {
-    console.log("Request received for notifications");
+    // console.log("Request received for notifications");
     if (!req.session?.user) {
       console.error("No user found in session");
       throw new UnauthorizedException('User not authenticated');
     }
 
     const userId = req.session.user._id.toString();
-    console.log("User ID from session:", userId);
+    // console.log("User ID from session:", userId);
 
     try {
       // Get all notifications for the user (both auction and offer notifications)
       const notifications = await this.notificationService.findForUser(userId);
-      console.log("Returning notifications to user");
+      // console.log("Returning notifications to user");
       return notifications;
     } catch (error) {
       console.error("Error in findAllForBuyer:", error);
@@ -45,10 +45,10 @@ export class NotificationController {
 
   @Get('buyer/:userId')
   async findNotificationsForBuyer(@Param('userId') userId: string) {
-    console.log("Request received for buyer notifications, userId:", userId);
+    // console.log("Request received for buyer notifications, userId:", userId);
     try {
       const notifications = await this.notificationService.findForBuyer(userId);
-      console.log("Returning notifications for buyer:", notifications.length);
+      // console.log("Returning notifications for buyer:", notifications.length);
       return notifications;
     } catch (error) {
       console.error("Error in findNotificationsForBuyer:", error);
@@ -207,7 +207,7 @@ export class NotificationController {
       throw new UnauthorizedException('User not authenticated');
     }
     const userId = req.session.user._id.toString();
-    console.log("Getting unread count for buyer with userId:", userId);
+    // console.log("Getting unread count for buyer with userId:", userId);
     return this.notificationService.getUnreadCount(userId);
   }
 
@@ -219,7 +219,7 @@ export class NotificationController {
       throw new UnauthorizedException('User not authenticated');
     }
     const userId = req.session.user._id.toString();
-    console.log("Getting unread count for user:", userId);
+    // console.log("Getting unread count for user:", userId);
     return this.notificationService.getUnreadCount(userId);
   }
 
@@ -227,19 +227,19 @@ export class NotificationController {
   @Get('all')
   @UseGuards(AuthGuard)
   async findAllForUser(@Req() req: ProtectedRequest) {
-    console.log("Request received for all notifications");
+    // console.log("Request received for all notifications");
     if (!req.session?.user) {
       console.error("No user found in session");
       throw new UnauthorizedException('User not authenticated');
     }
 
     const userId = req.session.user._id.toString();
-    console.log("User ID from session:", userId);
+    // console.log("User ID from session:", userId);
 
     try {
       // Get all notifications for the user
       const notifications = await this.notificationService.findForUser(userId);
-      console.log("Returning notifications to user:", notifications.length);
+      // console.log("Returning notifications to user:", notifications.length);
       return { notifications };
     } catch (error) {
       console.error("Error in findAllForUser:", error);
@@ -251,15 +251,15 @@ export class NotificationController {
   @Post()
   @UseGuards(AuthGuard)
   async createNotification(@Req() req: ProtectedRequest, @Body() body: any) {
-    console.log("POST request received for notifications");
+    // console.log("POST request received for notifications");
     if (!req.session?.user) {
       console.error("No user found in session");
       throw new UnauthorizedException('User not authenticated');
     }
 
     const userId = req.session.user._id.toString();
-    console.log("User ID from session:", userId);
-    console.log("Request body:", body);
+    // console.log("User ID from session:", userId);
+    // console.log("Request body:", body);
 
     try {
       // If body contains userId and token, it's a frontend request
@@ -267,7 +267,7 @@ export class NotificationController {
         // This is a frontend request asking for notifications
         // Return notifications for the specified user
         const notifications = await this.notificationService.findForUser(body.userId);
-        console.log("Returning notifications for user:", notifications.length);
+        // console.log("Returning notifications for user:", notifications.length);
         return { notifications };
       } else {
         // This is a regular notification creation request
@@ -279,7 +279,7 @@ export class NotificationController {
           message,
           data
         );
-        console.log("Notification created:", notification);
+        // console.log("Notification created:", notification);
         return { success: true, notification };
       }
     } catch (error) {

@@ -103,43 +103,43 @@ export class BidService {
     createBidDto.currentPrice = createBidDto.startingPrice;
 
     // Log bid creation details including thumbs
-    console.log('Creating bid:', createBidDto.title);
-    console.log('Bid DTO thumbs (type:', typeof createBidDto.thumbs, ', isArray:', Array.isArray(createBidDto.thumbs), '):', createBidDto.thumbs);
-    console.log('Bid DTO videos (type:', typeof createBidDto.videos, ', isArray:', Array.isArray(createBidDto.videos), '):', createBidDto.videos);
-    console.log('Bid DTO thumbs length:', createBidDto.thumbs?.length || 0);
-    console.log('Bid DTO videos length:', createBidDto.videos?.length || 0);
+    // console.log('Creating bid:', createBidDto.title);
+    // console.log('Bid DTO thumbs (type:', typeof createBidDto.thumbs, ', isArray:', Array.isArray(createBidDto.thumbs), '):', createBidDto.thumbs);
+    // console.log('Bid DTO videos (type:', typeof createBidDto.videos, ', isArray:', Array.isArray(createBidDto.videos), '):', createBidDto.videos);
+    // console.log('Bid DTO thumbs length:', createBidDto.thumbs?.length || 0);
+    // console.log('Bid DTO videos length:', createBidDto.videos?.length || 0);
 
     // Ensure thumbs and videos are arrays
     if (!Array.isArray(createBidDto.thumbs)) {
-      console.warn('WARNING: thumbs is not an array, converting:', createBidDto.thumbs);
+      // console.warn('WARNING: thumbs is not an array, converting:', createBidDto.thumbs);
       createBidDto.thumbs = createBidDto.thumbs ? [createBidDto.thumbs] : [];
     }
     if (!Array.isArray(createBidDto.videos)) {
-      console.warn('WARNING: videos is not an array, converting:', createBidDto.videos);
+      // console.warn('WARNING: videos is not an array, converting:', createBidDto.videos);
       createBidDto.videos = createBidDto.videos ? [createBidDto.videos] : [];
     }
 
-    console.log('Bid DTO full object (thumbs/videos only):', {
-      thumbs: createBidDto.thumbs,
-      videos: createBidDto.videos,
-      thumbsCount: createBidDto.thumbs.length,
-      videosCount: createBidDto.videos.length
-    });
+    // console.log('Bid DTO full object (thumbs/videos only):', {
+    //   thumbs: createBidDto.thumbs,
+    //   videos: createBidDto.videos,
+    //   thumbsCount: createBidDto.thumbs.length,
+    //   videosCount: createBidDto.videos.length
+    // });
 
     const createdBid = new this.bidModel(createBidDto);
-    console.log('Bid model before save - thumbs (raw):', createdBid.thumbs);
-    console.log('Bid model before save - thumbs (type):', typeof createdBid.thumbs, Array.isArray(createdBid.thumbs));
-    console.log('Bid model before save - thumbs (length):', createdBid.thumbs?.length || 0);
+    // console.log('Bid model before save - thumbs (raw):', createdBid.thumbs);
+    // console.log('Bid model before save - thumbs (type):', typeof createdBid.thumbs, Array.isArray(createdBid.thumbs));
+    // console.log('Bid model before save - thumbs (length):', createdBid.thumbs?.length || 0);
 
     const savedBid = await createdBid.save();
-    console.log('Bid saved - thumbs (raw):', savedBid.thumbs);
-    console.log('Bid saved - thumbs (type):', typeof savedBid.thumbs, Array.isArray(savedBid.thumbs));
-    console.log('Bid saved - thumbs (length):', savedBid.thumbs?.length || 0);
+    // console.log('Bid saved - thumbs (raw):', savedBid.thumbs);
+    // console.log('Bid saved - thumbs (type):', typeof savedBid.thumbs, Array.isArray(savedBid.thumbs));
+    // console.log('Bid saved - thumbs (length):', savedBid.thumbs?.length || 0);
 
     // Verify the saved bid has thumbs
     const verificationBid = await this.bidModel.findById(savedBid._id).select('thumbs videos').lean();
-    console.log('Verification query - thumbs:', verificationBid?.thumbs);
-    console.log('Verification query - thumbs length:', verificationBid?.thumbs?.length || 0);
+    // console.log('Verification query - thumbs:', verificationBid?.thumbs);
+    // console.log('Verification query - thumbs length:', verificationBid?.thumbs?.length || 0);
     const populatedBid = await this.bidModel
       .findById(savedBid._id)
       .populate('productCategory')
@@ -148,7 +148,7 @@ export class BidService {
       .exec();
 
     if (process.env.NODE_ENV === 'development') {
-      console.log('Bid created:', populatedBid._id);
+      // console.log('Bid created:', populatedBid._id);
     }
 
     // Remove broadcast notification to all buyers as per user request
@@ -219,7 +219,7 @@ export class BidService {
   async checkBids(id: string): Promise<void> {
     // Only log in development mode
     if (process.env.NODE_ENV === 'development') {
-      console.log('Checking bids for user:', id);
+      // console.log('Checking bids for user:', id);
     }
 
     const getUser = await this.userService.getUserById(id);
@@ -298,7 +298,8 @@ export class BidService {
                 productTitle: getAllBids[index].title,
                 sellerId: getUser._id,
                 buyerId: max.user._id,
-                finalPrice: max.price
+                finalPrice: max.price,
+                chatId: chat._id
               },
               getUser._id.toString(),
               `${getUser.firstName} ${getUser.lastName}`,
@@ -668,7 +669,7 @@ export class BidService {
   }
 
   async relaunchBid(relaunchBidDto: RelaunchBidDto, userId: string): Promise<Bid> {
-    console.log('relaunchBid called with:', { relaunchBidDto, userId });
+    // console.log('relaunchBid called with:', { relaunchBidDto, userId });
 
     // First, get the original bid to copy its data
     const originalBid = await this.bidModel
@@ -683,13 +684,13 @@ export class BidService {
     }
 
     // Debug logging for original bid
-    console.log('Original bid details:', {
-      _id: originalBid._id,
-      title: originalBid.title,
-      status: originalBid.status,
-      endingAt: originalBid.endingAt,
-      owner: originalBid.owner
-    });
+    // console.log('Original bid details:', {
+    //   _id: originalBid._id,
+    //   title: originalBid.title,
+    //   status: originalBid.status,
+    //   endingAt: originalBid.endingAt,
+    //   owner: originalBid.owner
+    // });
 
     // Check if the user owns the original bid
     if (originalBid.owner.toString() !== userId) {
@@ -703,16 +704,16 @@ export class BidService {
     const isStatusClosed = originalBid.status === BID_STATUS.CLOSED;
 
     // Debug logging
-    console.log('Relaunch validation:', {
-      auctionId: originalBid._id,
-      status: originalBid.status,
-      endingAt: originalBid.endingAt,
-      endTime: endTime,
-      now: now,
-      isTimeFinished,
-      isStatusClosed,
-      canRelaunch: isTimeFinished || isStatusClosed
-    });
+    // console.log('Relaunch validation:', {
+    //   auctionId: originalBid._id,
+    //   status: originalBid.status,
+    //   endingAt: originalBid.endingAt,
+    //   endTime: endTime,
+    //   now: now,
+    //   isTimeFinished,
+    //   isStatusClosed,
+    //   canRelaunch: isTimeFinished || isStatusClosed
+    // });
 
     // Allow relaunch if auction is either time-finished OR status-closed
     if (!isTimeFinished && !isStatusClosed) {
@@ -780,7 +781,7 @@ export class BidService {
     };
 
     try {
-      console.log('Creating new bid with data:', JSON.stringify(newBidData, null, 2));
+      // console.log('Creating new bid with data:', JSON.stringify(newBidData, null, 2));
 
       // Validate the new bid data before creating
       if (!newBidData.title || !newBidData.description || !newBidData.place) {

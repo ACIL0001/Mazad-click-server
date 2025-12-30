@@ -267,9 +267,9 @@ export class NotificationService {
         .limit(50)
         .exec();
 
-      console.log('🔔 Found general notifications (filtered):', notifications.length);
-      console.log('🔔 Filtered notification types:', notifications.map(n => n.type));
-      console.log('🔔 Filtered notification titles:', notifications.map(n => n.title));
+      // console.log('🔔 Found general notifications (filtered):', notifications.length);
+      // console.log('🔔 Filtered notification types:', notifications.map(n => n.type));
+      // console.log('🔔 Filtered notification titles:', notifications.map(n => n.title));
 
       // Collect IDs for manual population of older notifications (where senderId might be in data)
       const manualPopulationIds = new Set<string>();

@@ -299,7 +299,8 @@ export class TenderService {
               tenderTitle: getAllTenders[index].title,
               buyerId: getUser._id,
               sellerId: lowestBid.bidder._id,
-              finalPrice: lowestBid.bidAmount
+              finalPrice: lowestBid.bidAmount,
+              chatId: chat._id
             },
             getUser._id.toString(),
             `${getUser.firstName} ${getUser.lastName}`,
