@@ -174,11 +174,15 @@ export class UserService implements OnModuleInit {
 
   async findByLogin(login: string) {
     // ▼▼▼ CORRECTION HERE ▼▼▼
+    // Escape special regex characters to prevent RegExp errors
+    const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedLogin = escapeRegex(login);
+
     // Use a case-insensitive regex for the email field.
     // Anchor the regex with ^ (start) and $ (end) to match the *entire* string.
     const user = await this.userModel.findOne({
       $or: [
-        { email: { $regex: new RegExp(`^${login}$`, 'i') } },
+        { email: { $regex: new RegExp(`^${escapedLogin}$`, 'i') } },
         { phone: login }
       ],
     }).populate(['avatar', 'coverPhoto']);
