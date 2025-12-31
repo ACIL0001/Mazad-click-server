@@ -217,12 +217,23 @@ export class BidService {
   }
 
   async checkBids(id: string): Promise<void> {
+    // Validate ObjectId before querying
+    if (!id || typeof id !== 'string' || id.trim() === '' || !/^[0-9a-fA-F]{24}$/.test(id)) {
+      console.warn('checkBids: Invalid user ID provided:', id);
+      return;
+    }
+
     // Only log in development mode
     if (process.env.NODE_ENV === 'development') {
       // console.log('Checking bids for user:', id);
     }
 
     const getUser = await this.userService.getUserById(id);
+    if (!getUser) {
+      console.warn('checkBids: User not found for ID:', id);
+      return;
+    }
+
     const getAllBids = await this.bidModel.find({ owner: id, status: BID_STATUS.OPEN }).exec();
     for (let index = 0; index < getAllBids.length; index++) {
       const now = Date.now();

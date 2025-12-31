@@ -139,6 +139,9 @@ export class UserService implements OnModuleInit {
   }
 
   async findUserById(id: string) {
+    if (!id || !Types.ObjectId.isValid(id)) {
+      return null;
+    }
     const user = await this.userModel.findById(id).populate(['avatar', 'coverPhoto']);
     if (user) {
       // Convert secteur ID to name if needed
@@ -173,23 +176,34 @@ export class UserService implements OnModuleInit {
   }
 
   async findByLogin(login: string) {
-    // ▼▼▼ CORRECTION HERE ▼▼▼
-    // Escape special regex characters to prevent RegExp errors
-    const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const escapedLogin = escapeRegex(login);
+    // Input validation
+    if (!login || typeof login !== 'string') {
+      console.error('findByLogin: Invalid login parameter:', login);
+      return null;
+    }
 
-    // Use a case-insensitive regex for the email field.
-    // Anchor the regex with ^ (start) and $ (end) to match the *entire* string.
-    const user = await this.userModel.findOne({
-      $or: [
-        { email: { $regex: new RegExp(`^${escapedLogin}$`, 'i') } },
-        { phone: login }
-      ],
-    }).populate(['avatar', 'coverPhoto']);
-    // ▲▲▲ CORRECTION ENDS ▲▲▲
+    try {
+      console.log('🔍 findByLogin: Searching for user with login:', login);
 
-    // if (!user) throw new BadRequestException('Invalid login'); // FIXME: TRANSLATE THIS
-    return user;
+      // Escape special regex characters to prevent crashes
+      const escapedLogin = login.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      const user = await this.userModel.findOne({
+        $or: [
+          { email: { $regex: new RegExp(`^${escapedLogin}$`, 'i') } },
+          { phone: login }
+        ],
+      }).populate(['avatar', 'coverPhoto']);
+
+      console.log('🔍 findByLogin: Result:', user ? `Found user ${user._id}` : 'User not found');
+      return user;
+    } catch (error) {
+      console.error('🔍 findByLogin: Database error:', {
+        message: (error as Error).message,
+        login: login
+      });
+      throw error;
+    }
   }
 
   async validatePhone(userID: Types.ObjectId) {
@@ -209,7 +223,7 @@ export class UserService implements OnModuleInit {
     if (data.email) {
       const emailExist = await this.userModel.findOne({ email: data.email });
       if (emailExist) throw new BadRequestException('Email already exist'); // FIXME: TRANSLATE THIS
-    }
+    }cl
 
     if (data.phone) {
       const phoneExist = await this.userModel.findOne({ phone: data.phone });
@@ -220,7 +234,7 @@ export class UserService implements OnModuleInit {
 
   async onModuleInit() {
     // Admin user initialization is now handled by AdminService
-    this.logger.log('UserService initialized - admin creation delegated to AdminService. Deploying fix.');
+    this.logger.log('UserService initialized - admin creation delegated to AdminService');
   }
 
   async findAllBuyers() {
@@ -408,6 +422,9 @@ export class UserService implements OnModuleInit {
   }
 
   async getUserById(id: string) {
+    if (!id || !Types.ObjectId.isValid(id)) {
+      return null;
+    }
     const user = await this.userModel.findById(id).populate(['avatar', 'coverPhoto']);
     if (user && user.avatar && typeof user.avatar === 'object' && !Array.isArray(user.avatar)) {
       // Ensure avatar has fullUrl
