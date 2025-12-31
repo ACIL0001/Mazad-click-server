@@ -223,7 +223,7 @@ export class UserService implements OnModuleInit {
     if (data.email) {
       const emailExist = await this.userModel.findOne({ email: data.email });
       if (emailExist) throw new BadRequestException('Email already exist'); // FIXME: TRANSLATE THIS
-    }cl
+    }
 
     if (data.phone) {
       const phoneExist = await this.userModel.findOne({ phone: data.phone });
