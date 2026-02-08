@@ -70,11 +70,11 @@ export class StatsService {
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
     @InjectModel(Tender.name) private tenderModel: Model<TenderDocument>,
-  ) {}
+  ) { }
 
   async getUserStats(): Promise<UserStats> {
     const users = await this.userModel.find({}).lean().exec() as User[];
-    
+
     // Count by type
     const admins = users.filter(user => user.type === RoleCode.ADMIN);
     const professionals = users.filter(user => user.type === RoleCode.PROFESSIONAL);
@@ -96,34 +96,34 @@ export class StatsService {
     const bids = await this.bidModel.find({}).populate('productCategory').exec();
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    
+
     // Get bids from last week for comparison
     const lastWeekBids = await this.bidModel.find({
       createdAt: { $gte: weekAgo }
     }).exec();
-    
+
     // Calculate status counts (for now using basic logic, can be enhanced based on actual bid status)
     const activeBids = bids.filter(bid => {
       const bidDate = new Date((bid as any).createdAt);
       const daysDiff = (now.getTime() - bidDate.getTime()) / (1000 * 3600 * 24);
       return daysDiff <= 30; // Consider bids from last 30 days as active
     });
-    
+
     const completedBids = bids.filter(bid => {
       const bidDate = new Date((bid as any).createdAt);
       const daysDiff = (now.getTime() - bidDate.getTime()) / (1000 * 3600 * 24);
       return daysDiff > 30 && daysDiff <= 90;
     });
-    
+
     // Get category distribution
     const categoryMap = new Map<string, { name: string; count: number; _id: string }>();
-    
+
     for (const bid of bids) {
       if (bid.productCategory) {
         const category = bid.productCategory as any;
         const categoryId = category._id ? category._id.toString() : category.toString();
         const categoryName = category.name || 'Unknown';
-        
+
         if (categoryMap.has(categoryId)) {
           categoryMap.get(categoryId).count++;
         } else {
@@ -135,30 +135,30 @@ export class StatsService {
         }
       }
     }
-    
+
     const topCategories = Array.from(categoryMap.values())
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
-    
+
     // Calculate daily average over last 30 days
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const recentBids = bids.filter(bid => new Date((bid as any).createdAt) >= thirtyDaysAgo);
     const dailyAverage = Math.round(recentBids.length / 30);
-    
+
     // Calculate weekly growth
     const thisWeekBids = lastWeekBids.length;
     const previousWeekStart = new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000);
     const previousWeekBids = await this.bidModel.find({
-      createdAt: { 
+      createdAt: {
         $gte: previousWeekStart,
         $lt: weekAgo
       }
     }).exec();
-    
-    const weeklyGrowth = previousWeekBids.length > 0 
+
+    const weeklyGrowth = previousWeekBids.length > 0
       ? Math.round(((thisWeekBids - previousWeekBids.length) / previousWeekBids.length) * 100)
       : thisWeekBids > 0 ? 100 : 0;
-    
+
     return {
       total: bids.length,
       byStatus: {
@@ -177,7 +177,7 @@ export class StatsService {
     const tenders = await this.tenderModel.find({}).exec();
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    
+
     // Count by status
     const byStatus = {
       open: tenders.filter(t => t.status === TENDER_STATUS.OPEN).length,
@@ -201,16 +201,16 @@ export class StatsService {
     const thisWeekTenders = await this.tenderModel.find({
       createdAt: { $gte: weekAgo }
     }).exec();
-    
+
     const previousWeekStart = new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000);
     const previousWeekTenders = await this.tenderModel.find({
-      createdAt: { 
+      createdAt: {
         $gte: previousWeekStart,
         $lt: weekAgo
       }
     }).exec();
 
-    const weeklyGrowth = previousWeekTenders.length > 0 
+    const weeklyGrowth = previousWeekTenders.length > 0
       ? Math.round(((thisWeekTenders.length - previousWeekTenders.length) / previousWeekTenders.length) * 100)
       : thisWeekTenders.length > 0 ? 100 : 0;
 
@@ -226,7 +226,7 @@ export class StatsService {
   async getCategoryStats(): Promise<CategoryStats[]> {
     const bids = await this.bidModel.find({}).populate('productCategory').exec();
     const categories = await this.categoryModel.find({}).exec();
-    
+
     // Create a map to count bids per category
     const categoryCount = new Map<string, { name: string; count: number; _id: string }>();
 
@@ -245,7 +245,7 @@ export class StatsService {
         const categoryId = typeof bid.productCategory === 'object' && bid.productCategory._id
           ? bid.productCategory._id.toString()
           : bid.productCategory.toString();
-        
+
         if (categoryCount.has(categoryId)) {
           categoryCount.get(categoryId).count++;
         }
@@ -430,8 +430,8 @@ export class StatsService {
       },
       {
         $group: {
-          _id: { 
-            year: { $year: "$createdAt" }, 
+          _id: {
+            year: { $year: "$createdAt" },
             month: { $month: "$createdAt" },
             status: "$status"
           },
@@ -448,9 +448,9 @@ export class StatsService {
 
     months.forEach(({ year, month }) => {
       ['active', 'completed', 'pending'].forEach(status => {
-        const found = results.find(r => 
-          r._id.year === year && 
-          r._id.month === month + 1 && 
+        const found = results.find(r =>
+          r._id.year === year &&
+          r._id.month === month + 1 &&
           r._id.status === status
         );
         seriesData[status].push(found ? found.count : 0);
@@ -461,8 +461,8 @@ export class StatsService {
       ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"][month]
     );
 
-    return { 
-      labels, 
+    return {
+      labels,
       series: [
         { name: 'Enchères Actives', data: seriesData.active },
         { name: 'Enchères Terminées', data: seriesData.completed },
@@ -496,8 +496,8 @@ export class StatsService {
       },
       {
         $group: {
-          _id: { 
-            year: { $year: "$createdAt" }, 
+          _id: {
+            year: { $year: "$createdAt" },
             month: { $month: "$createdAt" },
             category: "$productCategory"
           },
@@ -524,9 +524,9 @@ export class StatsService {
 
     months.forEach(({ year, month }) => {
       topCategories.slice(0, 5).forEach(cat => {
-        const found = results.find(r => 
-          r._id.year === year && 
-          r._id.month === month + 1 && 
+        const found = results.find(r =>
+          r._id.year === year &&
+          r._id.month === month + 1 &&
           r._id.category.toString() === cat._id
         );
         seriesData[cat._id].data.push(found ? found.count : 0);
@@ -537,9 +537,51 @@ export class StatsService {
       ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"][month]
     );
 
-    return { 
-      labels, 
+    return {
+      labels,
       series: Object.values(seriesData)
     };
+  }
+
+  async getUsersBySector() {
+    console.log('📊 getUsersBySector called');
+
+    // First, let's check all users with secteur field
+    const allUsersWithSecteur = await this.userModel.find({
+      secteur: { $exists: true, $nin: [null, ''] }
+    }).select('secteur isActive type').lean();
+
+    console.log('📊 Total users with secteur field:', allUsersWithSecteur.length);
+    console.log('📊 Sample users:', JSON.stringify(allUsersWithSecteur.slice(0, 3), null, 2));
+
+    const sectorStats = await this.userModel.aggregate([
+      {
+        $match: {
+          // Temporarily remove isActive filter to see all data
+          secteur: { $exists: true, $nin: [null, ''] }
+        }
+      },
+      {
+        $group: {
+          _id: '$secteur',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          sector: '$_id',
+          count: 1,
+          _id: 0
+        }
+      },
+      {
+        $sort: { count: -1 }
+      }
+    ]);
+
+    console.log('📊 Sector stats result:', JSON.stringify(sectorStats, null, 2));
+    console.log('📊 Number of sectors found:', sectorStats.length);
+
+    return sectorStats;
   }
 }

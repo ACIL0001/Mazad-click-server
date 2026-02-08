@@ -41,6 +41,9 @@ export class User {
   @Prop({ type: String, required: true, unique: true })
   phone: string;
 
+  @Prop({ type: String, required: false })
+  contactNumber?: string;
+
   @Prop({ type: Boolean, default: false })
   isPhoneVerified: boolean;
 
@@ -79,7 +82,7 @@ export class User {
   wilaya?: string;
 
   @Prop({ type: String, required: false })
-  activitySector?: string; // Formerly 'secteur'
+  secteur?: string;
 
   @Prop({ type: String, required: false })
   entreprise?: string;
@@ -98,6 +101,9 @@ export class User {
 
   @Prop({ type: Number, default: 0 })
   loginCount: number;
+
+  @Prop({ type: Boolean, default: true })
+  isProfileVisible: boolean;
 
   @Prop({
     type: {

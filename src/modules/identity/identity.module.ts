@@ -13,6 +13,7 @@ import { NotificationModule } from '../notification/notification.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
 import { Plan, PlanSchema } from '../subscription/schema/plan.schema';
 import { Subscription, SubscriptionSchema } from '../subscription/schema/subscription.schema';
+import { SocketModule } from '../../socket/socket.module';
 
 @Module({
   imports: [MongooseModule.forFeature([
@@ -22,9 +23,9 @@ import { Subscription, SubscriptionSchema } from '../subscription/schema/subscri
     { name: Attachment.name, schema: AttachmentSchema },
     { name: Plan.name, schema: PlanSchema },
     { name: Subscription.name, schema: SubscriptionSchema },
-  ]), SessionModule, AttachmentModule, forwardRef(() => UserModule), forwardRef(() => NotificationModule), forwardRef(() => SubscriptionModule)],
+  ]), SessionModule, AttachmentModule, forwardRef(() => UserModule), forwardRef(() => NotificationModule), forwardRef(() => SubscriptionModule), forwardRef(() => SocketModule)],
   providers: [IdentityService],
   controllers: [IdentityController],
   exports: [IdentityService],
 })
-export class IdentityModule {} 
+export class IdentityModule { } 

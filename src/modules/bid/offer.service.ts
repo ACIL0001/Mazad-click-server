@@ -18,6 +18,7 @@ import { I18nService } from 'nestjs-i18n';
 import { BID_TYPE } from './schema/bid.schema';
 import { ChatService } from '../chat/chat.service';
 import { UserService } from '../user/user.service';
+import { ParticipantService } from './participant.service';
 
 @Injectable()
 export class OfferService {
@@ -30,6 +31,7 @@ export class OfferService {
     private i18nService: I18nService,
     private chatService: ChatService,
     private userService: UserService,
+    private participantService: ParticipantService,
   ) { }
 
   async createOffer(bidId: string, createOfferDto: CreateOfferDto): Promise<Offer> {
@@ -64,6 +66,12 @@ export class OfferService {
       throw new BadRequestException(translatedMessage);
     }
 
+    // Check if the user has already made an offer on this bid
+    const existingOffer = await this.offerModel.findOne({
+      bid: bid._id,
+      user: createOfferDto.user
+    });
+
     // Create the offer with a default status
     const createdOffer = new this.offerModel({
       ...createOfferDto,
@@ -71,6 +79,9 @@ export class OfferService {
       status: OfferStatus.PENDING
     });
     const savedOffer = await createdOffer.save();
+
+    // Always update participants count to ensure accuracy
+    await this.participantService.updateBidParticipantCount(bid._id);
 
     // Update the bid's current price
     const updatedBid = await this.bidService.update(bid._id, { currentPrice: createOfferDto.price });

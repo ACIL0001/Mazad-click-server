@@ -102,11 +102,17 @@ export class Bid {
   @Prop({ type: Boolean, required: true })
   isPro: boolean;
 
-  @Prop({ type: Boolean, required: true , default: false })
+  @Prop({ type: Boolean, required: true, default: false })
   hidden: boolean;
+
+  @Prop({ type: Boolean, required: true, default: false })
+  professionalOnly: boolean;
 
   @Prop({ type: String, required: true })
   place: String;
+
+  @Prop({ type: String })
+  contactNumber?: string;
 
   @Prop({ type: Number })
   reservePrice?: number;
@@ -139,17 +145,20 @@ export class Bid {
    * Each comment is stored in the comments collection with the comment text and userId.
    */
   comments: MongooseSchema.Types.ObjectId[];
+
+  @Prop({ type: Number, default: 0 })
+  participantsCount: number;
 }
 
 export type BidDocument = HydratedDocument<Bid>;
 export const BidSchema = SchemaFactory.createForClass(Bid);
 
-BidSchema.pre('find', function() {
+BidSchema.pre('find', function () {
   this.populate('productCategory');
   this.populate('productSubCategory');
 });
 
-BidSchema.pre('findOne', function() {
+BidSchema.pre('findOne', function () {
   this.populate('productCategory');
   this.populate('productSubCategory');
 });

@@ -6,6 +6,7 @@ import { Model, Types } from 'mongoose';
 import { User } from '../user/schema/user.schema';
 import { v4 as uuid } from 'uuid';
 import { SmsService } from './sms.service';
+import { EmailService } from '../email/email.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
@@ -14,11 +15,12 @@ export class OtpService {
   private readonly OTP_EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES) || 5;
   private readonly MAX_OTP_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS_PER_DAY) || 10;
   private readonly RATE_LIMIT_WINDOW = (parseInt(process.env.OTP_RATE_LIMIT_MINUTES) || 1) * 60000; // Convert to ms
-  private readonly isDevelopment = process.env.NODE_ENV === 'development';
+  private readonly isDevelopment = process.env.NODE_ENV === 'development' && process.env.ENABLE_REAL_SMS !== 'true';
 
   constructor(
     @InjectModel(Otp.name) private readonly otpModel: Model<Otp>,
     private readonly smsService: SmsService,
+    private readonly emailService: EmailService,
   ) {
     this.logger.log(`🔧 OTP Service initialized in ${this.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'} mode`);
     this.logger.log(`⏰ OTP Expiry: ${this.OTP_EXPIRY_MINUTES} minutes`);
@@ -28,7 +30,7 @@ export class OtpService {
 
   async createNumericOtp(user: User, type: OtpType): Promise<Otp> {
     this.logger.log(`🔢 Generating OTP for user: ${user._id}, type: ${type}`);
-    
+
     // Delete any existing OTPs of the same type for this user
     const deletedCount = await this.otpModel.deleteMany({ user: user._id, type });
     if (deletedCount.deletedCount > 0) {
@@ -61,9 +63,9 @@ export class OtpService {
     }
 
     try {
-      const otp = await this.otpModel.create({ 
-        code, 
-        user: user._id, 
+      const otp = await this.otpModel.create({
+        code,
+        user: user._id,
         type,
         expired: false,
         isUsed: false
@@ -79,7 +81,7 @@ export class OtpService {
 
   async validateByCode(code: string, user: User): Promise<Otp | null> {
     this.logger.log(`🔍 Validating OTP for user: ${user._id}, code: ${code}`);
-    
+
     try {
       const otp = await this.otpModel.findOne({
         user: user._id,
@@ -119,9 +121,9 @@ export class OtpService {
     try {
       const result = await this.otpModel.updateOne(
         { _id: otpId },
-        { 
-          isUsed: true, 
-          usedAt: new Date() 
+        {
+          isUsed: true,
+          usedAt: new Date()
         }
       );
 
@@ -137,6 +139,35 @@ export class OtpService {
     }
   }
 
+  async createOtpAndSendEmail(user: User, type: OtpType): Promise<void> {
+    try {
+      // Generate OTP
+      const otp = await this.createNumericOtp(user, type);
+
+      let subject = 'MazadClick Verification Code';
+      let text = `Your verification code is: ${otp.code}`;
+
+      if (type === OtpType.FORGOT_PASSWORD) {
+        subject = 'MazadClick Password Reset';
+        text = `Your password reset code is: ${otp.code}. This code is valid for ${this.OTP_EXPIRY_MINUTES} minutes.`;
+      }
+
+      // Send Email
+      const sent = await this.emailService.sendMail(user.email, subject, text);
+
+      if (sent) {
+        this.logger.log(`✅ OTP Email sent successfully to ${user.email} (type: ${type})`);
+      } else {
+        this.logger.error(`❌ Failed to send OTP Email to ${user.email}`);
+        throw new BadRequestException(`Failed to send OTP Email`);
+      }
+
+    } catch (error) {
+      this.logger.error(`❌ Failed to create and send OTP Email for user ${user._id}: ${error.message}`);
+      throw error;
+    }
+  }
+
   async createOtpAndSendSMS(user: User, type: OtpType): Promise<void> {
     try {
       // Check rate limiting first
@@ -144,7 +175,7 @@ export class OtpService {
 
       // Generate OTP
       const otp = await this.createNumericOtp(user, type);
-      
+
       // Map OTP type to message type for SMS service
       let messageType: string;
       switch (type) {
@@ -163,10 +194,10 @@ export class OtpService {
         default:
           messageType = 'verification';
       }
-      
+
       // Send real OTP SMS using improved SMS service
       const smsResult = await this.smsService.sendRealOtp(user.phone, otp.code, messageType);
-      
+
       if (smsResult.success) {
         this.logger.log(`✅ Real OTP SMS sent successfully to ${user.phone} (type: ${type})`);
         this.logger.log(`📊 Credits used: ${smsResult.details?.creditsUsed || (this.isDevelopment ? 0 : 1)}`);
@@ -174,7 +205,7 @@ export class OtpService {
         this.logger.error(`❌ Real OTP SMS failed for ${user.phone}: ${smsResult.message}`);
         throw new BadRequestException(`Failed to send OTP SMS: ${smsResult.message}`);
       }
-      
+
       if (this.isDevelopment) {
         this.logger.log('');
         this.logger.log('💡 DEVELOPMENT MODE:');
@@ -183,7 +214,7 @@ export class OtpService {
         this.logger.log('   • Switch NODE_ENV=production for real SMS sending');
         this.logger.log('');
       }
-      
+
     } catch (error) {
       this.logger.error(`❌ Failed to create and send OTP for user ${user._id}: ${error.message}`);
       throw error;
@@ -212,10 +243,10 @@ export class OtpService {
 
   private async checkRateLimit(user: User, type: OtpType): Promise<void> {
     const carrier = this.detectCarrier(user.phone);
-    
+
     // Adjust rate limiting based on carrier reliability and development mode
     let rateLimitWindow = this.RATE_LIMIT_WINDOW;
-    
+
     if (!this.isDevelopment) {
       // In production, apply carrier-specific rate limits
       if (carrier === 'Djezzy') {
@@ -228,7 +259,7 @@ export class OtpService {
       rateLimitWindow = Math.max(this.RATE_LIMIT_WINDOW / 2, 30000); // Minimum 30 seconds
       this.logger.log(`Development mode: Using relaxed rate limit of ${rateLimitWindow / 1000} seconds`);
     }
-    
+
     // Check if user has requested OTP too frequently
     const recentOtp = await this.otpModel.findOne({
       user: user._id,
@@ -237,6 +268,10 @@ export class OtpService {
     });
 
     if (recentOtp) {
+      if (type === OtpType.FORGOT_PASSWORD) {
+        throw new ForbiddenException(`Please wait before requesting another email.`);
+      }
+
       let waitTime: string;
       if (!this.isDevelopment) {
         if (carrier === 'Djezzy') {
@@ -249,16 +284,17 @@ export class OtpService {
       } else {
         waitTime = `${rateLimitWindow / 1000} seconds (development)`;
       }
-      
+
       this.logger.warn(`Rate limit exceeded for user: ${user._id}, type: ${type}, carrier: ${carrier}`);
       throw new ForbiddenException(`Please wait ${waitTime} before requesting another OTP (${carrier} network)`);
     }
+
 
     // Check daily limit (adjusted for development)
     const dailyLimit = this.isDevelopment ? this.MAX_OTP_ATTEMPTS * 10 : this.MAX_OTP_ATTEMPTS; // 10x limit in development
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const dailyOtpCount = await this.otpModel.countDocuments({
       user: user._id,
       type: type,
@@ -270,7 +306,7 @@ export class OtpService {
       this.logger.warn(`${limitType} OTP limit exceeded for user: ${user._id}, type: ${type} (${dailyOtpCount}/${dailyLimit})`);
       throw new ForbiddenException(`${limitType} OTP limit exceeded. Please try again tomorrow.`);
     }
-    
+
     this.logger.log(`Rate limit check passed: ${dailyOtpCount}/${dailyLimit} daily, carrier: ${carrier}`);
   }
 
@@ -278,7 +314,7 @@ export class OtpService {
   private detectCarrier(phone: string): string {
     const cleanPhone = phone.replace(/[^\d]/g, '');
     let localNumber: string;
-    
+
     // Extract local number (9 digits)
     if (cleanPhone.startsWith('213')) {
       localNumber = cleanPhone.substring(3);
@@ -287,26 +323,26 @@ export class OtpService {
     } else {
       localNumber = cleanPhone;
     }
-    
+
     if (localNumber.length !== 9) {
       return 'Unknown';
     }
-    
+
     // CORRECT Algeria Mobile Carrier Prefixes
     const firstDigit = localNumber.charAt(0);
-    
+
     if (firstDigit === '5') {
       return 'Ooredoo';  // 05x-xxx-xxxx
     }
-    
+
     if (firstDigit === '6') {
       return 'Mobilis';  // 06x-xxx-xxxx
     }
-    
+
     if (firstDigit === '7') {
       return 'Djezzy';   // 07x-xxx-xxxx
     }
-    
+
     return `Unknown (${firstDigit}x)`;
   }
 
@@ -314,11 +350,11 @@ export class OtpService {
   async cleanupExpiredOtps(): Promise<void> {
     try {
       const fiveMinutesAgo = new Date(Date.now() - this.OTP_EXPIRY_MINUTES * 60000);
-      
+
       const result = await this.otpModel.updateMany(
-        { 
+        {
           createdAt: { $lt: fiveMinutesAgo },
-          expired: false 
+          expired: false
         },
         { expired: true }
       );
@@ -344,15 +380,15 @@ export class OtpService {
     try {
       await this.otpModel.findOne().limit(1);
       this.logger.log('Database connection: OK');
-      
+
       const smsHealthy = await this.smsService.testConfiguration();
       this.logger.log(`SMS service: ${smsHealthy ? 'OK' : 'FAILED'}`);
-      
+
       if (this.isDevelopment) {
         this.logger.log('Development mode: Health check completed (no live SMS test)');
         return true; // Always return true in development
       }
-      
+
       return smsHealthy;
     } catch (error) {
       this.logger.error(`Health check failed: ${error.message}`);
@@ -415,7 +451,7 @@ export class OtpService {
         if (otp.user && (otp.user as any).phone) {
           const carrier = this.detectCarrier((otp.user as any).phone).toLowerCase();
           const carrierKey = carrierStats[carrier] ? carrier : 'unknown';
-          
+
           carrierStats[carrierKey].sent++;
           if (otp.isUsed) carrierStats[carrierKey].used++;
           if (otp.expired) carrierStats[carrierKey].expired++;
@@ -439,7 +475,7 @@ export class OtpService {
   async getOtpAnalytics(timeframe: 'hour' | 'day' | 'week' = 'day'): Promise<any> {
     try {
       let timeAgo: Date;
-      
+
       switch (timeframe) {
         case 'hour':
           timeAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -486,7 +522,7 @@ export class OtpService {
         if (otp.user && (otp.user as any).phone) {
           const carrier = this.detectCarrier((otp.user as any).phone).toLowerCase();
           const carrierKey = analytics.carrierBreakdown[carrier] ? carrier : 'unknown';
-          
+
           analytics.carrierBreakdown[carrierKey].total++;
           if (otp.isUsed) analytics.carrierBreakdown[carrierKey].success++;
           if (otp.expired) analytics.carrierBreakdown[carrierKey].expired++;
@@ -505,15 +541,15 @@ export class OtpService {
     try {
       const carrier = this.detectCarrier(phone);
       const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      
+
       const user = await this.otpModel.find({}).populate({
         path: 'user',
         match: { phone: phone }
       });
 
       const userOtps = user.filter(otp => otp.user !== null);
-      
-      const recentOtps = userOtps.filter(otp => 
+
+      const recentOtps = userOtps.filter(otp =>
         new Date(otp.createdAt) >= last24Hours
       );
 
@@ -546,19 +582,19 @@ export class OtpService {
 
   private getPhoneSpecificRecommendations(phone: string, carrier: string, recentOtps: any[]): string[] {
     const recommendations = [];
-    
-    const failureRate = recentOtps.length > 0 ? 
+
+    const failureRate = recentOtps.length > 0 ?
       (recentOtps.filter(otp => otp.expired).length / recentOtps.length) : 0;
-    
+
     if (this.isDevelopment) {
       recommendations.push('Development mode: SMS messages are logged instead of sent');
       recommendations.push('Switch NODE_ENV=production for real SMS delivery');
       recommendations.push('Use the OTP codes shown in server logs for testing');
     }
-    
+
     if (failureRate > 0.5) {
       recommendations.push(`High failure rate (${Math.round(failureRate * 100)}%) detected`);
-      
+
       if (carrier === 'Djezzy') {
         recommendations.push('Djezzy network issues detected - try longer delays between attempts');
         recommendations.push('Consider using alternative sender IDs like "INFO" or "SMS"');
@@ -575,7 +611,7 @@ export class OtpService {
     } else if (recentOtps.length === 0) {
       recommendations.push('No recent OTP history available');
     }
-    
+
     if (carrier === 'Djezzy') {
       recommendations.push('Allow 2-3 minutes for Djezzy delivery');
       recommendations.push('Djezzy numbers start with 07x');
@@ -587,7 +623,7 @@ export class OtpService {
       recommendations.push('Mobilis typically has fastest delivery');
       recommendations.push('Mobilis numbers start with 06x');
     }
-    
+
     return recommendations;
   }
 }

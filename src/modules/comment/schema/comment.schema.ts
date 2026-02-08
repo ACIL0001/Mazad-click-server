@@ -6,6 +6,15 @@ import { User } from 'src/modules/user/schema/user.schema';
 export class Comment {
   _id: string;
 
+  @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Comment' }] })
+  replies: Comment[];
+
+  @Prop({ type: String, index: true })
+  entityId: string;
+
+  @Prop({ type: String, enum: ['BID', 'TENDER', 'DIRECT_SALE'] })
+  entityType: string;
+
   @Prop({ type: String, required: true })
   comment: string;
 

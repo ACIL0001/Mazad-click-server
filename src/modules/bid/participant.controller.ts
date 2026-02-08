@@ -14,7 +14,7 @@ import { ApiTags } from '@nestjs/swagger';
 @ApiTags('Participants')
 @Controller('participant')
 export class ParticipantController {
-  constructor(private readonly participantService: ParticipantService) {}
+  constructor(private readonly participantService: ParticipantService) { }
 
   @Get()
   async getAllParticipants() {
@@ -39,5 +39,10 @@ export class ParticipantController {
   @Delete(':id')
   async removeParticipant(@Param('id') id: string) {
     return this.participantService.remove(id);
+  }
+
+  @Post('sync-counts')
+  async syncParticipantCounts() {
+    return this.participantService.syncAllBidParticipantCounts();
   }
 }

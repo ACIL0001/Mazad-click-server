@@ -9,16 +9,17 @@ import { UserModule } from '../user/user.module';
 import { SmsService } from './sms.service';
 import { HttpModule } from '@nestjs/axios';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
     // MongoDB schemas
     MongooseModule.forFeature([{ name: Otp.name, schema: OtpSchema }]),
-    
+
     // Other modules
     SessionModule,
     UserModule,
-    
+
     // HTTP module for SMS service
     HttpModule.register({
       timeout: 15000, // 15 second timeout for HTTP requests
@@ -26,13 +27,14 @@ import { ScheduleModule } from '@nestjs/schedule';
       // Note: retries and retryDelay are not supported by @nestjs/axios HttpModule
       // Implement retry logic manually in the SmsService if needed
     }),
-    
+
     // Enable scheduling for cleanup tasks
     ScheduleModule.forRoot(),
+    EmailModule,
   ],
   controllers: [OtpController],
   providers: [
-    OtpService, 
+    OtpService,
     SmsService,
     // Add custom providers for configuration, making them injectable
     {
@@ -56,7 +58,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     }
   ],
   exports: [
-    OtpService, 
+    OtpService,
     SmsService,
     'OTP_CONFIG',
     'SMS_CONFIG'
@@ -66,7 +68,7 @@ export class OtpModule {
   constructor() {
     const environment = process.env.NODE_ENV || 'development';
     console.log(`🔧 OTP Module initialized in ${environment.toUpperCase()} mode`);
-    
+
     if (environment === 'development') {
       console.log('📝 SMS messages will be logged instead of sent (saves credits)');
       console.log('🧪 Enhanced debugging and testing features enabled');

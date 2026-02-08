@@ -24,7 +24,7 @@ export class CreateBidDto {
   @IsString()
   quantity: string;
 
-  
+
   @IsString()
   wilaya: string;
 
@@ -35,6 +35,10 @@ export class CreateBidDto {
   @IsString()
   @IsNotEmpty()
   place: string;
+
+  @IsString()
+  @IsOptional()
+  contactNumber?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -106,4 +110,8 @@ export class CreateBidDto {
   @IsBoolean()
   @IsOptional()
   hidden?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  professionalOnly?: boolean;
 }

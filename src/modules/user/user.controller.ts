@@ -15,6 +15,9 @@ import { AttachmentAs } from '../attachment/schema/attachment.schema';
 import { IdentityService } from '../identity/identity.service';
 import { IDE_TYPE, CONVERSION_TYPE } from '../identity/identity.schema';
 import { User } from './schema/user.schema';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../notification/schema/notification.schema';
+import { SocketGateway } from '../../socket/socket.gateway';
 
 @Controller('users')
 export class UserController {
@@ -23,6 +26,8 @@ export class UserController {
     private readonly attachmentService: AttachmentService,
     private readonly adminService: AdminService,
     private readonly identityService: IdentityService,
+    private readonly notificationService: NotificationService,
+    private readonly socketGateway: SocketGateway,
   ) { }
 
   @Get('test')
@@ -70,15 +75,16 @@ export class UserController {
 
     // Validate input data
     // Validate input data
-    const allowedFields = ['firstName', 'lastName', 'phone', 'wilaya', 'activitySector', 'companyName', 'secteur', 'socialReason', 'jobTitle'];
+    // Validate input data
+    const allowedFields = ['firstName', 'lastName', 'phone', 'wilaya', 'activitySector', 'companyName', 'secteur', 'socialReason', 'jobTitle', 'isProfileVisible'];
     const filteredData = {};
 
     for (const field of allowedFields) {
       if (updateData[field] !== undefined) {
-        // Map old fields to new ones if present
-        if (field === 'secteur') {
-          filteredData['activitySector'] = updateData[field];
-        } else if (field === 'socialReason') {
+        // Map fields to DB schema names
+        if (field === 'activitySector' || field === 'secteur') {
+          filteredData['secteur'] = updateData[field];
+        } else if (field === 'socialReason' || field === 'companyName') {
           filteredData['companyName'] = updateData[field];
         } else {
           filteredData[field] = updateData[field];
@@ -609,7 +615,12 @@ export class UserController {
     @Param('userId') userId: string,
     @Body('isVerified') isVerified: boolean
   ) {
-    return this.userService.setUserVerified(userId, isVerified);
+    const result = await this.userService.setUserVerified(userId, isVerified);
+
+    // NOTE: Notification is sent from identity.controller.ts verifyIdentity endpoint
+    // to avoid duplicate notifications
+
+    return result;
   }
 
   // ORIGINAL ENDPOINTS - Return all users by role (for admin purposes)
@@ -860,7 +871,13 @@ export class UserController {
     if (typeof isCertified !== 'boolean') {
       throw new BadRequestException('isCertified must be provided and must be a boolean');
     }
-    return this.userService.setUserCertified(userId, isCertified);
+
+    const result = await this.userService.setUserCertified(userId, isCertified);
+
+    // NOTE: Notification is sent from identity.controller.ts verifyCertification endpoint
+    // to avoid duplicate notifications
+
+    return result;
   }
 
   // Get recommended professionals

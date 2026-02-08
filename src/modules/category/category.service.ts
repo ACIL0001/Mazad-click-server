@@ -6,27 +6,29 @@ import { Category, CategoryDocument } from './schema/category.schema';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { MoveCategoryDto } from './dto/move-category.dto';
+import { SearchService } from '../search/search.service';
 
 @Injectable()
 export class CategoryService {
   constructor(
     @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
-  ) {}
+    private searchService: SearchService,
+  ) { }
 
   async create(createCategoryDto: CreateCategoryDto): Promise<Category> {
     const { parent, ...categoryData } = createCategoryDto;
-    
+
     let level = 0;
     let path: string[] = [];
     let fullPath = categoryData.name;
-    
+
     // If parent is specified, validate it and build hierarchy info
     if (parent) {
       const parentCategory = await this.categoryModel.findById(parent).exec();
       if (!parentCategory) {
         throw new NotFoundException(`Parent category with ID ${parent} not found`);
       }
-      
+
       level = parentCategory.level + 1;
       path = [...parentCategory.path, parent];
       fullPath = parentCategory.fullPath ? `${parentCategory.fullPath} > ${categoryData.name}` : categoryData.name;
@@ -49,6 +51,15 @@ export class CategoryService {
         { $addToSet: { children: savedCategory._id } },
       ).exec();
     }
+
+    // Check if any users were looking for this category
+    console.log('📢 Checking for interested users for category:', savedCategory.name);
+    this.searchService.notifyInterestedUsers(
+      savedCategory.name,
+      savedCategory.description || '',
+      'category',
+      savedCategory._id.toString()
+    ).catch(err => console.error('Error notifying interested users:', err));
 
     return savedCategory;
   }
@@ -134,14 +145,14 @@ export class CategoryService {
 
   async findWithAncestors(id: string): Promise<{ category: Category; ancestors: Category[] }> {
     const category = await this.findOne(id);
-    
+
     let ancestors: Category[] = [];
     if (category.path && category.path.length > 0) {
       ancestors = await this.categoryModel
         .find({ _id: { $in: category.path } })
         .populate('thumb')
         .exec();
-      
+
       // Sort ancestors by their position in the path
       ancestors.sort((a, b) => {
         const aIndex = category.path.findIndex(pathId => pathId.toString() === a._id.toString());
@@ -204,7 +215,7 @@ export class CategoryService {
   async moveCategory(id: string, moveCategoryDto: MoveCategoryDto): Promise<Category> {
     const { newParent } = moveCategoryDto;
     const category = await this.categoryModel.findById(id).exec();
-    
+
     if (!category) {
       throw new NotFoundException(`Category with ID ${id} not found`);
     }
@@ -318,12 +329,12 @@ export class CategoryService {
       const ancestors = await this.categoryModel
         .find({ _id: { $in: category.path } })
         .exec();
-      
+
       const ancestorNames = category.path.map(pathId => {
         const ancestor = ancestors.find(a => a._id.toString() === pathId.toString());
         return ancestor ? ancestor.name : '';
       }).filter(name => name);
-      
+
       newFullPath = ancestorNames.length > 0 ? `${ancestorNames.join(' > ')} > ${newName}` : newName;
     }
 

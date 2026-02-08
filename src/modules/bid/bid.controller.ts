@@ -30,7 +30,7 @@ import { OfferService } from './offer.service';
 import { UserService } from '../user/user.service';
 import { AuctionNotificationService } from './auction-notification.service';
 import { ConfigService } from '@nestjs/config';
-
+import { ParticipantService } from './participant.service';
 
 // Helper to transform attachment(s) to minimal shape with fullUrl
 function transformAttachment(att, baseUrl?: string) {
@@ -77,7 +77,6 @@ function transformAttachment(att, baseUrl?: string) {
   };
 }
 
-
 @ApiTags('Bids')
 @Controller('bid')
 export class BidController {
@@ -89,6 +88,7 @@ export class BidController {
     private readonly userService: UserService,
     private readonly auctionNotificationService: AuctionNotificationService,
     private readonly configService: ConfigService,
+    private readonly participantService: ParticipantService,
   ) {
     // Compute base URL for fullUrl construction
     const apiBaseUrl = this.configService.get<string>('API_BASE_URL') ||
@@ -110,17 +110,24 @@ export class BidController {
 
   @Get()
   @Public()
-  async findAll() {
-    const bids = await this.bidService.findAll();
-    console.log('Bids with populated thumbs:', bids.map(bid => ({
-      id: bid._id,
-      thumbs: bid.thumbs,
-    })));
+  async findAll(@Request() req: any) {
+    const user = req.session?.user;
+    const bids = await this.bidService.findAll(user);
+    // console.log('Bids with populated thumbs:', bids.map(bid => ({
+    //   id: bid._id,
+    //   thumbs: bid.thumbs,
+    // })));
     return bids.map((bid) => ({
       ...JSON.parse(JSON.stringify(bid)),
       thumbs: transformAttachment(bid.thumbs, this.baseUrl),
       videos: transformAttachment(bid.videos, this.baseUrl),
     }));
+  }
+
+  @Post('sync-participants')
+  @Public()
+  async syncParticipants() {
+    return this.participantService.syncAllBidParticipantCounts();
   }
 
   @Get('health')
@@ -172,7 +179,7 @@ export class BidController {
         }
       }
 
-      console.log('vl :', vl);
+      // console.log('vl :', vl);
 
       return {
         ...JSON.parse(JSON.stringify(bid)),

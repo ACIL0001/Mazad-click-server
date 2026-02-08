@@ -15,14 +15,20 @@ export class Ad {
   @Prop({ required: true, trim: true })
   url: string;
 
-  @Prop({ type: Boolean, default: true })
-  isActive: boolean;
-
   @Prop({ type: Boolean, default: false })
   isDisplayed: boolean;
 
   @Prop({ type: Number, default: 0 })
   order: number;
+
+  @Prop({ type: Number, required: false })
+  duration?: number; // Duration value
+
+  @Prop({ type: String, enum: ['hours', 'days'], default: 'days' })
+  durationUnit?: string; // Duration unit (hours or days)
+
+  @Prop({ type: Date, required: false })
+  expiresAt?: Date; // Expiration date
 }
 
 export type AdDocument = HydratedDocument<Ad>;

@@ -24,6 +24,7 @@ import { ClientService } from '../user/services/client.service';
 import { AttachmentService } from '../attachment/attachment.service';
 import { ChatService } from '../chat/chat.service';
 import { UserService } from '../user/user.service';
+import { SearchService } from '../search/search.service';
 
 @Injectable()
 export class DirectSaleService {
@@ -37,14 +38,22 @@ export class DirectSaleService {
     private attachmentService: AttachmentService,
     private chatService: ChatService,
     private userService: UserService,
+    private searchService: SearchService,
   ) { }
 
-  async findAll(): Promise<DirectSaleDocument[]> {
+  async findAll(user?: any): Promise<DirectSaleDocument[]> {
+    const query: any = {
+      status: { $nin: [DIRECT_SALE_STATUS.ARCHIVED, DIRECT_SALE_STATUS.INACTIVE] }
+    };
+
+    // If not professional, only show items NOT marked as professionalOnly
+    const isProfessional = user?.type === 'PROFESSIONAL';
+    if (!isProfessional) {
+      query.professionalOnly = { $ne: true };
+    }
+
     return this.directSaleModel
-      .find({
-        status: { $nin: [DIRECT_SALE_STATUS.ARCHIVED, DIRECT_SALE_STATUS.INACTIVE] },
-        hidden: false
-      })
+      .find(query)
       .populate({
         path: 'owner',
         populate: {
@@ -96,12 +105,35 @@ export class DirectSaleService {
         })
         .populate('productCategory')
         .populate('productSubCategory')
-        .populate({ path: 'comments', populate: { path: 'user' } })
+        .populate({
+          path: 'comments',
+          populate: [
+            { path: 'user' },
+            {
+              path: 'replies',
+              populate: [
+                { path: 'user' },
+                {
+                  path: 'replies',
+                  populate: { path: 'user' }
+                }
+              ]
+            }
+          ]
+        })
         .exec();
 
       if (!directSale) {
         throw new NotFoundException(`Direct sale with ID "${id}" not found`);
       }
+
+      // DEBUG: Log contactNumber from database
+      console.log('🗄️ [SERVICE] Direct Sale from DB:', {
+        id: directSale._id,
+        title: directSale.title,
+        contactNumber: directSale.contactNumber,
+        hasContactNumber: !!directSale.contactNumber,
+      });
 
       return directSale;
     } catch (error) {
@@ -209,9 +241,18 @@ export class DirectSaleService {
         populatedDirectSale,
         populatedDirectSale.owner._id.toString(),
         `${populatedDirectSale.owner?.firstName || 'Unknown'} ${populatedDirectSale.owner?.lastName || 'User'}`,
-        populatedDirectSale.owner?.email
+        populatedDirectSale.owner?.email,
       );
     }
+
+    // Check if any users were looking for this item
+    console.log('📢 Checking for interested users for direct sale:', populatedDirectSale.title);
+    this.searchService.notifyInterestedUsers(
+      populatedDirectSale.title,
+      populatedDirectSale.description || '',
+      'direct-sale',
+      populatedDirectSale._id.toString()
+    ).catch(err => console.error('Error notifying interested users:', err));
 
     return populatedDirectSale;
   }

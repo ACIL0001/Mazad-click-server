@@ -16,9 +16,31 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly sessionService: SessionService,
     private reflector: Reflector,
-  ) {}
+  ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const token = this.extractToken(request);
+
+    // Attempt validation if token exists, regardless of route public status
+    if (token) {
+      try {
+        const session = await this.sessionService.ValidateSession(token);
+        request.session = session;
+        this.logger.debug('Session validated successfully:', {
+          userId: session.user._id,
+          userType: session.user.type
+        });
+      } catch (error) {
+        this.logger.error('Token validation failed:', {
+          error: error.message,
+          tokenPreview: token.substring(0, 20) + '...',
+          url: request.url
+        });
+        // We do NOT throw here yet. We check if it's public first.
+      }
+    }
+
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -28,20 +50,7 @@ export class AuthGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest();
-    const token = this.extractToken(request);
-
-    this.logger.debug('AuthGuard validation:', {
-      url: request.url,
-      method: request.method,
-      hasToken: !!token,
-      tokenPreview: token ? token.substring(0, 20) + '...' : 'none',
-      headers: {
-        authorization: request.headers.authorization ? 'Bearer ***' : 'none',
-        'x-access-key': request.headers['x-access-key'] ? '***' : 'none'
-      }
-    });
-
+    // If not public, we MUST have a valid session
     if (!token) {
       this.logger.warn('Token not found in request headers', {
         url: request.url,
@@ -50,19 +59,7 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('Token not found');
     }
 
-    try {
-      const session = await this.sessionService.ValidateSession(token);
-      request.session = session;
-      this.logger.debug('Session validated successfully:', {
-        userId: session.user._id,
-        userType: session.user.type
-      });
-    } catch (error) {
-      this.logger.error('Token validation failed:', {
-        error: error.message,
-        tokenPreview: token.substring(0, 20) + '...',
-        url: request.url
-      });
+    if (!request.session) {
       throw new UnauthorizedException('Invalid token');
     }
 

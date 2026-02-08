@@ -66,6 +66,7 @@ import { SellerStatsModule } from './modules/seller-stats/seller-stats.module';
 import { TenderModule } from './modules/tender/tender.module';
 import { DirectSaleModule } from './modules/direct-sale/direct-sale.module';
 import { AdsModule } from './modules/ads/ads.module';
+import { EmailModule } from './modules/email/email.module';
 
 @Module({
   imports: [
@@ -228,6 +229,7 @@ import { AdsModule } from './modules/ads/ads.module';
     TenderModule,
     DirectSaleModule,
     AdsModule,
+    EmailModule,
   ],
   providers: [
     {

@@ -12,7 +12,14 @@ const helmetConfig = helmet({
       baseUri: ["'self'"],
       fontSrc: ["'self'", 'https:', 'data:'],
       formAction: ["'self'"],
-      frameAncestors: ["'self'"],
+      frameAncestors: [
+        "'self'",
+        "http://localhost:*",
+        "https://*.vercel.app",
+        "https://mazadclick.com",
+        "https://admin.mazad.click",
+        "https://dashbord.seller.mazad.click"
+      ],
       imgSrc: [
         "'self'",
         'data:',

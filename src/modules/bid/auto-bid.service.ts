@@ -2,13 +2,17 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { AutoBid, AutoBidDocument } from './schema/auto.schema';
+import { Participant, ParticipantDocument } from './schema/participant.schema';
+import { Offer, OfferDocument } from './schema/offer.schema';
 import { CreateAutoBidDto } from './dto/create-auto-bid.dto';
 
 @Injectable()
 export class AutoBidService {
   constructor(
     @InjectModel(AutoBid.name) private autoBidModel: Model<AutoBidDocument>,
-  ) {}
+    @InjectModel(Participant.name) private participantModel: Model<ParticipantDocument>,
+    @InjectModel(Offer.name) private offerModel: Model<OfferDocument>,
+  ) { }
 
   async createOrUpdateAutoBid(createAutoBidDto: CreateAutoBidDto): Promise<AutoBid> {
     try {
@@ -17,6 +21,12 @@ export class AutoBidService {
       // Validate input
       if (!user || !bid || !price || price <= 0) {
         throw new BadRequestException('Invalid input data');
+      }
+
+      // Check if user has made at least one offer (this implies participation)
+      const hasOffer = await this.offerModel.exists({ bid: bid, user: user });
+      if (!hasOffer) {
+        throw new BadRequestException('You must make a manual offer first before setting an auto-bid');
       }
 
       // Check if user already has an auto-bid for this auction
@@ -73,7 +83,7 @@ export class AutoBidService {
         user: userId,
         bid: bidId
       });
-      
+
       if (result.deletedCount === 0) {
         throw new NotFoundException('Auto-bid not found');
       }

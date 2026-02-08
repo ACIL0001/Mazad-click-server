@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Injectable,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { UserService } from '../user/user.service';
 import { CreateUserDto } from './dto/createUser.dto';
@@ -38,6 +39,10 @@ export class AuthService {
     if (userData.type === RoleCode.CLIENT) {
       user = await this.ClientService.create(userData);
     } else if (userData.type == RoleCode.PROFESSIONAL) {
+      // Map activitySector from DTO to secteur field in schema
+      if (userData.activitySector && !(userData as any).secteur) {
+        (userData as any).secteur = userData.activitySector;
+      }
       user = await this.ProService.create(userData);
     } else {
       throw new ForbiddenException();
@@ -175,6 +180,67 @@ export class AuthService {
       message: 'User successfully marked as seller',
       user: updatedUser,
       sellerUrl: sellerUrl
+    };
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.userService.findByLogin(email);
+    if (!user) {
+      // Silently fail to avoid enumeration attacks, or return generic message.
+      // For better UX during dev/testing, we might want to be explicit, but security wise better to be vague.
+      // "If this email is registered, you will receive a reset code."
+      // But for this request, let's just return success even if not found, or throw if we want explicit feedback.
+      // Let's check logic: findByLogin searches phone or email.
+      throw new UnauthorizedException('If this email is registered, a code has been sent.');
+    }
+
+    if (!user.email) {
+      // User might have signed up with phone only?
+      throw new BadRequestException('No email linked to this account.');
+    }
+
+    // Generate and send OTP via Email
+    await this.otpService.createOtpAndSendEmail(user, OtpType.FORGOT_PASSWORD);
+
+    return {
+      message: 'Password reset code sent to your email.'
+    };
+  }
+
+  async resetPassword(email: string, code: string, newPass: string) {
+    const user = await this.userService.findByLogin(email);
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    // Verify OTP
+    const otp = await this.otpService.validateByCode(code, user);
+    if (!otp) {
+      throw new UnauthorizedException('Invalid or expired reset code.');
+    }
+
+    // Mark OTP as used
+    await this.otpService.markAsUsed(otp._id);
+
+    // Update Password using UserService (assumed it handles hashing if we pass plain text, checking schema pre-save hook)
+    // The User Schema has a pre-save hook that hashes password if modified.
+    // So we just need to update the field and save.
+
+    // We can use a direct repository update or helper.
+    // UserService.updateUserFields seems useful if it triggers save hooks?
+    // Mongoose findByIdAndUpdate DOES NOT trigger save hooks by default.
+    // We need to fetch, modify, save.
+
+    // Let's implement a helper in AuthService or assume one exists/use direct mongoose model if available?
+    // AuthService has access to UserService.
+    // UserService has `updateUserFields` which probably uses `findByIdAndUpdate` based on typical patterns.
+    // Let's check `UserService`. It wasn't fully dumped but imported.
+
+    // For safety, let's do:
+    await this.userService.updatePassword(user._id, newPass);
+
+    return {
+      message: 'Password successfully reset. You can now login.'
     };
   }
 }

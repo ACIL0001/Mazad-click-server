@@ -99,11 +99,20 @@ export class Tender {
   @Prop({ type: String, required: true })
   location: String;
 
+  @Prop({ type: String })
+  contactNumber?: string;
+
   @Prop({ type: Number, required: false })
   maxBudget?: number; // Maximum budget for the tender
 
   @Prop({ type: Boolean, required: true })
   isPro: boolean;
+
+  @Prop({ type: Boolean, required: true, default: false })
+  professionalOnly: boolean;
+
+  @Prop({ type: Boolean, required: true, default: false })
+  hidden: boolean;
 
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
@@ -121,17 +130,20 @@ export class Tender {
     default: [],
   })
   comments: MongooseSchema.Types.ObjectId[];
+
+  @Prop({ type: Number, default: 0 })
+  participantsCount: number;
 }
 
 export type TenderDocument = HydratedDocument<Tender>;
 export const TenderSchema = SchemaFactory.createForClass(Tender);
 
-TenderSchema.pre('find', function() {
+TenderSchema.pre('find', function () {
   this.populate('category');
   this.populate('subCategory');
 });
 
-TenderSchema.pre('findOne', function() {
+TenderSchema.pre('findOne', function () {
   this.populate('category');
   this.populate('subCategory');
 });

@@ -14,6 +14,7 @@ import { NotificationModule } from '../notification/notification.module';
 import { UserModule } from '../user/user.module';
 import { AttachmentModule } from '../attachment/attachment.module';
 import { ChatModule } from '../chat/chat.module';
+import { SearchModule } from '../search/search.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ChatModule } from '../chat/chat.module';
     UserModule,
     AttachmentModule,
     ChatModule,
+    SearchModule,
   ],
   controllers: [DirectSaleController],
   providers: [DirectSaleService],

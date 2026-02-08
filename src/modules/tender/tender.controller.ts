@@ -105,8 +105,9 @@ export class TenderController {
 
   @Get()
   @Public()
-  async findAll() {
-    const tenders = await this.tenderService.findAll();
+  async findAll(@Request() req: any) {
+    const user = req.session?.user;
+    const tenders = await this.tenderService.findAll(user);
     console.log('Tenders with populated attachments:', tenders.map(tender => ({
       id: tender._id,
       attachments: tender.attachments,
@@ -128,6 +129,12 @@ export class TenderController {
         } : null,
       };
     });
+  }
+
+  @Post('sync-participants')
+  @Public()
+  async syncParticipants() {
+    return this.tenderService.syncAllTenderParticipantCounts();
   }
 
   @Get('health')

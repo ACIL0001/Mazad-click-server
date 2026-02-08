@@ -23,6 +23,7 @@ import { ChatDocument } from '../chat/schema/chat.schema';
 import { UserService } from '../user/user.service';
 import { Chat } from '../chat/schema/chat.schema';
 import { User } from '../user/schema/user.schema';
+import { SearchService } from '../search/search.service';
 
 
 @Injectable()
@@ -41,6 +42,7 @@ export class BidService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Chat.name) private chatModel: Model<ChatDocument>,
     private userService: UserService,
+    private searchService: SearchService,
   ) { }
 
 
@@ -64,7 +66,22 @@ export class BidService {
         })
         .populate('productCategory')
         .populate('productSubCategory')
-        .populate({ path: 'comments', populate: { path: 'user' } })
+        .populate({
+          path: 'comments',
+          populate: [
+            { path: 'user' },
+            {
+              path: 'replies',
+              populate: [
+                { path: 'user' },
+                {
+                  path: 'replies',
+                  populate: { path: 'user' }
+                }
+              ]
+            }
+          ]
+        })
         .exec();
 
       if (!bid) {
@@ -81,8 +98,16 @@ export class BidService {
     }
   }
 
-  async findAll(): Promise<BidDocument[]> {
-    return this.bidModel.find()
+  async findAll(user?: any): Promise<BidDocument[]> {
+    const query: any = {};
+
+    // If not professional, only show items NOT marked as professionalOnly
+    const isProfessional = user?.type === 'PROFESSIONAL';
+    if (!isProfessional) {
+      query.professionalOnly = { $ne: true };
+    }
+
+    return this.bidModel.find(query)
       .populate({
         path: 'owner',
         populate: {
@@ -198,6 +223,15 @@ export class BidService {
       );
     }
 
+    // Check if any users were looking for this item
+    console.log('📢 Checking for interested users for auction:', populatedBid.title);
+    this.searchService.notifyInterestedUsers(
+      populatedBid.title,
+      populatedBid.description || '',
+      'auction',
+      populatedBid._id.toString()
+    ).catch(err => console.error('Error notifying interested users:', err));
+
     return populatedBid;
   }
 
@@ -215,6 +249,11 @@ export class BidService {
 
     return updatedBid;
   }
+
+  async incrementParticipantsCount(bidId: string): Promise<void> {
+    await this.bidModel.findByIdAndUpdate(bidId, { $inc: { participantsCount: 1 } });
+  }
+
 
   async checkBids(id: string): Promise<void> {
     // Validate ObjectId before querying

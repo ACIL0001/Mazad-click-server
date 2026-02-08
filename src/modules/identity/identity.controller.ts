@@ -1,23 +1,23 @@
-import { 
-  Controller, 
-  Post, 
-  Get, 
-  Body, 
-  Request, 
-  BadRequestException, 
-  UseGuards, 
-  UseInterceptors, 
-  UploadedFiles, 
-  UploadedFile, 
-  Delete, 
-  Inject, 
-  forwardRef, 
-  Put, 
-  Param, 
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Request,
+  BadRequestException,
+  UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+  UploadedFile,
+  Delete,
+  Inject,
+  forwardRef,
+  Put,
+  Param,
   Query // Added Query import
 } from '@nestjs/common';
 import { IdentityService } from './identity.service';
-import { Types } from 'mongoose'; 
+import { Types } from 'mongoose';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import { CreateIdentityDto } from './dto/create-identity.dto';
 import { InjectModel } from '@nestjs/mongoose';
@@ -32,11 +32,14 @@ import { extname } from 'path';
 import { Multer } from 'multer';
 import { UserService } from '../user/user.service';
 import { AdminGuard } from 'src/common/guards/admin.guard';
-import { Identity, IdentityDocument, IDE_TYPE, CONVERSION_TYPE } from './identity.schema'; 
+import { Identity, IdentityDocument, IDE_TYPE, CONVERSION_TYPE } from './identity.schema';
 import { RoleCode } from '../apikey/entity/appType.entity';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { Plan } from '../subscription/schema/plan.schema';
 import { Subscription } from '../subscription/schema/subscription.schema';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../notification/schema/notification.schema';
+import { SocketGateway } from '../../socket/socket.gateway';
 
 function transformAttachment(att) {
   if (!att) return null;
@@ -56,8 +59,10 @@ export class IdentityController {
     @Inject(forwardRef(() => SubscriptionService))
     private readonly subscriptionService: SubscriptionService,
     @InjectModel(Plan.name) private planModel: Model<any>,
-    @InjectModel(Subscription.name) private subscriptionModel: Model<any>
-  ) {}
+    @InjectModel(Subscription.name) private subscriptionModel: Model<any>,
+    private readonly notificationService: NotificationService,
+    private readonly socketGateway: SocketGateway,
+  ) { }
 
   // UPDATED: Professional identity submission with new required fields
   @Post()
@@ -148,7 +153,7 @@ export class IdentityController {
 
       // Check if at least one document is provided
       const hasAnyDocument = Object.values(files).some(fileArray => fileArray && Array.isArray(fileArray) && fileArray.length > 0);
-      
+
       console.log('🔍 Document upload check:', {
         hasAnyDocument,
         filesReceived: Object.keys(files).filter(key => files[key]?.[0]).map(key => key),
@@ -176,7 +181,7 @@ export class IdentityController {
       // Handle conditionally required fields (RC and NIF - only if provided)
       const registreCommerceCarteAutoId = files.registreCommerceCarteAuto?.[0] ? await saveAttachment(files.registreCommerceCarteAuto[0]) : undefined;
       const nifRequiredId = files.nifRequired?.[0] ? await saveAttachment(files.nifRequired[0]) : undefined;
-      
+
       // Handle optional fields (moved from required)
       const numeroArticleId = files.numeroArticle?.[0] ? await saveAttachment(files.numeroArticle[0]) : undefined;
       const c20Id = files.c20?.[0] ? await saveAttachment(files.c20[0]) : undefined;
@@ -186,7 +191,7 @@ export class IdentityController {
       // Determine conversion type based on current user type
       let conversionType: CONVERSION_TYPE;
       let targetUserType: string;
-      
+
       if (currentUser.type === RoleCode.PROFESSIONAL) {
         conversionType = CONVERSION_TYPE.PROFESSIONAL_VERIFICATION;
         targetUserType = RoleCode.PROFESSIONAL;
@@ -334,21 +339,21 @@ export class IdentityController {
       // Extract plan from body or req.body (FormData text fields are in req.body)
       // With multer/FormData, text fields are accessible via req.body
       const planName = body?.plan || (req.body?.plan as string) || (req.body as any)?.plan;
-      
+
       console.log('🔍 Checking for subscription plan:', {
         'body.plan': body?.plan,
         'req.body.plan': req.body?.plan,
         'req.body': req.body,
         'plan extracted': planName
       });
-      
+
       if (planName) {
         console.log('✅ Processing subscription plan:', { userId, planName });
-        
+
         try {
           // Step 1: Find the plan by name to get plan details
           const plan = await this.planModel.findOne({ name: planName }).exec();
-          
+
           if (!plan) {
             console.log('⚠️ Plan not found by name, trying to save plan name directly to user');
             // If plan not found, just save the plan name to user
@@ -356,7 +361,7 @@ export class IdentityController {
             console.log('✅ Plan name saved to user:', planName);
           } else {
             console.log('✅ Found plan:', { planId: plan._id, planName: plan.name, duration: plan.duration });
-            
+
             // Step 2: Save plan name to user.subscriptionPlan field
             try {
               await this.userService.createSubscriptionPlan(userId, planName);
@@ -366,13 +371,13 @@ export class IdentityController {
               await this.userService.updateSubscriptionPlan(userId, planName);
               console.log('✅ Plan name updated in user.subscriptionPlan:', planName);
             }
-            
+
             // Step 3: Create subscription record in subscriptions table
             try {
               // Calculate expiration date based on plan duration
               const expirationDate = new Date();
               expirationDate.setMonth(expirationDate.getMonth() + plan.duration);
-              
+
               // Create subscription record
               const subscription = new this.subscriptionModel({
                 id: `${userId}-${Date.now()}`, // Unique ID
@@ -380,7 +385,7 @@ export class IdentityController {
                 plan: plan._id,
                 expiresAt: expirationDate,
               });
-              
+
               await subscription.save();
               console.log('✅ Subscription record created in subscriptions table:', {
                 subscriptionId: subscription._id,
@@ -447,11 +452,11 @@ export class IdentityController {
     @UploadedFile() identityCard: Express.Multer.File
   ): Promise<IdentityDocument> {
     const userId = req.session?.user?._id;
-    
+
     if (!userId) {
       throw new BadRequestException('User not authenticated');
     }
-    
+
     if (!identityCard) {
       throw new BadRequestException('Identity card file is required');
     }
@@ -466,16 +471,16 @@ export class IdentityController {
     if (currentUser.type !== RoleCode.CLIENT) {
       throw new BadRequestException('Only clients can become resellers through this endpoint');
     }
-    
+
     // File validation
     if (identityCard.size === 0) {
       throw new BadRequestException('Identity card file cannot be empty');
     }
-    
+
     if (identityCard.size > 5 * 1024 * 1024) {
       throw new BadRequestException('Identity card file size must be less than 5MB');
     }
-    
+
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'application/pdf'];
     if (!allowedTypes.includes(identityCard.mimetype)) {
       throw new BadRequestException('Identity card must be an image (JPEG, PNG, GIF) or PDF file');
@@ -622,7 +627,7 @@ export class IdentityController {
     // Handle required fields
     const registreCommerceCarteAutoId = await saveAttachment(files.registreCommerceCarteAuto[0]);
     const nifRequiredId = await saveAttachment(files.nifRequired[0]);
-    
+
     // Handle optional fields (moved from required)
     const numeroArticleId = files.numeroArticle?.[0] ? await saveAttachment(files.numeroArticle[0]) : undefined;
     const c20Id = files.c20?.[0] ? await saveAttachment(files.c20[0]) : undefined;
@@ -656,21 +661,21 @@ export class IdentityController {
     // Extract plan from body or req.body (FormData text fields are in req.body)
     // With multer/FormData, text fields are accessible via req.body
     const planName = body?.plan || (req.body?.plan as string) || (req.body as any)?.plan;
-    
+
     console.log('🔍 Checking for subscription plan:', {
       'body.plan': body?.plan,
       'req.body.plan': req.body?.plan,
       'req.body': req.body,
       'plan extracted': planName
     });
-    
+
     if (planName) {
       console.log('✅ Processing subscription plan:', { userId, planName });
-      
+
       try {
         // Step 1: Find the plan by name to get plan details
         const plan = await this.planModel.findOne({ name: planName }).exec();
-        
+
         if (!plan) {
           console.log('⚠️ Plan not found by name, trying to save plan name directly to user');
           // If plan not found, just save the plan name to user
@@ -678,7 +683,7 @@ export class IdentityController {
           console.log('✅ Plan name saved to user:', planName);
         } else {
           console.log('✅ Found plan:', { planId: plan._id, planName: plan.name, duration: plan.duration });
-          
+
           // Step 2: Save plan name to user.subscriptionPlan field
           try {
             await this.userService.createSubscriptionPlan(userId, planName);
@@ -688,13 +693,13 @@ export class IdentityController {
             await this.userService.updateSubscriptionPlan(userId, planName);
             console.log('✅ Plan name updated in user.subscriptionPlan:', planName);
           }
-          
+
           // Step 3: Create subscription record in subscriptions table
           try {
             // Calculate expiration date based on plan duration
             const expirationDate = new Date();
             expirationDate.setMonth(expirationDate.getMonth() + plan.duration);
-            
+
             // Create subscription record
             const subscription = new this.subscriptionModel({
               id: `${userId}-${Date.now()}`, // Unique ID
@@ -702,7 +707,7 @@ export class IdentityController {
               plan: plan._id,
               expiresAt: expirationDate,
             });
-            
+
             await subscription.save();
             console.log('✅ Subscription record created in subscriptions table:', {
               subscriptionId: subscription._id,
@@ -801,7 +806,7 @@ export class IdentityController {
       await this.identityService.updateIdentityStatus(identityId, IDE_TYPE.WAITING);
 
       const updatedIdentity = await this.identityService.getIdentityById(identityId);
-      
+
       return {
         success: true,
         data: {
@@ -839,7 +844,7 @@ export class IdentityController {
     @Body() body: { action: 'accept' | 'reject' }
   ) {
     const { action } = body;
-    
+
     if (!action || !['accept', 'reject'].includes(action)) {
       throw new BadRequestException('Action must be either "accept" or "reject"');
     }
@@ -853,7 +858,7 @@ export class IdentityController {
 
       const userId = identity.user._id || identity.user;
       const user = await this.userService.findUserById(userId.toString());
-      
+
       if (!user) {
         throw new BadRequestException('User not found');
       }
@@ -879,7 +884,7 @@ export class IdentityController {
               rate: Math.min(10, (user.rate || 1) + 2)
             });
             break;
-            
+
           case CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL:
             // CLIENT becoming PROFESSIONAL
             await this.userService.updateUserFields(userId.toString(), {
@@ -887,23 +892,23 @@ export class IdentityController {
               type: RoleCode.PROFESSIONAL,
             });
             break;
-            
+
           case CONVERSION_TYPE.PROFESSIONAL_VERIFICATION:
             // PROFESSIONAL staying PROFESSIONAL but verified
             await this.userService.updateUserFields(userId.toString(), {
               ...baseUpdateFields,
             });
             break;
-            
+
           default:
             // Fallback for old records without conversionType
             if (user.type === RoleCode.CLIENT) {
               // Assume CLIENT to RESELLER for old records with identity card only
-              const hasOnlyIdentityCard = identity.identityCard && 
-                !identity.commercialRegister && 
-                !identity.nif && 
+              const hasOnlyIdentityCard = identity.identityCard &&
+                !identity.commercialRegister &&
+                !identity.nif &&
                 !identity.nis;
-                
+
               if (hasOnlyIdentityCard) {
                 await this.userService.updateUserFields(userId.toString(), {
                   ...baseUpdateFields,
@@ -926,12 +931,31 @@ export class IdentityController {
 
         // Get updated identity after status change
         const updatedIdentity = await this.identityService.getIdentityById(identityId);
-        
+
         // Update verification and certification status based on documents
         // This will set isCertified and rate based on required/optional documents
         // Note: isVerified is already set to true in baseUpdateFields above
         if (updatedIdentity) {
           await this.identityService.updateUserVerificationStatus(updatedIdentity);
+        }
+
+        // Send verification notification to user
+        try {
+          await this.notificationService.create(
+            userId.toString(),
+            NotificationType.USER_VERIFIED,
+            'Compte Vérifié',
+            'Félicitations ! Votre compte a été vérifié avec succès par l\'administrateur.'
+          );
+          // Also send real-time notification
+          this.socketGateway.sendNotificationToUser(userId.toString(), {
+            type: NotificationType.USER_VERIFIED,
+            title: 'Compte Vérifié',
+            message: 'Félicitations ! Votre compte a été vérifié avec succès par l\'administrateur.',
+          });
+        } catch (error) {
+          console.error('Error sending verification notification:', error);
+          // Don't fail the verification if notification fails
         }
       } else {
         // Rejection - mark as not verified but keep original type
@@ -998,7 +1022,7 @@ export class IdentityController {
   // Get all identities
   @Get()
   @UseGuards(AdminGuard)
-  async getIdentities(): Promise<any[]> { 
+  async getIdentities(): Promise<any[]> {
     const identities = await this.identityService.getAllIdentities();
     return identities.map(identity => ({
       ...JSON.parse(JSON.stringify(identity)),
@@ -1108,9 +1132,9 @@ export class IdentityController {
 
       // Validate field name
       const allowedFields = [
-        'commercialRegister', 'nif', 'nis', 'last3YearsBalanceSheet', 
-        'certificates', 'identityCard', 'registreCommerceCarteAuto', 
-        'nifRequired', 'numeroArticle', 'c20', 'misesAJourCnas', 
+        'commercialRegister', 'nif', 'nis', 'last3YearsBalanceSheet',
+        'certificates', 'identityCard', 'registreCommerceCarteAuto',
+        'nifRequired', 'numeroArticle', 'c20', 'misesAJourCnas',
         'carteFellah', 'paymentProof'
       ];
 
@@ -1171,7 +1195,7 @@ export class IdentityController {
     if (!identity) {
       // If identity doesn't exist, consider it already deleted
       // Return success to prevent errors when deleting already-deleted items
-      return { 
+      return {
         success: true,
         message: 'Identity not found or already deleted.',
         deletedCount: 0
@@ -1179,7 +1203,7 @@ export class IdentityController {
     }
 
     await this.identityService.deleteIdentity(id);
-    return { 
+    return {
       success: true,
       message: 'Identity deleted successfully.',
       deletedCount: 1
@@ -1192,7 +1216,7 @@ export class IdentityController {
   async deleteIdentities(@Query('ids') ids: string | string[]) {
     // Handle both single ID string and array of IDs
     const idArray = Array.isArray(ids) ? ids : [ids];
-    
+
     if (idArray.length === 0 || (idArray.length === 1 && !idArray[0])) {
       throw new BadRequestException('At least one identity ID must be provided for deletion.');
     }
@@ -1245,7 +1269,7 @@ export class IdentityController {
       await this.identityService.updateCertificationStatus(identityId, IDE_TYPE.WAITING);
 
       const updatedIdentity = await this.identityService.getIdentityById(identityId);
-      
+
       return {
         success: true,
         data: {
@@ -1284,7 +1308,7 @@ export class IdentityController {
     @Body() body: { action: 'accept' | 'reject' }
   ) {
     const { action } = body;
-    
+
     if (!action || !['accept', 'reject'].includes(action)) {
       throw new BadRequestException('Action must be either "accept" or "reject"');
     }
@@ -1297,7 +1321,7 @@ export class IdentityController {
 
       const userId = identity.user._id || identity.user;
       const user = await this.userService.findUserById(userId.toString());
-      
+
       if (!user) {
         throw new BadRequestException('User not found');
       }
@@ -1309,6 +1333,25 @@ export class IdentityController {
       if (action === 'accept') {
         // Mark user as certified
         await this.identityService.setUserCertified(identity);
+
+        // Send certification notification
+        try {
+          await this.notificationService.create(
+            userId.toString(),
+            NotificationType.USER_CERTIFIED,
+            'Compte Certifié',
+            'Félicitations ! Votre compte a été certifié avec succès par l\'administrateur.'
+          );
+          // Also send real-time notification
+          this.socketGateway.sendNotificationToUser(userId.toString(), {
+            type: NotificationType.USER_CERTIFIED,
+            title: 'Compte Certifié',
+            message: 'Félicitations ! Votre compte a été certifié avec succès par l\'administrateur.',
+          });
+        } catch (error) {
+          console.error('Error sending certification notification:', error);
+          // Don't fail the certification if notification fails
+        }
       } else {
         // Rejection - remove certification
         await this.userService.updateUserFields(userId.toString(), {
@@ -1348,12 +1391,12 @@ export class IdentityController {
 
   // Get current user's identity
   @Get('me')
-  async getMyIdentity(@Request() req): Promise<any> { 
+  async getMyIdentity(@Request() req): Promise<any> {
     const userId = req.session?.user?._id;
     if (!userId) {
       throw new BadRequestException('User not authenticated');
     }
-    
+
     try {
       const identity = await this.identityService.getIdentityByUser(userId);
       if (!identity) {
@@ -1363,7 +1406,7 @@ export class IdentityController {
           message: 'No identity found'
         };
       }
-      
+
       return {
         success: true,
         data: {
@@ -1396,13 +1439,13 @@ export class IdentityController {
   // Get user documents by user ID (for admin)
   @Get('user/:userId')
   @UseGuards(AdminGuard)
-  async getUserDocuments(@Param('userId') userId: string): Promise<any | null> { 
+  async getUserDocuments(@Param('userId') userId: string): Promise<any | null> {
     if (!userId) {
       throw new BadRequestException('User ID is required');
     }
     const identity = await this.identityService.getIdentityByUser(userId);
     if (!identity) return null;
-    
+
     return {
       ...JSON.parse(JSON.stringify(identity)),
       commercialRegister: transformAttachment(identity.commercialRegister),
@@ -1426,18 +1469,18 @@ export class IdentityController {
   // Get identity by ID
   @Get(':id')
   @UseGuards(AdminGuard)
-  async getIdentityById(@Param('id') id: string): Promise<any | null> { 
+  async getIdentityById(@Param('id') id: string): Promise<any | null> {
     if (!id) {
       throw new BadRequestException('Identity ID is required');
     }
     const identity = await this.identityService.getIdentityById(id);
     if (!identity) return null;
-    
+
     // Debug logging for payment proof
     console.log('🔍 Server - Identity details for ID:', id);
     console.log('🔍 Server - Payment proof raw data:', identity.paymentProof);
     console.log('🔍 Server - Payment proof transformed:', transformAttachment(identity.paymentProof));
-    
+
     return {
       ...JSON.parse(JSON.stringify(identity)),
       commercialRegister: transformAttachment(identity.commercialRegister),
@@ -1479,7 +1522,7 @@ export class IdentityController {
     console.log('Payment proof upload - User ID:', userId);
     console.log('Payment proof upload - Identity ID:', identityId);
     console.log('Payment proof upload - File:', paymentProofFile?.originalname);
-    
+
     if (!userId) {
       throw new BadRequestException('User not authenticated');
     }
@@ -1492,11 +1535,11 @@ export class IdentityController {
     if (paymentProofFile.size === 0) {
       throw new BadRequestException('Payment proof file cannot be empty');
     }
-    
+
     if (paymentProofFile.size > 5 * 1024 * 1024) {
       throw new BadRequestException('Payment proof file size must be less than 5MB');
     }
-    
+
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'application/pdf'];
     if (!allowedTypes.includes(paymentProofFile.mimetype)) {
       throw new BadRequestException('Payment proof must be an image (JPEG, PNG, GIF) or PDF file');
@@ -1575,9 +1618,9 @@ export class IdentityController {
 
       // Validate field name
       const allowedFields = [
-        'commercialRegister', 'nif', 'nis', 'last3YearsBalanceSheet', 
-        'certificates', 'identityCard', 'registreCommerceCarteAuto', 
-        'nifRequired', 'numeroArticle', 'c20', 'misesAJourCnas', 
+        'commercialRegister', 'nif', 'nis', 'last3YearsBalanceSheet',
+        'certificates', 'identityCard', 'registreCommerceCarteAuto',
+        'nifRequired', 'numeroArticle', 'c20', 'misesAJourCnas',
         'carteFellah', 'paymentProof'
       ];
 

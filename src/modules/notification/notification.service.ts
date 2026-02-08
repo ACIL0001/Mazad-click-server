@@ -262,14 +262,10 @@ export class NotificationService {
             ]
           }
         })
-        .populate('senderId', 'firstName lastName email entreprise')
+        .populate('senderId', 'firstName lastName email entreprise companyName')
         .sort({ createdAt: -1 })
         .limit(50)
         .exec();
-
-      // console.log('🔔 Found general notifications (filtered):', notifications.length);
-      // console.log('🔔 Filtered notification types:', notifications.map(n => n.type));
-      // console.log('🔔 Filtered notification titles:', notifications.map(n => n.title));
 
       // Collect IDs for manual population of older notifications (where senderId might be in data)
       const manualPopulationIds = new Set<string>();
@@ -279,11 +275,12 @@ export class NotificationService {
         const populatedNotification = notification.toObject() as any;
 
         // If senderId is populated, use that data
-        if (populatedNotification.senderId && typeof populatedNotification.senderId === 'object' && populatedNotification.senderId.firstName && populatedNotification.senderId.lastName) {
-          const companyName = populatedNotification.senderId.entreprise;
-          const fullName = `${populatedNotification.senderId.firstName} ${populatedNotification.senderId.lastName}`;
+        if (populatedNotification.senderId && typeof populatedNotification.senderId === 'object') {
+          const companyName = populatedNotification.senderId.companyName || populatedNotification.senderId.entreprise;
+          const fullName = `${populatedNotification.senderId.firstName} ${populatedNotification.senderId.lastName}`.trim();
 
-          populatedNotification.senderName = companyName || fullName;
+          // Prioritize company name, then full name
+          populatedNotification.senderName = companyName || fullName || 'Utilisateur';
           populatedNotification.senderEmail = populatedNotification.senderId.email || '';
         }
         // Logic for older notifications: Check if senderId is in data
@@ -293,7 +290,7 @@ export class NotificationService {
         else {
           // Fallback to existing senderName if available
           if (!populatedNotification.senderName) {
-            populatedNotification.senderName = 'Unknown User';
+            populatedNotification.senderName = 'Utilisateur';
           }
         }
 
@@ -303,7 +300,7 @@ export class NotificationService {
       // Perform manual population if needed
       if (manualPopulationIds.size > 0) {
         console.log(`🔔 Manually populating ${manualPopulationIds.size} users for old general notifications`);
-        const users = await this.userModel.find({ _id: { $in: Array.from(manualPopulationIds) } }).select('firstName lastName email entreprise');
+        const users = await this.userModel.find({ _id: { $in: Array.from(manualPopulationIds) } }).select('firstName lastName email entreprise companyName');
 
         const userMap = new Map();
         users.forEach(user => {
@@ -312,13 +309,13 @@ export class NotificationService {
 
         // Update notifications with manually fetched user data
         notificationsWithSender.forEach(notification => {
-          if ((!notification.senderName || notification.senderName === 'Unknown User') && notification.data && notification.data.senderId) {
+          if ((!notification.senderName || notification.senderName === 'Utilisateur') && notification.data && notification.data.senderId) {
             const user = userMap.get(notification.data.senderId.toString());
             if (user) {
-              const companyName = user.entreprise;
-              const fullName = `${user.firstName} ${user.lastName}`;
+              const companyName = user.companyName || user.entreprise;
+              const fullName = `${user.firstName} ${user.lastName}`.trim();
 
-              notification.senderName = companyName || fullName;
+              notification.senderName = companyName || fullName || 'Utilisateur';
               notification.senderEmail = user.email;
             }
           }

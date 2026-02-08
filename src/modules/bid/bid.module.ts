@@ -24,6 +24,7 @@ import { ChatModule } from '../chat/chat.module';
 import { Chat, ChatSchema } from '../chat/schema/chat.schema';
 import { User, UserSchema } from '../user/schema/user.schema';
 import { CommentModule } from '../comment/comment.module';
+import { SearchModule } from '../search/search.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { CommentModule } from '../comment/comment.module';
     SocketModule,
     ChatModule,
     CommentModule,
+    SearchModule,
   ],
   controllers: [BidController, OfferController, ParticipantController, AutoBidController],
   providers: [BidService, OfferService, ParticipantService, AutoBidService, AuctionNotificationService],

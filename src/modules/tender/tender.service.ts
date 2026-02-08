@@ -22,6 +22,7 @@ import { ChatDocument } from '../chat/schema/chat.schema';
 import { UserService } from '../user/user.service';
 import { Chat } from '../chat/schema/chat.schema';
 import { User } from '../user/schema/user.schema';
+import { SearchService } from '../search/search.service';
 
 @Injectable()
 export class TenderService {
@@ -37,6 +38,7 @@ export class TenderService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Chat.name) private chatModel: Model<ChatDocument>,
     private userService: UserService,
+    private searchService: SearchService,
   ) { }
 
   // Add the missing findAllSellers method
@@ -72,7 +74,22 @@ export class TenderService {
           }
         })
         .populate('subCategory')
-        .populate({ path: 'comments', populate: { path: 'user' } })
+        .populate({
+          path: 'comments',
+          populate: [
+            { path: 'user' },
+            {
+              path: 'replies',
+              populate: [
+                { path: 'user' },
+                {
+                  path: 'replies',
+                  populate: { path: 'user' }
+                }
+              ]
+            }
+          ]
+        })
         .exec();
 
       if (!tender) {
@@ -89,8 +106,16 @@ export class TenderService {
     }
   }
 
-  async findAll(): Promise<TenderDocument[]> {
-    return this.tenderModel.find()
+  async findAll(user?: any): Promise<TenderDocument[]> {
+    const query: any = {};
+
+    // If not professional, only show items NOT marked as professionalOnly
+    const isProfessional = user?.type === 'PROFESSIONAL';
+    if (!isProfessional) {
+      query.professionalOnly = { $ne: true };
+    }
+
+    return this.tenderModel.find(query)
       .populate({
         path: 'owner',
         populate: {
@@ -193,6 +218,15 @@ export class TenderService {
         populatedTender.owner?.email
       );
     }
+
+    // Check if any users were looking for this item
+    console.log('📢 Checking for interested users for tender:', populatedTender.title);
+    this.searchService.notifyInterestedUsers(
+      populatedTender.title,
+      populatedTender.description || '',
+      'tender',
+      populatedTender._id.toString()
+    ).catch(err => console.error('Error notifying interested users:', err));
 
     return populatedTender;
   }
@@ -392,6 +426,20 @@ export class TenderService {
     return this.tenderModel.find({ owner: ownerId }).populate('attachments').exec();
   }
 
+  async syncAllTenderParticipantCounts(): Promise<{ updated: number }> {
+    const tenders = await this.tenderModel.find({}, '_id').exec();
+    let updatedCount = 0;
+
+    for (const tender of tenders) {
+      const distinctBidders = await this.tenderBidModel.distinct('bidder', { tender: tender._id });
+      const count = distinctBidders.length;
+      await this.tenderModel.findByIdAndUpdate(tender._id, { participantsCount: count });
+      updatedCount++;
+    }
+    console.log(`Synced participants count for ${updatedCount} tenders.`);
+    return { updated: updatedCount };
+  }
+
   // Tender bid methods
   async createTenderBid(tenderId: string, createTenderBidDto: CreateTenderBidDto, isMieuxDisant: boolean = false): Promise<TenderBid> {
 
@@ -453,6 +501,12 @@ export class TenderService {
       }
     }
 
+    // Check if user has already bid on this tender (before saving the new one)
+    const existingBid = await this.tenderBidModel.findOne({
+      tender: tenderId,
+      bidder: createTenderBidDto.bidder
+    });
+
     // Create the tender bid
     const createdTenderBid = new this.tenderBidModel({
       ...createTenderBidDto,
@@ -460,6 +514,11 @@ export class TenderService {
     });
     const savedTenderBid = await createdTenderBid.save();
     console.log("Tender bid created:", savedTenderBid._id);
+
+    // Increment participants count if this is the first bid by this user
+    if (!existingBid) {
+      await this.tenderModel.findByIdAndUpdate(tenderId, { $inc: { participantsCount: 1 } });
+    }
 
     // Create notification for tender owner
     const tenderOwnerTitle = "Nouvelle offre reçue";

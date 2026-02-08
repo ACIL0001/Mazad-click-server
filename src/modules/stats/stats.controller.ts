@@ -5,7 +5,7 @@ import { Public } from '../../common/decorators/public.decorator';
 @Controller('stats')
 @Public()
 export class StatsController {
-  constructor(private readonly statsService: StatsService) {}
+  constructor(private readonly statsService: StatsService) { }
 
   @Get('users')
   async getUserStats(): Promise<UserStats> {
@@ -100,5 +100,10 @@ export class StatsController {
   @Get('auctions/category-timeseries')
   async getAuctionCategoryTimeSeries() {
     return this.statsService.getAuctionCategoryTimeSeries();
+  }
+
+  @Get('users/by-sector')
+  async getUsersBySector() {
+    return this.statsService.getUsersBySector();
   }
 }

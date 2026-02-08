@@ -85,8 +85,14 @@ export class DirectSale {
   @Prop({ type: String, required: true })
   place: string;
 
+  @Prop({ type: String })
+  contactNumber?: string;
+
   @Prop({ type: Boolean, required: true, default: false })
   isPro: boolean;
+
+  @Prop({ type: Boolean, required: true, default: false })
+  professionalOnly: boolean;
 
   @Prop({ type: Boolean, required: true, default: false })
   hidden: boolean;
@@ -168,17 +174,17 @@ export type DirectSalePurchaseDocument = HydratedDocument<DirectSalePurchase>;
 export const DirectSaleSchema = SchemaFactory.createForClass(DirectSale);
 export const DirectSalePurchaseSchema = SchemaFactory.createForClass(DirectSalePurchase);
 
-DirectSaleSchema.pre('find', function() {
+DirectSaleSchema.pre('find', function () {
   this.populate('productCategory');
   this.populate('productSubCategory');
 });
 
-DirectSaleSchema.pre('findOne', function() {
+DirectSaleSchema.pre('findOne', function () {
   this.populate('productCategory');
   this.populate('productSubCategory');
 });
 
-DirectSalePurchaseSchema.pre(['find', 'findOne'], function() {
+DirectSalePurchaseSchema.pre(['find', 'findOne'], function () {
   this.populate('directSale');
   this.populate('buyer', 'firstName lastName phone email username');
   this.populate('seller', 'firstName lastName phone email username');

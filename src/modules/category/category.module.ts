@@ -4,6 +4,7 @@ import { CategoryController } from './category.controller';
 import { CategoryService } from './category.service';
 import { Category, CategorySchema } from './schema/category.schema';
 import { AttachmentModule } from '../attachment/attachment.module';
+import { SearchModule } from '../search/search.module';
 
 @Module({
   imports: [
@@ -11,9 +12,10 @@ import { AttachmentModule } from '../attachment/attachment.module';
       { name: Category.name, schema: CategorySchema },
     ]),
     AttachmentModule,
+    SearchModule,
   ],
   controllers: [CategoryController],
   providers: [CategoryService],
   exports: [CategoryService],
 })
-export class CategoryModule {}
+export class CategoryModule { }

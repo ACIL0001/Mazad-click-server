@@ -9,14 +9,28 @@ import { UpdateAdDto } from './dto/update-ad.dto';
 export class AdsService {
   constructor(
     @InjectModel(Ad.name) private adModel: Model<AdDocument>,
-  ) {}
+  ) { }
 
   async create(createAdDto: CreateAdDto): Promise<Ad> {
+    // Calculate expiration date if duration is provided
+    let expiresAt: Date | undefined;
+    if (createAdDto.duration && createAdDto.duration > 0) {
+      expiresAt = new Date();
+      const unit = createAdDto.durationUnit || 'days';
+
+      if (unit === 'hours') {
+        expiresAt.setHours(expiresAt.getHours() + createAdDto.duration);
+      } else {
+        expiresAt.setDate(expiresAt.getDate() + createAdDto.duration);
+      }
+    }
+
     const createdAd = new this.adModel({
       ...createAdDto,
-      isActive: createAdDto.isActive ?? true,
       isDisplayed: createAdDto.isDisplayed ?? false,
       order: createAdDto.order ?? 0,
+      durationUnit: createAdDto.durationUnit || 'days',
+      expiresAt,
     });
     return createdAd.save();
   }
@@ -89,9 +103,24 @@ export class AdsService {
     const updatePromises = ads.map(({ _id, order }) =>
       this.adModel.findByIdAndUpdate(_id, { order }, { new: true }).populate('image').exec()
     );
-    
+
     const updatedAds = await Promise.all(updatePromises);
     return updatedAds.filter(ad => ad !== null) as Ad[];
+  }
+
+  async disableExpiredAds(): Promise<number> {
+    const now = new Date();
+    const result = await this.adModel.updateMany(
+      {
+        expiresAt: { $lte: now },
+        isDisplayed: true,
+      },
+      {
+        $set: { isDisplayed: false },
+      }
+    ).exec();
+
+    return result.modifiedCount;
   }
 }
 

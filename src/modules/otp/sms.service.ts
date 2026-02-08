@@ -10,15 +10,22 @@ export class SmsService {
   private readonly isDevelopment: boolean;
 
   constructor(private readonly httpService: HttpService) {
-    this.isDevelopment = process.env.NODE_ENV === 'development';
-    
+    // Check if real SMS should be enabled even in development
+    const forceRealSms = process.env.ENABLE_REAL_SMS === 'true';
+    this.isDevelopment = process.env.NODE_ENV === 'development' && !forceRealSms;
+
     if (this.isDevelopment) {
       this.logger.log('🔧 DEVELOPMENT MODE: SMS messages will be logged instead of sent');
       this.logger.log('💡 This saves SMS credits while testing OTP functionality');
+      this.logger.log('💡 To force real SMS sending in development, set ENABLE_REAL_SMS=true in .env');
       // Still validate config in development to ensure production readiness
       this.validateSmsConfigForDevelopment();
     } else {
-      this.logger.log('🚀 PRODUCTION MODE: SMS messages will be sent via NetBeOpeN');
+      if (forceRealSms) {
+        this.logger.log('🚀 FORCED PRODUCTION MODE: SMS sending enabled via ENABLE_REAL_SMS=true');
+      } else {
+        this.logger.log('🚀 PRODUCTION MODE: SMS messages will be sent via NetBeOpeN');
+      }
       this.validateSmsConfig();
     }
   }
@@ -45,7 +52,7 @@ export class SmsService {
     }
 
     const carrier = this.detectCarrier(phone);
-    
+
     if (this.isDevelopment) {
       this.logger.log('');
       this.logger.log('📱 =================== DEVELOPMENT SMS ===================');
@@ -56,17 +63,17 @@ export class SmsService {
       this.logger.log(`💰 Cost: 0 (Development Mode - No Credits Used)`);
       this.logger.log('========================================================');
       this.logger.log('');
-      
+
       const random = Math.random();
       if (random < 0.05) { // 5% chance of simulated failure
         this.logger.warn(`🧪 Simulated failure for testing (${carrier})`);
         throw new BadRequestException(`Simulated SMS failure for testing purposes`);
       }
-      
+
       const delays = { 'Djezzy': 2000, 'Mobilis': 500, 'Ooredoo': 1000 };
       const delay = delays[carrier] || 1000;
       await new Promise(resolve => setTimeout(resolve, delay));
-      
+
       this.logger.log(`✅ Development SMS "sent" successfully to ${carrier} (simulated ${delay}ms delay)`);
       return;
     }
@@ -80,10 +87,10 @@ export class SmsService {
       throw error;
     }
   }
-  
+
   async sendRealOtp(phone: string, otpCode: string, messageType: string = 'verification'): Promise<{ success: boolean; message: string; details?: any }> {
     let message: string;
-    
+
     switch (messageType) {
       case 'phone_confirmation':
         message = `Your MazadClick verification code is: ${otpCode}. Valid for 5 minutes. Do not share this code.`;
@@ -100,11 +107,11 @@ export class SmsService {
       default:
         message = `Your MazadClick verification code is: ${otpCode}. Valid for 5 minutes. Do not share this code.`;
     }
-    
+
     if (this.isDevelopment) {
       this.logger.log('🔧 Development mode: SMS will be logged instead of sent');
       this.logger.log(`📱 Real OTP SMS to ${phone}: ${message}`);
-      
+
       return {
         success: true,
         message: '✅ Development mode: OTP logged (no credits used)',
@@ -132,12 +139,12 @@ export class SmsService {
     const carrier = this.detectCarrier(phone);
     const phoneVariations = this.formatPhoneForNetBeOpen(phone);
     const isValid = this.isValidPhoneNumber(phone);
-    
+
     this.logger.log(`🔍 Analyzing phone: ${phone}`);
     this.logger.log(`🏷️  Carrier: ${carrier}`);
     this.logger.log(`✅ Valid: ${isValid}`);
     this.logger.log(`🔄 Phone variations: ${JSON.stringify(phoneVariations)}`);
-    
+
     return {
       phone,
       carrier,
@@ -151,7 +158,7 @@ export class SmsService {
       timestamp: new Date().toISOString()
     };
   }
-  
+
   async getServiceStatus(): Promise<any> {
     const configTest = await this.testConfiguration();
     const balanceInfo = this.isDevelopment ? await this.getAccountBalance() : 'N/A in production status check';
@@ -192,7 +199,7 @@ export class SmsService {
   }
 
   // =================== PRIVATE CORE LOGIC ===================
-  
+
   private async sendWithCarrierOptimization(phone: string, message: string): Promise<void> {
     const carrier = this.detectCarrier(phone);
     this.logger.log(`Sending SMS to ${carrier} number: ${phone}`);
@@ -205,12 +212,12 @@ export class SmsService {
       await this.sendViaNestBeOpeNAPI(phone, message);
     }
   }
-  
+
   private async sendToDjezzy(phone: string, message: string): Promise<void> {
     const djezzyFormats = this.getDjezzyPhoneFormats(phone);
     const djezzySenders = ['INFO', 'SMS', process.env.NETBEOPEN_SENDER_ID, null];
     let lastError: any;
-    
+
     for (const phoneFormat of djezzyFormats) {
       for (const sender of djezzySenders) {
         try {
@@ -258,7 +265,7 @@ export class SmsService {
     }
 
     const finalSenderId = senderId || defaultSenderId || 'MazadClick';
-    
+
     // Log detailed request information for debugging
     this.logger.log(`SMS API Request Details:`);
     this.logger.log(`  URL: ${apiUrl}`);
@@ -272,16 +279,16 @@ export class SmsService {
     const requestFormats = [
       // Format 1: POST with form data (most common)
       () => this.sendPostFormData(apiUrl, username, token, phone, message, finalSenderId, timeout),
-      
+
       // Format 2: GET with query parameters (current method)
       () => this.sendGetRequest(apiUrl, username, token, phone, message, finalSenderId, timeout),
-      
+
       // Format 3: POST with JSON payload
       () => this.sendPostJson(apiUrl, username, token, phone, message, finalSenderId, timeout)
     ];
 
     let lastError: any;
-    
+
     for (let i = 0; i < requestFormats.length; i++) {
       try {
         this.logger.log(`Attempting SMS request format ${i + 1}...`);
@@ -291,7 +298,7 @@ export class SmsService {
       } catch (error) {
         lastError = error;
         this.logger.warn(`Format ${i + 1} failed: ${error.message}`);
-        
+
         // If it's a timeout or network error, don't try other formats
         if (error.code === 'ECONNABORTED' || error.code === 'ENOTFOUND') {
           break;
@@ -325,7 +332,7 @@ export class SmsService {
     );
 
     this.logger.log(`POST Form Response: ${JSON.stringify(response.data)}`);
-    
+
     if (!this.isSuccessResponse(response.data)) {
       throw new BadRequestException(`SMS gateway rejected POST form request: "${response.data}"`);
     }
@@ -351,7 +358,7 @@ export class SmsService {
     );
 
     this.logger.log(`GET Response: ${JSON.stringify(response.data)}`);
-    
+
     if (!this.isSuccessResponse(response.data)) {
       throw new BadRequestException(`SMS gateway rejected GET request: "${response.data}"`);
     }
@@ -378,7 +385,7 @@ export class SmsService {
     );
 
     this.logger.log(`POST JSON Response: ${JSON.stringify(response.data)}`);
-    
+
     if (!this.isSuccessResponse(response.data)) {
       throw new BadRequestException(`SMS gateway rejected JSON request: "${response.data}"`);
     }
@@ -388,7 +395,7 @@ export class SmsService {
     await this.sendViaNestBeOpeNAPI(phone, message);
     return { status: 'sent', phone, message };
   }
-  
+
   // =================== PRIVATE HELPERS & CONFIG ===================
 
   private validateSmsConfig(): void {
@@ -411,7 +418,7 @@ export class SmsService {
       this.logger.log('✅ SMS configuration complete (ready for production)');
     }
   }
-  
+
   async testSmsConnection(): Promise<{ success: boolean; message: string; details?: any }> {
     if (this.isDevelopment) {
       return {
@@ -425,7 +432,7 @@ export class SmsService {
       this.logger.log('🔐 Testing account credentials via balance check...');
       const balanceData = await this.getAccountBalance();
       if (balanceData.error) throw new Error(balanceData.error);
-      
+
       return {
         success: true,
         message: '✅ SMS service configuration appears valid',
@@ -448,23 +455,23 @@ export class SmsService {
     this.logger.debug(`📱 Phone validation: ${phone} -> ${isValid ? '✅ Valid' : '❌ Invalid'}`);
     return isValid;
   }
-  
+
   private detectCarrier(phone: string): string {
     const cleanPhone = phone.replace(/[^\d]/g, '');
     let localNumber = cleanPhone;
 
     if (cleanPhone.startsWith('213')) localNumber = cleanPhone.substring(3);
     else if (cleanPhone.startsWith('0')) localNumber = cleanPhone.substring(1);
-    
+
     if (localNumber.length !== 9) return 'Unknown';
-    
+
     const firstDigit = localNumber.charAt(0);
     if (firstDigit === '5') return 'Ooredoo';
     if (firstDigit === '6') return 'Mobilis';
     if (firstDigit === '7') return 'Djezzy';
     return `Unknown (${firstDigit}x)`;
   }
-  
+
   private formatPhoneForNetBeOpen(phone: string): string[] {
     const cleanPhone = phone.replace(/[^\d]/g, '');
     const formats = new Set<string>();
@@ -490,12 +497,12 @@ export class SmsService {
     const cleanPhone = phone.replace(/[^\d]/g, '');
     const formats = new Set<string>();
     let baseNumber = '';
-    if(cleanPhone.startsWith('213')) baseNumber = cleanPhone;
+    if (cleanPhone.startsWith('213')) baseNumber = cleanPhone;
     else if (cleanPhone.startsWith('0')) baseNumber = `213${cleanPhone.substring(1)}`;
     else if (cleanPhone.length === 9) baseNumber = `213${cleanPhone}`;
-    if(baseNumber) {
-        formats.add(baseNumber);
-        formats.add(`00${baseNumber}`);
+    if (baseNumber) {
+      formats.add(baseNumber);
+      formats.add(`00${baseNumber}`);
     }
     return Array.from(formats);
   }
@@ -504,12 +511,12 @@ export class SmsService {
     const cleanPhone = phone.replace(/[^\d]/g, '');
     const formats = new Set<string>();
     let baseNumber = '';
-    if(cleanPhone.startsWith('213')) baseNumber = cleanPhone;
+    if (cleanPhone.startsWith('213')) baseNumber = cleanPhone;
     else if (cleanPhone.startsWith('0')) baseNumber = `213${cleanPhone.substring(1)}`;
     else if (cleanPhone.length === 9) baseNumber = `213${cleanPhone}`;
-    if(baseNumber) {
-        formats.add(baseNumber);
-        formats.add(`+${baseNumber}`);
+    if (baseNumber) {
+      formats.add(baseNumber);
+      formats.add(`+${baseNumber}`);
     }
     return Array.from(formats);
   }
@@ -518,7 +525,7 @@ export class SmsService {
     // Log the actual response for debugging
     this.logger.log(`Evaluating SMS response: ${JSON.stringify(response)}`);
     this.logger.log(`Response type: ${typeof response}`);
-    
+
     // Handle empty or null responses
     if (response === null || response === undefined) {
       this.logger.warn('Received null/undefined response from SMS gateway');
@@ -529,19 +536,19 @@ export class SmsService {
     if (typeof response === 'string') {
       const trimmed = response.trim();
       const lowerCaseResponse = trimmed.toLowerCase();
-      
+
       // Empty string is usually an error
       if (trimmed === '') {
         this.logger.warn('Received empty string response from SMS gateway');
         return false;
       }
-      
+
       // Common success indicators
       const successIndicators = [
-        'ok', 'success', 'accepted', 'sent', 'delivered', 'queued', 
+        'ok', 'success', 'accepted', 'sent', 'delivered', 'queued',
         'submitted', 'processed', 'complete', 'done'
       ];
-      
+
       // Check for success indicators
       for (const indicator of successIndicators) {
         if (lowerCaseResponse.includes(indicator)) {
@@ -549,72 +556,72 @@ export class SmsService {
           return true;
         }
       }
-      
+
       // Check if it's a numeric message ID (common for SMS gateways)
       if (/^\d+$/.test(trimmed) && parseInt(trimmed) > 0) {
         this.logger.log(`Numeric message ID received: ${trimmed}`);
         return true;
       }
-      
+
       // Check for message ID patterns like "ID:12345" or "MSG_ID:67890"
       if (/^(id|msg_id|message_id|ref):\d+$/i.test(trimmed)) {
         this.logger.log(`Message ID pattern found: ${trimmed}`);
         return true;
       }
-      
+
       // Common error indicators to explicitly fail
       const errorIndicators = [
-        'error', 'fail', 'reject', 'invalid', 'unauthorized', 
+        'error', 'fail', 'reject', 'invalid', 'unauthorized',
         'forbidden', 'denied', 'blocked', 'timeout'
       ];
-      
+
       for (const errorIndicator of errorIndicators) {
         if (lowerCaseResponse.includes(errorIndicator)) {
           this.logger.warn(`Error indicator found: "${errorIndicator}"`);
           return false;
         }
       }
-      
+
       // If none of the above, log it for manual review
       this.logger.warn(`Ambiguous string response: "${trimmed}"`);
       // For now, assume it's a success if it's not empty and doesn't contain error indicators
       return trimmed.length > 0;
     }
-    
+
     // Handle object responses
     if (typeof response === 'object' && response !== null) {
       // Check for explicit success indicators
-      if (response.status === 'OK' || response.status === 'ok' || 
-          response.success === true || response.result === 'success' ||
-          response.error === false || response.sent === true) {
+      if (response.status === 'OK' || response.status === 'ok' ||
+        response.success === true || response.result === 'success' ||
+        response.error === false || response.sent === true) {
         this.logger.log('Object response indicates success');
         return true;
       }
-      
+
       // Check for HTTP status codes
       if (response.code && response.code >= 200 && response.code < 300) {
         this.logger.log(`HTTP success status code: ${response.code}`);
         return true;
       }
-      
+
       // Check for message ID in object
       if (response.id || response.messageId || response.message_id || response.ref) {
         this.logger.log('Message ID found in object response');
         return true;
       }
-      
+
       // Check for explicit error indicators
-      if (response.error === true || response.status === 'error' || 
-          response.success === false || response.failed === true) {
+      if (response.error === true || response.status === 'error' ||
+        response.success === false || response.failed === true) {
         this.logger.warn('Object response indicates error');
         return false;
       }
-      
+
       // If it's an object with data but no clear success/error indicators
       this.logger.warn(`Ambiguous object response: ${JSON.stringify(response)}`);
       return Object.keys(response).length > 0; // Assume success if object has data
     }
-    
+
     // Handle numeric responses
     if (typeof response === 'number') {
       if (response > 0) {
@@ -625,28 +632,28 @@ export class SmsService {
         return false;
       }
     }
-    
+
     // Handle boolean responses
     if (typeof response === 'boolean') {
       this.logger.log(`Boolean response: ${response}`);
       return response;
     }
-    
+
     // Default case
     this.logger.warn(`Unexpected response type: ${typeof response}, value: ${response}`);
     return false;
   }
-  
+
   private parseBalanceResponse(response: any): any {
     if (typeof response === 'string') {
-        const balanceMatch = response.match(/(\d+(?:\.\d+)?)/);
-        if (balanceMatch) return { balance: parseFloat(balanceMatch[1]), currency: 'DZD', source: 'string_parsing' };
+      const balanceMatch = response.match(/(\d+(?:\.\d+)?)/);
+      if (balanceMatch) return { balance: parseFloat(balanceMatch[1]), currency: 'DZD', source: 'string_parsing' };
     }
     if (typeof response === 'object' && response !== null) {
-        const balanceFields = ['balance', 'credits', 'solde', 'amount', 'credit'];
-        for (const field of balanceFields) {
-            if (response[field] !== undefined) return { balance: parseFloat(response[field]), currency: response.currency || 'DZD', source: `field_${field}` };
-        }
+      const balanceFields = ['balance', 'credits', 'solde', 'amount', 'credit'];
+      for (const field of balanceFields) {
+        if (response[field] !== undefined) return { balance: parseFloat(response[field]), currency: response.currency || 'DZD', source: `field_${field}` };
+      }
     }
     return { balance: 'unknown', currency: 'unknown', source: 'unparsable', raw: response };
   }

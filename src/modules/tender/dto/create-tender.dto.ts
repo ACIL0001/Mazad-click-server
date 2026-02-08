@@ -53,11 +53,23 @@ export class CreateTenderDto {
   @IsString()
   location: string;
 
+  @IsString()
+  @IsOptional()
+  contactNumber?: string;
+
   @IsNumber()
   @IsOptional()
   maxBudget?: number;
 
   @IsBoolean()
   isPro: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  professionalOnly?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  hidden?: boolean;
 
 }

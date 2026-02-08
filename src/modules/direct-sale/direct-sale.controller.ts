@@ -29,7 +29,7 @@ import { ConfigService } from '@nestjs/config';
 // Helper to transform attachment(s) to minimal shape with fullUrl
 function transformAttachment(att, baseUrl?: string) {
   if (!att) return null;
-  
+
   // Compute base URL if not provided
   const apiBase = baseUrl || (() => {
     const apiBaseUrl = process.env.API_BASE_URL ||
@@ -37,40 +37,40 @@ function transformAttachment(att, baseUrl?: string) {
         const appHost = process.env.APP_HOST || 'http://localhost';
         const appPort = process.env.APP_PORT || '3000';
         const isProduction = process.env.NODE_ENV === 'production';
-        
+
         if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
           return 'https://mazadclick-server.onrender.com';
         }
-        
+
         const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
         return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
       })();
     return apiBaseUrl.replace(/\/$/, '');
   })();
-  
+
   if (Array.isArray(att)) {
     return att
       .filter(Boolean)
       .map((a) => {
         if (!a || !a.url) return null;
         const fullUrl = a.fullUrl || `${apiBase}${a.url}`;
-        return { 
-          url: a.url, 
+        return {
+          url: a.url,
           fullUrl: fullUrl,
-          _id: a._id, 
-          filename: a.filename 
+          _id: a._id,
+          filename: a.filename
         };
       })
       .filter(Boolean);
   }
-  
+
   if (!att.url) return null;
   const fullUrl = att.fullUrl || `${apiBase}${att.url}`;
-  return { 
-    url: att.url, 
+  return {
+    url: att.url,
     fullUrl: fullUrl,
-    _id: att._id, 
-    filename: att.filename 
+    _id: att._id,
+    filename: att.filename
   };
 }
 
@@ -85,28 +85,29 @@ export class DirectSaleController {
     private readonly configService: ConfigService,
   ) {
     // Compute base URL for fullUrl construction
-    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') || 
-                      process.env.API_BASE_URL ||
-                      (() => {
-                        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
-                        const appPort = this.configService.get<number>('APP_PORT', 3000);
-                        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-                        
-                        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-                          return 'https://mazadclick-server.onrender.com';
-                        }
-                        
-                        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-                        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-                      })();
+    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') ||
+      process.env.API_BASE_URL ||
+      (() => {
+        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
+        const appPort = this.configService.get<number>('APP_PORT', 3000);
+        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+
+        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
+          return 'https://mazadclick-server.onrender.com';
+        }
+
+        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
+        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+      })();
     this.baseUrl = apiBaseUrl.replace(/\/$/, '');
   }
 
   @Get()
   @Public()
   @ApiOperation({ summary: 'Get all active direct sales' })
-  async findAll() {
-    const directSales = await this.directSaleService.findAll();
+  async findAll(@Request() req: any) {
+    const user = req.session?.user;
+    const directSales = await this.directSaleService.findAll(user);
     return directSales.map((directSale) => ({
       ...JSON.parse(JSON.stringify(directSale)),
       thumbs: transformAttachment(directSale.thumbs, this.baseUrl),
@@ -159,11 +160,30 @@ export class DirectSaleController {
   async findOne(@Param('id') id: string) {
     try {
       const directSale = await this.directSaleService.findOne(id);
-      return {
+
+      // DEBUG: Log contactNumber before transformation
+      console.log('📦 [CONTROLLER] Direct Sale before transform:', {
+        id: directSale._id,
+        title: directSale.title,
+        contactNumber: directSale.contactNumber,
+        hasContactNumber: !!directSale.contactNumber,
+      });
+
+      const response = {
         ...JSON.parse(JSON.stringify(directSale)),
         thumbs: transformAttachment(directSale.thumbs, this.baseUrl),
         videos: transformAttachment(directSale.videos, this.baseUrl),
       };
+
+      // DEBUG: Log contactNumber after transformation
+      console.log('📤 [CONTROLLER] API Response:', {
+        id: response._id,
+        title: response.title,
+        contactNumber: response.contactNumber,
+        hasContactNumber: !!response.contactNumber,
+      });
+
+      return response;
     } catch (error) {
       console.error('Error in findOne:', error);
       throw error;
@@ -235,16 +255,16 @@ export class DirectSaleController {
 
     console.log('Creating direct sale with data:', rawData);
     console.log('Uploaded files count:', files?.length || 0);
-    console.log('Uploaded files details:', files?.map(f => ({ 
-      fieldname: f.fieldname, 
-      originalname: f.originalname, 
+    console.log('Uploaded files details:', files?.map(f => ({
+      fieldname: f.fieldname,
+      originalname: f.originalname,
       mimetype: f.mimetype,
       size: f.size,
       filename: f.filename
     })));
 
     const createDirectSaleDto: CreateDirectSaleDto = JSON.parse(rawData);
-    
+
     // Initialize thumbs and videos arrays
     if (!createDirectSaleDto.thumbs) {
       createDirectSaleDto.thumbs = [];
@@ -257,16 +277,16 @@ export class DirectSaleController {
       // Log all file fieldnames to debug
       const allFieldnames = [...new Set(files.map(f => f.fieldname))];
       console.log('All unique fieldnames received:', allFieldnames);
-      
+
       // Separate images and videos based on fieldname (handle both 'thumbs[]' and 'thumbs')
       let imageFiles = files.filter(file => {
-        const isThumbsField = file.fieldname === 'thumbs[]' || 
-                             file.fieldname === 'thumbs' ||
-                             file.fieldname.startsWith('thumbs');
+        const isThumbsField = file.fieldname === 'thumbs[]' ||
+          file.fieldname === 'thumbs' ||
+          file.fieldname.startsWith('thumbs');
         const isImage = file.mimetype.startsWith('image/');
         return isThumbsField && isImage;
       });
-      
+
       // Fallback: if no images found with thumbs fieldname, check all image files
       if (imageFiles.length === 0) {
         console.warn('No images found with thumbs fieldname, checking all image files...');
@@ -276,15 +296,15 @@ export class DirectSaleController {
           imageFiles = allImages;
         }
       }
-      
+
       let videoFiles = files.filter(file => {
-        const isVideosField = file.fieldname === 'videos[]' || 
-                            file.fieldname === 'videos' ||
-                            file.fieldname.startsWith('videos');
+        const isVideosField = file.fieldname === 'videos[]' ||
+          file.fieldname === 'videos' ||
+          file.fieldname.startsWith('videos');
         const isVideo = file.mimetype.startsWith('video/');
         return isVideosField && isVideo;
       });
-      
+
       // Fallback: if no videos found with videos fieldname, check all video files
       if (videoFiles.length === 0) {
         console.warn('No videos found with videos fieldname, checking all video files...');
@@ -330,10 +350,10 @@ export class DirectSaleController {
           console.log('Thumbs IDs set (count:', thumbIds.length, '):', createDirectSaleDto.thumbs);
           if (thumbIds.length === 0 && imageFiles.length > 0) {
             console.error('WARNING: No valid thumb IDs were extracted from', thumbs.length, 'attachments');
-            console.error('Attachment details:', thumbs.map(a => ({ 
-              hasId: !!a?._id, 
+            console.error('Attachment details:', thumbs.map(a => ({
+              hasId: !!a?._id,
               id: a?._id?.toString(),
-              url: a?.url 
+              url: a?.url
             })));
           }
         } catch (error) {
@@ -372,10 +392,10 @@ export class DirectSaleController {
           console.log('Videos IDs set (count:', videoIds.length, '):', createDirectSaleDto.videos);
           if (videoIds.length === 0 && videoFiles.length > 0) {
             console.error('WARNING: No valid video IDs were extracted from', videos.length, 'attachments');
-            console.error('Attachment details:', videos.map(a => ({ 
-              hasId: !!a?._id, 
+            console.error('Attachment details:', videos.map(a => ({
+              hasId: !!a?._id,
               id: a?._id?.toString(),
-              url: a?.url 
+              url: a?.url
             })));
           }
         } catch (error) {
@@ -386,7 +406,7 @@ export class DirectSaleController {
     } else {
       console.warn('No files received in the request');
     }
-    
+
     // Final validation before creating direct sale
     console.log('Final direct sale DTO before service call:', {
       title: createDirectSaleDto.title,

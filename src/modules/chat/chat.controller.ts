@@ -1,4 +1,4 @@
-import { Controller, Post , Body, Get} from "@nestjs/common";
+import { Controller, Post, Body, Get } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { ChatService } from "./chat.service";
 import { Chat } from "./schema/chat.schema";
@@ -15,7 +15,7 @@ import { Public } from 'src/common/decorators/public.decorator';
 @ApiTags('chat')
 @Controller('chat')
 export class ChatController {
-  constructor(private readonly ChatService: ChatService) {}
+  constructor(private readonly ChatService: ChatService) { }
 
   @Post('create')
   async create(@Body() dto: CrateChatDto): Promise<Chat> {
@@ -32,7 +32,7 @@ export class ChatController {
     console.log('🔍 ChatController.getChat called with:');
     console.log('  - id:', dto.id, '(type:', typeof dto.id, ')');
     console.log('  - from:', dto.from, '(type:', typeof dto.from, ')');
-    
+
     try {
       const result = await this.ChatService.getChat(dto.id, dto.from);
       console.log('✅ ChatController returning:', result.length, 'chats');
@@ -63,5 +63,10 @@ export class ChatController {
       throw new Error('Name and phone are required');
     }
     return this.ChatService.findGuestChatByInfo(name, phone);
+  }
+
+  @Post('broadcast')
+  async broadcast(@Body() body: { message: string, sender: string }) {
+    return this.ChatService.broadcastMessage(body.message, body.sender);
   }
 }

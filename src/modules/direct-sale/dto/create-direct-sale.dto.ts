@@ -69,6 +69,10 @@ export class CreateDirectSaleDto {
   @IsNotEmpty()
   place: string;
 
+  @IsString()
+  @IsOptional()
+  contactNumber?: string;
+
   @IsBoolean()
   @IsNotEmpty()
   isPro: boolean;
@@ -76,5 +80,9 @@ export class CreateDirectSaleDto {
   @IsBoolean()
   @IsOptional()
   hidden?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  professionalOnly?: boolean;
 }
 

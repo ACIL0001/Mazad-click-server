@@ -109,6 +109,18 @@ export class AuthController {
     return { message: 'Password reset successful' };
   }
 
+  @Public()
+  @Post('forgot-password')
+  async forgotPassword(@Body() body: { email: string }) {
+    return this.authService.forgotPassword(body.email);
+  }
+
+  @Public()
+  @Post('reset-password-email')
+  async resetPasswordEmail(@Body() body: { email: string, code: string, newPassword: string }) {
+    return this.authService.resetPassword(body.email, body.code, body.newPassword);
+  }
+
   @Post('mark-as-buyer')
   @UseGuards(AuthGuard)
   async markAsBuyer(@Request() request: ProtectedRequest) {

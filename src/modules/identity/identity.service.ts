@@ -15,27 +15,27 @@ export class IdentityService {
     @InjectModel(User.name) private userModel: Model<User>,
     @Inject(forwardRef(() => NotificationService))
     private readonly notificationService: NotificationService,
-  ) {}
+  ) { }
 
   async createIdentity(userId: string, identityData: Partial<Identity>): Promise<IdentityDocument> {
     console.log('Creating identity with data:', { userId, identityData });
-    
+
     try {
-      const identity = new this.identityModel({ 
-        ...identityData, 
+      const identity = new this.identityModel({
+        ...identityData,
         user: userId,
         status: identityData.status || IDE_TYPE.DRAFT,
         // Ensure conversionType is set
         conversionType: identityData.conversionType || CONVERSION_TYPE.PROFESSIONAL_VERIFICATION
       });
       console.log('Identity model created, saving...');
-      
+
       const savedIdentity = await identity.save();
       console.log('Identity saved successfully:', savedIdentity._id);
-      
+
       // Don't update verification status on creation - wait for admin approval
       // Verification status will be set after admin approves (status becomes DONE)
-      
+
       // Create notification for admins about new identity verification
       // Only send notification if status is WAITING (submitted for review), not DRAFT
       if (savedIdentity.status === IDE_TYPE.WAITING) {
@@ -46,7 +46,7 @@ export class IdentityService {
           // Don't throw error here as identity creation should still succeed
         }
       }
-      
+
       return savedIdentity;
     } catch (error) {
       console.error('❌ Error creating identity in service:', {
@@ -69,16 +69,16 @@ export class IdentityService {
   private async createIdentityVerificationNotification(identity: IdentityDocument): Promise<void> {
     try {
       console.log('🔔 Creating identity verification notifications...');
-      
+
       // Get all admin users (both ADMIN and SOUS_ADMIN)
       const adminUsers = await this.userModel.find({
         type: { $in: ['ADMIN', 'SOUS_ADMIN'] }
       }).select('_id email firstName lastName type');
 
-      console.log(`📧 Found ${adminUsers.length} admin users:`, adminUsers.map(u => ({ 
-        id: u._id, 
-        email: u.email, 
-        type: u.type 
+      console.log(`📧 Found ${adminUsers.length} admin users:`, adminUsers.map(u => ({
+        id: u._id,
+        email: u.email,
+        type: u.type
       })));
 
       if (adminUsers.length === 0) {
@@ -93,9 +93,9 @@ export class IdentityService {
       };
 
       const conversionLabel = conversionTypeLabels[identity.conversionType] || 'Vérification d\'identité';
-      
+
       // Create notification for each admin user
-      const notificationPromises = adminUsers.map(adminUser => 
+      const notificationPromises = adminUsers.map(adminUser =>
         this.notificationService.create(
           adminUser._id.toString(),
           NotificationType.IDENTITY_VERIFICATION,
@@ -125,7 +125,7 @@ export class IdentityService {
 
   async getIdentityByUser(userId: string): Promise<IdentityDocument | null> {
     return this.identityModel.findOne({ user: userId })
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('commercialRegister')
       .populate('nif')
       .populate('nis')
@@ -146,7 +146,7 @@ export class IdentityService {
 
   async getAllIdentities(): Promise<IdentityDocument[]> {
     return this.identityModel.find()
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('commercialRegister')
       .populate('nif')
       .populate('nis')
@@ -168,7 +168,7 @@ export class IdentityService {
   // Get identities by status
   async getIdentitiesByStatus(status: IDE_TYPE): Promise<IdentityDocument[]> {
     return this.identityModel.find({ status })
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('commercialRegister')
       .populate('carteAutoEntrepreneur')
       .populate('nif')
@@ -196,7 +196,7 @@ export class IdentityService {
         { certificationStatus: IDE_TYPE.WAITING }
       ]
     })
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('commercialRegister')
       .populate('carteAutoEntrepreneur')
       .populate('nif')
@@ -218,14 +218,14 @@ export class IdentityService {
 
   // Get identities by conversion type
   async getIdentitiesByConversionType(conversionTypes: CONVERSION_TYPE[]): Promise<IdentityDocument[]> {
-    return this.identityModel.find({ 
+    return this.identityModel.find({
       conversionType: { $in: conversionTypes },
       $or: [
         { status: IDE_TYPE.WAITING },
         { certificationStatus: IDE_TYPE.WAITING }
       ]
     })
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('commercialRegister')
       .populate('carteAutoEntrepreneur')
       .populate('nif')
@@ -252,7 +252,7 @@ export class IdentityService {
       { status },
       { new: true }
     )
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('commercialRegister')
       .populate('nif')
       .populate('nis')
@@ -274,7 +274,7 @@ export class IdentityService {
       { certificationStatus: status },
       { new: true }
     )
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('commercialRegister')
       .populate('carteAutoEntrepreneur')
       .populate('nif')
@@ -295,7 +295,7 @@ export class IdentityService {
 
   async getIdentityById(id: string): Promise<IdentityDocument | null> {
     return this.identityModel.findById(id)
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('commercialRegister')
       .populate('nif')
       .populate('nis')
@@ -326,11 +326,11 @@ export class IdentityService {
 
   // Get identities for pending professionals (both existing and converting clients)
   async getPendingProfessionals(): Promise<IdentityDocument[]> {
-    return this.identityModel.find({ 
+    return this.identityModel.find({
       status: IDE_TYPE.WAITING,
       conversionType: { $in: [CONVERSION_TYPE.PROFESSIONAL_VERIFICATION, CONVERSION_TYPE.CLIENT_TO_PROFESSIONAL] }
     })
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé')
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('commercialRegister')
       .populate('nif')
       .populate('nis')
@@ -351,11 +351,11 @@ export class IdentityService {
 
   // Get identities for pending resellers (clients becoming resellers)
   async getPendingResellers(): Promise<IdentityDocument[]> {
-    return this.identityModel.find({ 
+    return this.identityModel.find({
       status: IDE_TYPE.WAITING,
       conversionType: CONVERSION_TYPE.CLIENT_TO_RESELLER
     })
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé')
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('identityCard')
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
@@ -365,13 +365,13 @@ export class IdentityService {
   // Update payment proof for an identity
   async updatePaymentProof(identityId: string, paymentProofId: string): Promise<IdentityDocument | null> {
     console.log('Updating payment proof for identity:', identityId, 'with attachment:', paymentProofId);
-    
+
     const result = await this.identityModel.findByIdAndUpdate(
       identityId,
       { paymentProof: paymentProofId },
       { new: true }
     )
-      .populate('user', 'firstName lastName email avatarUrl type isVerified secteur entreprise postOccupé') 
+      .populate('user', 'firstName lastName email avatarUrl type isVerified isCertified secteur entreprise postOccupé')
       .populate('commercialRegister')
       .populate('nif')
       .populate('nis')
@@ -388,17 +388,17 @@ export class IdentityService {
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
-      
+
     console.log('Payment proof update result:', result?.paymentProof);
     return result;
   }
 
   async updateIdentityDocument(identityId: string, field: string, attachmentId: string): Promise<IdentityDocument | null> {
     console.log('Updating identity document:', { identityId, field, attachmentId });
-    
+
     try {
       const updateData = { [field]: attachmentId };
-      
+
       const result = await this.identityModel
         .findByIdAndUpdate(identityId, { $set: updateData }, { new: true })
         .populate('commercialRegister')
@@ -415,15 +415,15 @@ export class IdentityService {
         .populate('carteFellah')
         .populate('paymentProof')
         .exec();
-      
+
       console.log('Document update result:', result?.[field]);
-      
+
       // Only update verification status if identity is already approved (DONE)
       // If status is WAITING, documents are pending admin review
       if (result && result.user && result.status === IDE_TYPE.DONE) {
         await this.updateUserVerificationStatus(result);
       }
-      
+
       return result;
     } catch (error) {
       console.error('Error updating identity document:', error);
@@ -445,19 +445,19 @@ export class IdentityService {
     }
 
     const userId = typeof identity.user === 'string' ? identity.user : identity.user._id;
-    
+
     try {
       // Check if required documents are present (verified status)
       // Required: (registreCommerceCarteAuto AND nifRequired) OR carteFellah
-      const hasRequiredDocs = 
-        (identity.registreCommerceCarteAuto && identity.nifRequired) || 
+      const hasRequiredDocs =
+        (identity.registreCommerceCarteAuto && identity.nifRequired) ||
         identity.carteFellah;
 
       // Check if optional documents are present (certified status)
       // Optional: numeroArticle, c20, misesAJourCnas
-      const hasOptionalDocs = 
-        identity.numeroArticle || 
-        identity.c20 || 
+      const hasOptionalDocs =
+        identity.numeroArticle ||
+        identity.c20 ||
         identity.misesAJourCnas;
 
       const updateFields: any = {};

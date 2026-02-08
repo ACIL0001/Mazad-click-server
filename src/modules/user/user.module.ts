@@ -30,6 +30,8 @@ import { multerConfigFactory } from '../../configs/multer.config';
     SessionModule,
     AttachmentModule,
     forwardRef(() => IdentityModule),
+    forwardRef(() => require('../notification/notification.module').NotificationModule),
+    forwardRef(() => require('../../socket/socket.module').SocketModule),
     MulterModule.registerAsync({
       imports: [ConfigModule],
       useFactory: multerConfigFactory,
