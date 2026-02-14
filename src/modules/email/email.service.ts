@@ -34,8 +34,8 @@ export class EmailService {
             tls: {
                 rejectUnauthorized: false // Allow self-signed certificates
             },
-            connectionTimeout: 10000, // 10 seconds
-            socketTimeout: 10000, // 10 seconds
+            connectionTimeout: 15000, // 15 seconds
+            socketTimeout: 15000, // 15 seconds
         });
 
         this.logger.log(`SMTP Transporter initialized: Host=${host}, Port=${port || 587}, User=${user}`);
@@ -82,9 +82,11 @@ export class EmailService {
             if (error.response) this.logger.error(`SMTP Response: ${error.response}`);
 
             // FALLBACK STRATEGY: Try Port 465 (SSL) if 587 (STARTTLS) timed out
-            const currentPort = this.configService.get<number>('SMTP_PORT') || 587;
-            if ((error.code === 'ETIMEDOUT' || error.code === 'ECONNECTION') && currentPort === 587) {
-                this.logger.warn(`⚠️ Primary SMTP connection to port 587 timed out. Attempting fallback to Port 465 (SSL)...`);
+            const currentPort = Number(this.configService.get('SMTP_PORT')) || 587;
+            const isConnectionError = error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED' || error.code === 'ESOCKET' || error.command === 'CONN';
+
+            if (isConnectionError && currentPort === 587) {
+                this.logger.warn(`⚠️ Primary SMTP connection to port 587 failed (Code: ${error.code}). Attempting fallback to Port 465 (SSL)...`);
 
                 try {
                     const fallbackTransporter = nodemailer.createTransport({
