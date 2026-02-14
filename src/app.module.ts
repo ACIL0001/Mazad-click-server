@@ -88,11 +88,11 @@ import { EmailModule } from './modules/email/email.module';
         const logger = new Logger('MongooseModule');
         const databaseUri = config.get<'string'>(ConfigKeys.DATABASE_URI);
         const databaseName = config.get<'string'>(ConfigKeys.DATABASE_NAME);
-        
+
         logger.log(`🔗 Attempting to connect to MongoDB...`);
         logger.log(`📊 Database URI: ${databaseUri}`);
         logger.log(`📊 Database Name: ${databaseName}`);
-        
+
         return {
           uri: databaseUri,
           dbName: databaseName,
@@ -100,15 +100,15 @@ import { EmailModule } from './modules/email/email.module';
             connection.on('connected', () => {
               logger.log('✅ MongoDB connected successfully');
             });
-            
+
             connection.on('error', (error) => {
               logger.error('❌ MongoDB connection error:', error);
             });
-            
+
             connection.on('disconnected', () => {
               logger.warn('⚠️ MongoDB disconnected');
             });
-            
+
             return connection;
           },
         };
@@ -133,7 +133,7 @@ import { EmailModule } from './modules/email/email.module';
       useFactory: async (config: ConfigService) => {
         const logger = new Logger('CacheModule');
         const disableRedis = config.get('DISABLE_REDIS') === 'true';
-        
+
         if (disableRedis) {
           logger.log('🚫 Redis disabled, using in-memory cache');
           return {
@@ -141,7 +141,7 @@ import { EmailModule } from './modules/email/email.module';
             max: 100,
           };
         }
-        
+
         try {
           // Try to connect to Redis
           const store = await redisStore({
@@ -157,7 +157,7 @@ import { EmailModule } from './modules/email/email.module';
               },
             },
           });
-          
+
           logger.log('✅ Redis cache connected successfully');
           return {
             store: store,
@@ -238,4 +238,4 @@ import { EmailModule } from './modules/email/email.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

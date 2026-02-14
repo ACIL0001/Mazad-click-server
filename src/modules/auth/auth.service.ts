@@ -183,28 +183,46 @@ export class AuthService {
     };
   }
 
-  async forgotPassword(email: string) {
-    const user = await this.userService.findByLogin(email);
+  async forgotPassword(dto: { email?: string; phone?: string }) {
+    // Validate that at least one identifier is provided
+    if (!dto.email && !dto.phone) {
+      throw new BadRequestException('Either email or phone must be provided');
+    }
+
+    const identifier = dto.email || dto.phone;
+    const user = await this.userService.findByLogin(identifier);
+
     if (!user) {
-      // Silently fail to avoid enumeration attacks, or return generic message.
-      // For better UX during dev/testing, we might want to be explicit, but security wise better to be vague.
-      // "If this email is registered, you will receive a reset code."
-      // But for this request, let's just return success even if not found, or throw if we want explicit feedback.
-      // Let's check logic: findByLogin searches phone or email.
-      throw new UnauthorizedException('If this email is registered, a code has been sent.');
+      // Security: Don't reveal if user exists - return generic message
+      return {
+        message: 'If this account exists, you will receive a code.',
+        method: dto.email ? 'email' : 'phone'
+      };
     }
 
-    if (!user.email) {
-      // User might have signed up with phone only?
-      throw new BadRequestException('No email linked to this account.');
+    // Handle email-based reset
+    if (dto.email) {
+      if (!user.email) {
+        throw new BadRequestException('No email linked to this account.');
+      }
+      await this.otpService.createOtpAndSendEmail(user, OtpType.FORGOT_PASSWORD);
+      return {
+        message: 'Password reset code sent to your email.',
+        method: 'email'
+      };
     }
 
-    // Generate and send OTP via Email
-    await this.otpService.createOtpAndSendEmail(user, OtpType.FORGOT_PASSWORD);
-
-    return {
-      message: 'Password reset code sent to your email.'
-    };
+    // Handle phone-based reset
+    if (dto.phone) {
+      if (!user.phone) {
+        throw new BadRequestException('No phone number linked to this account.');
+      }
+      await this.otpService.createOtpAndSendSMS(user, OtpType.FORGOT_PASSWORD);
+      return {
+        message: 'Password reset code sent to your phone.',
+        method: 'phone'
+      };
+    }
   }
 
   async resetPassword(email: string, code: string, newPass: string) {

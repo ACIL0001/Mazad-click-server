@@ -19,6 +19,7 @@ import { AuthGuard } from 'src/common/guards/auth.guard';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from 'src/common/decorators/public.decorator';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { UserService } from '../user/user.service';
 import { OtpService } from '../otp/otp.service';
 import { OtpType } from '../otp/schema/otp.schema';
@@ -111,13 +112,13 @@ export class AuthController {
 
   @Public()
   @Post('forgot-password')
-  async forgotPassword(@Body() body: { email: string }) {
-    return this.authService.forgotPassword(body.email);
+  async forgotPassword(@Body() body: ForgotPasswordDto) {
+    return this.authService.forgotPassword(body);
   }
 
   @Public()
   @Post('reset-password-email')
-  async resetPasswordEmail(@Body() body: { email: string, code: string, newPassword: string }) {
+  async resetPasswordEmail(@Body() body: { email: string; code: string; newPassword: string }) {
     return this.authService.resetPassword(body.email, body.code, body.newPassword);
   }
 
