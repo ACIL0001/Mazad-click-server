@@ -14,7 +14,7 @@ export class EmailService {
 
     private initializeTransporter() {
         const host = this.configService.get<string>('SMTP_HOST');
-        const port = this.configService.get<number>('SMTP_PORT');
+        const port = Number(this.configService.get<number | string>('SMTP_PORT'));
         const user = this.configService.get<string>('SMTP_USER');
         const password = this.configService.get<string>('SMTP_PASSWORD');
 
@@ -49,8 +49,9 @@ export class EmailService {
                 this.logger.log(`[MOCK EMAIL] To: ${to}, Subject: ${subject}, Text: ${text}`);
                 return true;
             }
-            this.logger.error('Transporter not initialized. Cannot send email. Check SMTP configuration.');
-            return false;
+            const errorMsg = 'Transporter not initialized. Cannot send email. Check SMTP configuration.';
+            this.logger.error(errorMsg);
+            throw new Error(errorMsg);
         }
 
         try {
@@ -113,12 +114,14 @@ export class EmailService {
                     this.logger.log(`✅ Fallback email sent successfully to ${to} using Port 465`);
                     return true;
                 } catch (fallbackError) {
-                    this.logger.error(`❌ Fallback to Port 465 also failed: ${fallbackError.message}`);
-                    return false;
+                    const fallbackMsg = `Fallback to Port 465 also failed: ${fallbackError.message}`;
+                    this.logger.error(`❌ ${fallbackMsg}`);
+                    throw new Error(`Email sending failed (Primary & Fallback): ${error.message}`);
                 }
             }
 
-            return false;
+            // Re-throw the original error so the caller knows exactly what happened
+            throw error;
         }
     }
 }
