@@ -41,6 +41,42 @@ export class EmailService {
         this.logger.log(`SMTP Transporter initialized: Host=${host}, Port=${port || 587}, User=${user}`);
     }
 
+    async verifyConnection(): Promise<{ success: boolean; logs: string[]; error?: any }> {
+        const logs: string[] = [];
+        logs.push(`Starting SMTP verification...`);
+        logs.push(`Environment: ${process.env.NODE_ENV}`);
+
+        const host = this.configService.get<string>('SMTP_HOST');
+        const port = Number(this.configService.get<number | string>('SMTP_PORT')) || 587;
+        const user = this.configService.get<string>('SMTP_USER');
+
+        logs.push(`Config: Host=${host}, Port=${port}, User=${user ? user.substring(0, 3) + '***' : 'missing'}`);
+
+        if (!this.transporter) {
+            logs.push('❌ Transporter is null! Re-initializing...');
+            try {
+                this.initializeTransporter();
+                logs.push('✅ Re-initialization complete.');
+            } catch (e) {
+                logs.push(`❌ Re-initialization failed: ${e.message}`);
+                return { success: false, logs, error: e.message };
+            }
+        }
+
+        try {
+            logs.push('🔄 Verifying transporter connection...');
+            await this.transporter.verify();
+            logs.push('✅ Transporter verification successful!');
+            return { success: true, logs };
+        } catch (error) {
+            logs.push(`❌ Verification failed: ${error.message}`);
+            if (error.code) logs.push(`Code: ${error.code}`);
+            if (error.command) logs.push(`Command: ${error.command}`);
+            if (error.response) logs.push(`Response: ${error.response}`);
+            return { success: false, logs, error };
+        }
+    }
+
     async sendMail(to: string, subject: string, text: string, html?: string): Promise<boolean> {
         if (!this.transporter) {
             const forceRealEmail = process.env.ENABLE_REAL_EMAIL === 'true';
@@ -57,9 +93,9 @@ export class EmailService {
         try {
             const from = this.configService.get<string>('SMTP_FROM') || '"MazadClick" <no-reply@mazadclick.com>';
 
-            // Create a timeout promise
+            // Create a timeout promise - INCREASED TO 30 SECONDS
             const timeoutPromise = new Promise<void>((_, reject) => {
-                setTimeout(() => reject(new Error('Email sending timed out after 15 seconds')), 15000);
+                setTimeout(() => reject(new Error('Email sending timed out after 30 seconds')), 30000);
             });
 
             // Race between sending email and timeout
@@ -99,8 +135,8 @@ export class EmailService {
                             pass: this.configService.get<string>('SMTP_PASSWORD'),
                         },
                         tls: { rejectUnauthorized: false },
-                        connectionTimeout: 10000,
-                        socketTimeout: 10000,
+                        connectionTimeout: 20000,
+                        socketTimeout: 20000,
                     });
 
                     await fallbackTransporter.sendMail({
