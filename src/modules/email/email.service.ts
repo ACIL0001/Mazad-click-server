@@ -80,6 +80,42 @@ export class EmailService {
             if (error.code) this.logger.error(`SMTP Error Code: ${error.code}`);
             if (error.command) this.logger.error(`SMTP Failed Command: ${error.command}`);
             if (error.response) this.logger.error(`SMTP Response: ${error.response}`);
+
+            // FALLBACK STRATEGY: Try Port 465 (SSL) if 587 (STARTTLS) timed out
+            const currentPort = this.configService.get<number>('SMTP_PORT') || 587;
+            if ((error.code === 'ETIMEDOUT' || error.code === 'ECONNECTION') && currentPort === 587) {
+                this.logger.warn(`⚠️ Primary SMTP connection to port 587 timed out. Attempting fallback to Port 465 (SSL)...`);
+
+                try {
+                    const fallbackTransporter = nodemailer.createTransport({
+                        host: this.configService.get<string>('SMTP_HOST'),
+                        port: 465,
+                        secure: true, // Use SSL
+                        auth: {
+                            user: this.configService.get<string>('SMTP_USER'),
+                            pass: this.configService.get<string>('SMTP_PASSWORD'),
+                        },
+                        tls: { rejectUnauthorized: false },
+                        connectionTimeout: 10000,
+                        socketTimeout: 10000,
+                    });
+
+                    await fallbackTransporter.sendMail({
+                        from: this.configService.get<string>('SMTP_FROM') || '"MazadClick" <no-reply@mazadclick.com>',
+                        to,
+                        subject,
+                        text,
+                        html,
+                    });
+
+                    this.logger.log(`✅ Fallback email sent successfully to ${to} using Port 465`);
+                    return true;
+                } catch (fallbackError) {
+                    this.logger.error(`❌ Fallback to Port 465 also failed: ${fallbackError.message}`);
+                    return false;
+                }
+            }
+
             return false;
         }
     }
