@@ -46,33 +46,74 @@ export class EmailService {
         logs.push(`Starting SMTP verification...`);
         logs.push(`Environment: ${process.env.NODE_ENV}`);
 
-        const host = this.configService.get<string>('SMTP_HOST');
-        const port = Number(this.configService.get<number | string>('SMTP_PORT')) || 587;
+        let host = this.configService.get<string>('SMTP_HOST');
         const user = this.configService.get<string>('SMTP_USER');
+        const pass = this.configService.get<string>('SMTP_PASSWORD');
 
-        logs.push(`Config: Host=${host}, Port=${port}, User=${user ? user.substring(0, 3) + '***' : 'missing'}`);
-
-        if (!this.transporter) {
-            logs.push('❌ Transporter is null! Re-initializing...');
-            try {
-                this.initializeTransporter();
-                logs.push('✅ Re-initialization complete.');
-            } catch (e) {
-                logs.push(`❌ Re-initialization failed: ${e.message}`);
-                return { success: false, logs, error: e.message };
-            }
-        }
+        // Test 1: Standard Config (usually 587)
+        let port = Number(this.configService.get<number | string>('SMTP_PORT')) || 587;
+        logs.push(`Attempt 1: Host=${host}, Port=${port}, User=${user ? user.substring(0, 3) + '***' : 'missing'}`);
 
         try {
-            logs.push('🔄 Verifying transporter connection...');
+            if (!this.transporter) {
+                this.initializeTransporter();
+            }
+            logs.push('🔄 Verifying transporter connection (Attempt 1)...');
             await this.transporter.verify();
-            logs.push('✅ Transporter verification successful!');
+            logs.push('✅ Transporter verification successful on primary port!');
             return { success: true, logs };
         } catch (error) {
-            logs.push(`❌ Verification failed: ${error.message}`);
+            logs.push(`❌ Attempt 1 failed: ${error.message}`);
             if (error.code) logs.push(`Code: ${error.code}`);
-            if (error.command) logs.push(`Command: ${error.command}`);
-            if (error.response) logs.push(`Response: ${error.response}`);
+
+            // Test 2: Force Port 465 (SSL)
+            if (port !== 465) {
+                logs.push(`⚠️ Trying fallback to Port 465 (SSL)...`);
+                try {
+                    const fallbackTransporter = nodemailer.createTransport({
+                        host,
+                        port: 465,
+                        secure: true, // Use SSL
+                        auth: { user, pass },
+                        tls: { rejectUnauthorized: false },
+                        connectionTimeout: 10000,
+                        socketTimeout: 10000,
+                    });
+
+                    logs.push('🔄 Verifying fallback connection (Port 465)...');
+                    await fallbackTransporter.verify();
+                    logs.push('✅ Fallback verification successful on Port 465!');
+                    logs.push('💡 RECOMMENDATION: Change SMTP_PORT to 465 in your environment variables.');
+                    return { success: true, logs };
+                } catch (fallbackError) {
+                    logs.push(`❌ Fallback (Port 465) failed: ${fallbackError.message}`);
+                    if (fallbackError.code) logs.push(`Code: ${fallbackError.code}`);
+                }
+            }
+
+            // Test 3: Try Port 2525 (Alternative for 587)
+            if (port !== 2525) {
+                logs.push(`⚠️ Trying fallback to Port 2525 (Alternative)...`);
+                try {
+                    const altTransporter = nodemailer.createTransport({
+                        host,
+                        port: 2525,
+                        secure: false,
+                        auth: { user, pass },
+                        tls: { rejectUnauthorized: false },
+                        connectionTimeout: 10000,
+                        socketTimeout: 10000,
+                    });
+                    logs.push('🔄 Verifying fallback connection (Port 2525)...');
+                    await altTransporter.verify();
+                    logs.push('✅ Fallback verification successful on Port 2525!');
+                    logs.push('💡 RECOMMENDATION: Change SMTP_PORT to 2525 in your environment variables.');
+                    return { success: true, logs };
+                } catch (altError) {
+                    logs.push(`❌ Fallback (Port 2525) failed: ${altError.message}`);
+                }
+            }
+
             return { success: false, logs, error };
         }
     }
