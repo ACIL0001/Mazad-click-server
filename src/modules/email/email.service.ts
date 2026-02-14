@@ -37,6 +37,8 @@ export class EmailService {
             connectionTimeout: 10000, // 10 seconds
             socketTimeout: 10000, // 10 seconds
         });
+
+        this.logger.log(`SMTP Transporter initialized: Host=${host}, Port=${port || 587}, User=${user}`);
     }
 
     async sendMail(to: string, subject: string, text: string, html?: string): Promise<boolean> {
@@ -75,6 +77,9 @@ export class EmailService {
             return true;
         } catch (error) {
             this.logger.error(`Failed to send email to ${to}: ${error.message}`);
+            if (error.code) this.logger.error(`SMTP Error Code: ${error.code}`);
+            if (error.command) this.logger.error(`SMTP Failed Command: ${error.command}`);
+            if (error.response) this.logger.error(`SMTP Response: ${error.response}`);
             return false;
         }
     }
