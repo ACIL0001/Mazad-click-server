@@ -33,7 +33,9 @@ export class EmailService {
             },
             tls: {
                 rejectUnauthorized: false // Allow self-signed certificates
-            }
+            },
+            connectionTimeout: 10000, // 10 seconds
+            socketTimeout: 10000, // 10 seconds
         });
     }
 
@@ -51,13 +53,24 @@ export class EmailService {
 
         try {
             const from = this.configService.get<string>('SMTP_FROM') || '"MazadClick" <no-reply@mazadclick.com>';
-            await this.transporter.sendMail({
-                from,
-                to,
-                subject,
-                text,
-                html,
+
+            // Create a timeout promise
+            const timeoutPromise = new Promise<void>((_, reject) => {
+                setTimeout(() => reject(new Error('Email sending timed out after 15 seconds')), 15000);
             });
+
+            // Race between sending email and timeout
+            await Promise.race([
+                this.transporter.sendMail({
+                    from,
+                    to,
+                    subject,
+                    text,
+                    html,
+                }),
+                timeoutPromise
+            ]);
+
             this.logger.log(`Email sent successfully to ${to}`);
             return true;
         } catch (error) {
