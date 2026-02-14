@@ -152,21 +152,19 @@ export class OtpService {
         text = `Your password reset code is: ${otp.code}. This code is valid for ${this.OTP_EXPIRY_MINUTES} minutes.`;
       }
 
-      // Send Email - will throw if fails
-      await this.emailService.sendMail(user.email, subject, text);
+      // Send Email
+      const sent = await this.emailService.sendMail(user.email, subject, text);
 
-      this.logger.log(`✅ OTP Email sent successfully to ${user.email} (type: ${type})`);
+      if (sent) {
+        this.logger.log(`✅ OTP Email sent successfully to ${user.email} (type: ${type})`);
+      } else {
+        this.logger.error(`❌ Failed to send OTP Email to ${user.email}`);
+        throw new BadRequestException(`Failed to send OTP Email`);
+      }
 
     } catch (error) {
       this.logger.error(`❌ Failed to create and send OTP Email for user ${user._id}: ${error.message}`);
-
-      // If it's already a known NestJS exception, rethrow it
-      if (error.response && error.status) {
-        throw error;
-      }
-
-      // Otherwise, wrap it in a BadRequestException with the specific message
-      throw new BadRequestException(`Failed to send OTP Email: ${error.message}`);
+      throw error;
     }
   }
 
