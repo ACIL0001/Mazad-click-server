@@ -19,7 +19,7 @@ export class SessionService {
     @InjectModel(Session.name) private readonly sessionModel: Model<Session>,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly jwtService: JwtService,
-  ) {}
+  ) { }
 
   // TODO: CREATE SESSION AND DOCUMENT IT
   async CreateSession(
@@ -50,27 +50,59 @@ export class SessionService {
   // TODO: VALIDATE SESSION AND DOCUMENT IT
   async ValidateSession(access_token: string): Promise<Session> {
     try {
+      // console.log('🔍 ValidateSession: Verifying token...');
       const { sub, key } = await this.jwtService.verifyAsync(access_token);
 
+      // console.log(`🔍 ValidateSession: Token verified. Sub: ${sub}, Key: ${key}`);
+
       let session: Session = await this.cacheManager.get(`session:${key}`);
-      
+
       if (!session) {
+        // console.log('🔍 ValidateSession: Session not in cache, looking in DB...');
         session = await this.sessionModel.findOne({ access_key: key });
-        
+
         if (!session) {
+          console.error(`❌ ValidateSession: Session not found in DB for key: ${key}`);
           throw new UnauthorizedException('Invalid session');
         }
 
+        // console.log('✅ ValidateSession: Session found in DB, caching...');
         this.cacheManager.set(`session:${key}`, session);
       }
 
-      if (!(session.user._id.toString() == sub.toString())) {
+      if (!session.user) {
+        console.error(`❌ ValidateSession: Session has no user property! Session ID: ${session._id}`);
+        // If session is seemingly valid but has no user, it's corrupted.
+        await this.sessionModel.deleteOne({ _id: session._id });
+        throw new UnauthorizedException('Invalid session user');
+      }
+
+      // Check if user is fully populated (has _id property)
+      // Mongoose populated field becomes a document. If not populated, it's an ObjectId.
+      const userDoc = session.user as any;
+      if (!userDoc._id) {
+        console.error(`❌ ValidateSession: Session user not populated (is ObjectId?). Session ID: ${session._id}`);
+        // This implies the User document might be missing or populate failed.
+        // We can try to manually find the user to be sure, or just assume invalid.
+        // For safety, invalidate session.
+        await this.sessionModel.deleteOne({ _id: session._id });
+        throw new UnauthorizedException('Invalid session user (not found)');
+      }
+
+      if (userDoc._id.toString() !== sub.toString()) {
+        console.error(`❌ ValidateSession: User ID mismatch. Session User: ${userDoc._id}, Token Sub: ${sub}`);
+        await this.sessionModel.deleteOne({ _id: session._id }); // Security: delete suspicious session
         throw new UnauthorizedException('Invalid session');
       }
 
       return session;
     } catch (error) {
-      throw error;
+      console.error('❌ ValidateSession Error:', error.message);
+      // Ensure we don't return 500 for auth failures
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new UnauthorizedException('Session validation error');
     }
   }
 

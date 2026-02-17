@@ -66,7 +66,7 @@ export class IdentityService {
     }
   }
 
-  private async createIdentityVerificationNotification(identity: IdentityDocument): Promise<void> {
+  public async createIdentityVerificationNotification(identity: IdentityDocument): Promise<void> {
     try {
       console.log('🔔 Creating identity verification notifications...');
 
@@ -108,7 +108,7 @@ export class IdentityService {
             status: identity.status,
             submittedAt: identity.createdAt
           },
-          identity.user.toString(),
+          identity.user ? ((identity.user as any)._id || identity.user).toString() : undefined,
           'Utilisateur',
           'user@example.com'
         )
@@ -120,6 +120,47 @@ export class IdentityService {
     } catch (error) {
       console.error('Error creating identity verification notification:', error);
       throw error;
+    }
+  }
+
+  public async createIdentityCertificationNotification(identity: IdentityDocument): Promise<void> {
+    try {
+      console.log('🔔 Creating identity certification notifications...');
+
+      // Get all admin users (both ADMIN and SOUS_ADMIN)
+      const adminUsers = await this.userModel.find({
+        type: { $in: ['ADMIN', 'SOUS_ADMIN'] }
+      }).select('_id email firstName lastName type');
+
+      if (adminUsers.length === 0) {
+        console.warn('⚠️ No admin users found to send identity certification notification');
+        return;
+      }
+
+      // Create notification for each admin user
+      const notificationPromises = adminUsers.map(adminUser =>
+        this.notificationService.create(
+          adminUser._id.toString(),
+          NotificationType.IDENTITY_VERIFICATION, // Use same type for now so it routes correctly
+          'Nouvelle demande de certification',
+          `Une nouvelle demande de certification a été soumise par l'utilisateur ${identity.user ? (identity.user as any).firstName + ' ' + (identity.user as any).lastName : 'Inconnu'}.`,
+          {
+            identityId: identity._id,
+            userId: identity.user,
+            type: 'CERTIFICATION',
+            status: identity.certificationStatus,
+            submittedAt: new Date()
+          },
+          identity.user ? ((identity.user as any)._id || identity.user).toString() : undefined,
+          'Utilisateur'
+        )
+      );
+
+      await Promise.all(notificationPromises);
+      console.log(`✅ Identity certification notifications created successfully for ${adminUsers.length} admin users`);
+    } catch (error) {
+      console.error('Error creating identity certification notification:', error);
+      // Don't throw error
     }
   }
 
@@ -138,7 +179,7 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
-      .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
+      .populate('carteFellah') // Â✅ FIX: Added populate for carteFellah
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
@@ -265,7 +306,9 @@ export class IdentityService {
       .populate('numeroArticle')
       .populate('c20')
       .populate('misesAJourCnas')
-      .populate('carteFellah') // ✅ FIX: Added populate for carteFellah
+      .populate('carteFellah')
+      .populate('paymentProof')
+      .exec();
   }
 
   async updateCertificationStatus(identityId: string, status: IDE_TYPE): Promise<IdentityDocument | null> {

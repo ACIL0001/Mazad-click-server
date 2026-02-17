@@ -12,6 +12,8 @@ import { Public } from 'src/common/decorators/public.decorator';
 
 
 
+import { BroadcastDto } from "./dto/broadcast.dto";
+
 @ApiTags('chat')
 @Controller('chat')
 export class ChatController {
@@ -66,7 +68,12 @@ export class ChatController {
   }
 
   @Post('broadcast')
-  async broadcast(@Body() body: { message: string, sender: string }) {
-    return this.ChatService.broadcastMessage(body.message, body.sender);
+  async broadcast(@Body() broadcastDto: BroadcastDto) {
+    return this.ChatService.broadcastMessage(
+      broadcastDto.message,
+      broadcastDto.sender,
+      broadcastDto.filterType,
+      broadcastDto.filterValue
+    );
   }
 }

@@ -3,7 +3,7 @@ import { BadRequestException, Injectable, OnModuleInit, Logger } from '@nestjs/c
 import { RoleCode } from '../apikey/entity/appType.entity';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, RootFilterQuery, Types } from 'mongoose';
-import { User } from './schema/user.schema';
+import { User, UserDocument } from './schema/user.schema';
 import { ConfigService } from '@nestjs/config';
 import { ConfigKeys } from 'src/configs/app.config';
 import * as bcrypt from 'bcrypt';
@@ -22,24 +22,6 @@ export class UserService implements OnModuleInit {
     private readonly attachmentService: AttachmentService,
   ) { }
 
-  // async create(userData: CreateUserDto) {
-  //   const emailExist = await this.userModel.findOne({
-  //     email: userData.email,
-  //   });
-
-  //   if (emailExist) throw new BadRequestException('Email already exist'); // FIXME: TRANSLATE THIS
-
-  //   const phoneExist = await this.userModel.findOne({
-  //     phone: userData.phone,
-  //   });
-  //   if (phoneExist) throw new BadRequestException('Phone number already exist'); // FIXME: TRANSLATE THIS
-
-  //   const user = await this.userModel.create({
-  //     ...userData,
-  //   });
-
-  //   return user;
-  // }
 
   async findUser(user?: RootFilterQuery<User>) {
     const users = await this.userModel.find(user).populate(['avatar', 'coverPhoto']);
@@ -51,7 +33,7 @@ export class UserService implements OnModuleInit {
   }
 
   // Helper method to enrich user with avatar URLs
-  private enrichUserWithAvatarUrls(user: any): any {
+  private enrichUserWithAvatarUrls(user: UserDocument | any): any {
     // Get subscriptionPlan BEFORE converting to object - try multiple ways to access it
     let subscriptionPlan: string | null = null;
 
@@ -156,6 +138,44 @@ export class UserService implements OnModuleInit {
       return enrichedUser;
     }
     return null;
+  }
+
+  // NEW: Find users by filter (Broadcast)
+  async findUsersByFilter(filterType: 'ALL' | 'SECTEUR' | 'WILAYA' | 'USERS', filterValue?: string[]) {
+    const query: any = {};
+
+    // Base query: only target actual users (not admins/guests usually) unless specific IDs provided
+    // If filtering by specific USERS, we trust the IDs provided.
+    // Otherwise, we target CLIENT, PROFESSIONAL, RESELLER.
+    if (filterType !== 'USERS') {
+      query.type = { $in: [RoleCode.CLIENT, RoleCode.PROFESSIONAL, RoleCode.RESELLER] };
+    }
+
+    if (filterType === 'SECTEUR' && filterValue && filterValue.length > 0) {
+      query.secteur = { $in: filterValue };
+    } else if (filterType === 'WILAYA' && filterValue && filterValue.length > 0) {
+      query.wilaya = { $in: filterValue };
+    } else if (filterType === 'USERS' && filterValue && filterValue.length > 0) {
+      query._id = { $in: filterValue };
+    }
+
+    console.log('🔍 findUsersByFilter query:', JSON.stringify(query));
+
+    const users = await this.userModel.find(query).populate(['avatar', 'coverPhoto']);
+    console.log(`🔍 findUsersByFilter found ${users.length} users`);
+
+    // Enrich users
+    const enrichedUsers = [];
+    for (const user of users) {
+      await this.convertSecteurIdToName(user);
+      const enrichedUser = this.enrichUserWithAvatarUrls(user);
+      // Ensure subscriptionPlan is explicitly included
+      if (user.subscriptionPlan) {
+        enrichedUser.subscriptionPlan = user.subscriptionPlan;
+      }
+      enrichedUsers.push(enrichedUser);
+    }
+    return enrichedUsers;
   }
 
   // NEW: Find users by array of IDs
@@ -319,7 +339,7 @@ export class UserService implements OnModuleInit {
   }
 
   async setUserVerified(userId: string, isVerified: boolean) {
-    const updateFields: any = { isVerified };
+    const updateFields: Partial<User> = { isVerified };
     // If user is being verified, set rate to 3
     if (isVerified) {
       updateFields.rate = 3;
@@ -557,7 +577,7 @@ export class UserService implements OnModuleInit {
    * Converts secteur field from category ID to category name if needed
    * @param user User document to process
    */
-  private async convertSecteurIdToName(user: any): Promise<void> {
+  private async convertSecteurIdToName(user: UserDocument | any): Promise<void> {
     if (!user.secteur || user.type !== RoleCode.PROFESSIONAL) {
       return;
     }

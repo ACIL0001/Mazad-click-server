@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
@@ -11,6 +12,7 @@ import { CreateBidDto } from './dto/create-bid.dto';
 import { UpdateBidDto } from './dto/update-bid.dto';
 import { RelaunchBidDto } from './dto/relaunch-bid.dto';
 import { NotificationService } from '../notification/notification.service';
+import { addProfessionalFilter, isValidObjectId } from 'src/common/utils';
 import { NotificationType } from '../notification/schema/notification.schema';
 import { I18nService } from 'nestjs-i18n';
 import { ProService } from '../user/services/pro.service';
@@ -49,8 +51,8 @@ export class BidService {
   async findOne(id: string): Promise<Bid> {
     try {
       // Validate ObjectId format
-      if (!id || !/^[0-9a-fA-F]{24}$/.test(id)) {
-        throw new NotFoundException(`Invalid bid ID format: "${id}"`);
+      if (!isValidObjectId(id)) {
+        throw new BadRequestException('Invalid ID format');
       }
 
       const bid = await this.bidModel
@@ -82,13 +84,14 @@ export class BidService {
             }
           ]
         })
+        .lean()
         .exec();
 
       if (!bid) {
         throw new NotFoundException(`Bid with ID "${id}" not found`);
       }
 
-      return bid;
+      return bid as any;
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
@@ -98,14 +101,9 @@ export class BidService {
     }
   }
 
-  async findAll(user?: any): Promise<BidDocument[]> {
+  async findAll(user?: any): Promise<Bid[]> {
     const query: any = {};
-
-    // If not professional, only show items NOT marked as professionalOnly
-    const isProfessional = user?.type === 'PROFESSIONAL';
-    if (!isProfessional) {
-      query.professionalOnly = { $ne: true };
-    }
+    addProfessionalFilter(query, user);
 
     return this.bidModel.find(query)
       .populate({
@@ -119,7 +117,8 @@ export class BidService {
       .populate('videos')
       .populate('productCategory')
       .populate('productSubCategory')
-      .exec();
+      .lean()
+      .exec() as any;
   }
 
 
@@ -257,7 +256,7 @@ export class BidService {
 
   async checkBids(id: string): Promise<void> {
     // Validate ObjectId before querying
-    if (!id || typeof id !== 'string' || id.trim() === '' || !/^[0-9a-fA-F]{24}$/.test(id)) {
+    if (!isValidObjectId(id)) {
       console.warn('checkBids: Invalid user ID provided:', id);
       return;
     }
@@ -273,12 +272,16 @@ export class BidService {
       return;
     }
 
-    const getAllBids = await this.bidModel.find({ owner: id, status: BID_STATUS.OPEN }).exec();
-    for (let index = 0; index < getAllBids.length; index++) {
-      const now = Date.now();
-      const data = new Date(getAllBids[index].endingAt).getTime();
+    const now = new Date();
+    const getAllBids = await this.bidModel.find({ 
+      owner: id, 
+      status: BID_STATUS.OPEN,
+      endingAt: { $lt: now }
+    }).exec();
 
-      if (data < now) {
+    for (let index = 0; index < getAllBids.length; index++) {
+        // Date check is now handled by the query
+
 
         const getOffers = await this.OfferModel.find({ bid: getAllBids[index]._id });
 
@@ -674,9 +677,8 @@ export class BidService {
           });
 
 
-        }
 
-      }
+        }
     }
     return;
   }

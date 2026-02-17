@@ -31,12 +31,9 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { Multer } from 'multer'; 
 import { AttachmentAs } from '../attachment/schema/attachment.schema'; 
+import { transformAttachment } from 'src/common/utils'; 
 
-// Helper to transform attachment to minimal shape
-function transformAttachment(att) {
-  if (!att) return null;
-  return att.url ? { url: att.url, _id: att._id, filename: att.filename } : null;
-}
+
 
 @ApiTags('Categories')
 @Controller('category')

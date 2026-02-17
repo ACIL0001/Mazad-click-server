@@ -5,7 +5,8 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import * as mongoose from 'mongoose';
+import { Model, RootFilterQuery, Types } from 'mongoose';
 import { Tender, TenderDocument, TENDER_STATUS, TENDER_TYPE } from './schema/tender.schema';
 import { TenderBid, TenderBidDocument, TenderBidStatus } from './schema/tender-bid.schema';
 import { CreateTenderDto } from './dto/create-tender.dto';
@@ -13,6 +14,7 @@ import { UpdateTenderDto } from './dto/update-tender.dto';
 import { CreateTenderBidDto } from './dto/create-tender-bid.dto';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/schema/notification.schema';
+import { addProfessionalFilter, isValidObjectId } from 'src/common/utils';
 import { I18nService } from 'nestjs-i18n';
 import { ProService } from '../user/services/pro.service';
 import { ClientService } from '../user/services/client.service';
@@ -52,8 +54,8 @@ export class TenderService {
   async findOne(id: string): Promise<Tender> {
     try {
       // Validate ObjectId format
-      if (!id || !/^[0-9a-fA-F]{24}$/.test(id)) {
-        throw new NotFoundException(`Invalid tender ID format: "${id}"`);
+      if (!isValidObjectId(id)) {
+        throw new BadRequestException('ID invalide');
       }
 
       const tender = await this.tenderModel
@@ -90,13 +92,14 @@ export class TenderService {
             }
           ]
         })
+        .lean()
         .exec();
 
       if (!tender) {
         throw new NotFoundException(`Tender with ID "${id}" not found`);
       }
 
-      return tender;
+      return tender as unknown as Tender;
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
@@ -106,14 +109,9 @@ export class TenderService {
     }
   }
 
-  async findAll(user?: any): Promise<TenderDocument[]> {
-    const query: any = {};
-
-    // If not professional, only show items NOT marked as professionalOnly
-    const isProfessional = user?.type === 'PROFESSIONAL';
-    if (!isProfessional) {
-      query.professionalOnly = { $ne: true };
-    }
+  async findAll(user?: User): Promise<Tender[]> {
+    const query: mongoose.RootFilterQuery<Tender> = {};
+    addProfessionalFilter(query, user);
 
     return this.tenderModel.find(query)
       .populate({
@@ -132,7 +130,8 @@ export class TenderService {
         }
       })
       .populate('subCategory')
-      .exec();
+      .lean()
+      .exec() as unknown as Tender[];
   }
 
   async create(createTenderDto: CreateTenderDto): Promise<Tender> {
@@ -249,14 +248,15 @@ export class TenderService {
   async checkTenders(id: string): Promise<void> {
     console.log('Checking tenders for user:', id);
     const getUser = await this.userService.getUserById(id);
-    const getAllTenders = await this.tenderModel.find({ owner: id, status: TENDER_STATUS.OPEN }).exec();
+    const now = new Date();
+    const getAllTenders = await this.tenderModel.find({ 
+      owner: id, 
+      status: TENDER_STATUS.OPEN,
+      endingAt: { $lt: now }
+    }).exec();
 
     for (let index = 0; index < getAllTenders.length; index++) {
-      const now = Date.now();
-      const endDate = new Date(getAllTenders[index].endingAt).getTime();
-
-
-      if (endDate < now) {
+      // Date check is now handled by the query
         const getTenderBids = await this.tenderBidModel.find({ tender: getAllTenders[index]._id });
 
         // For tenders, we want the LOWEST bid (reverse auction)
@@ -404,7 +404,7 @@ export class TenderService {
         await this.tenderModel.findByIdAndUpdate(getAllTenders[index]._id, {
           status: TENDER_STATUS.CLOSED,
         });
-      }
+
     }
     return;
   }
@@ -794,7 +794,7 @@ export class TenderService {
       // Verify the user has permission to delete this bid (either the bidder or tender owner)
       const tender = await this.tenderModel.findById(tenderBid.tender._id).exec();
       const isBidder = tenderBid.bidder.toString() === userId;
-      const isTenderOwner = tender && tender.owner.toString() === userId;
+      const isTenderOwner = tender && (tender.owner as unknown as mongoose.Types.ObjectId).toString() === userId;
 
       if (!isBidder && !isTenderOwner) {
         throw new ForbiddenException('You can only delete your own bids or bids on your own tenders');

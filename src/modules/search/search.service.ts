@@ -45,15 +45,32 @@ export class SearchService {
         console.log('📊 Min Probability:', minProbability + '%');
 
         try {
-            // 1. Fetch search terms
+            // 1. Fetch search terms using Text Search for performance
+            // We combine text score with popularity boost (searchCount)
             const searchTerms = await this.searchTermModel
-                .find()
-                .sort({ searchCount: -1 })
-                .limit(100)
+                .find(
+                    { $text: { $search: query } },
+                    { score: { $meta: "textScore" } }
+                )
+                .sort({ score: { $meta: "textScore" }, searchCount: -1 })
+                .limit(limit * 5) // Fetch a few more to allow for Fuse.js refinement
                 .lean()
                 .exec();
 
-            console.log('📚 Search terms in database:', searchTerms.length);
+            let finalSearchTerms = searchTerms;
+
+            // 1b. Fallback to regex if text search yields no results (handles partial matches like "iph")
+            if (searchTerms.length === 0) {
+                console.log('ℹ️  No text match, trying regex fallback...');
+                finalSearchTerms = await this.searchTermModel
+                    .find({ normalizedTerm: { $regex: normalizedQuery, $options: 'i' } })
+                    .sort({ searchCount: -1 })
+                    .limit(limit * 5)
+                    .lean()
+                    .exec();
+            }
+
+            console.log('📚 Search terms found in database:', finalSearchTerms.length);
 
             // 2. Fetch edge weights for this query
             const edgeWeights = await this.edgeWeightModel
@@ -70,7 +87,8 @@ export class SearchService {
             console.log('⚖️  Edge weights found:', edgeWeights.length);
 
             // 3. Perform fuzzy matching with Fuse.js
-            const fuse = new Fuse(searchTerms, {
+            // 3. Perform fuzzy matching with Fuse.js on the narrowed results
+            const fuse = new Fuse(finalSearchTerms, {
                 keys: [
                     { name: 'term', weight: 0.5 },
                     { name: 'normalizedTerm', weight: 0.3 },
@@ -258,44 +276,30 @@ export class SearchService {
         console.log('📝 Type:', itemType);
 
         try {
-            // 1. Get all pending requests
-            const pendingRequests = await this.notifyMeModel
-                .find({ status: 'pending', expiresAt: { $gt: new Date() } })
+            const itemText = (itemTitle + ' ' + (itemDescription || '')).toLowerCase();
+
+            // 1. Get targeted pending requests using text search
+            // This is MUCH faster than fetching all and iterating in-memory
+            const matchingRequests = await this.notifyMeModel
+                .find({ 
+                    status: 'pending', 
+                    expiresAt: { $gt: new Date() },
+                    $text: { $search: itemText }
+                })
                 .exec();
 
-            if (pendingRequests.length === 0) {
-                console.log('info: No pending requests found.');
+            if (matchingRequests.length === 0) {
+                console.log('info: No matching pending requests found.');
                 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
                 return;
             }
 
-            console.log(`🔍 Checking ${pendingRequests.length} pending requests...`);
-
-            // 2. Fuzzy match against requests
-            // We want to see if the itemTitle matches the user's searchQuery
-            // So we treat the current item as the "source" and search queries as "targets"
-
-            const fuse = new Fuse(pendingRequests, {
-                keys: ['searchQuery'],
-                threshold: 0.4, // Somewhat strict to avoid spam
-                includeScore: true,
-            });
-
-            // Search using the ITEM TITLE as the query against the requests
-            // But wait, usually search works the other way (Query -> Database). 
-            // Here we want: Does "iPhone 15" match "iphone"? Yes.
-            // Does "iPhone 15" match "samsung"? No.
-
-            // A better approach: Iterate requests and check if item title "contains" the search query vaguely
+            console.log(`🔍 Found ${matchingRequests.length} potentially interested users...`);
 
             let notifiedCount = 0;
 
-            for (const request of pendingRequests) {
-                // Simple fuzzy check: 
-                // Does the Item Title (e.g. "iPhone 15 Pro Max 256GB") 
-                // contain the User Query (e.g. "iphone 15")?
-
-                const itemText = (itemTitle + ' ' + (itemDescription || '')).toLowerCase();
+            for (const request of matchingRequests) {
+                // Secondary check for exact/fuzzy match since text search is token-based
                 const query = request.searchQuery.toLowerCase();
 
                 // 1. Direct inclusion check (Fastest)

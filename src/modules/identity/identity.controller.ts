@@ -40,11 +40,9 @@ import { Subscription } from '../subscription/schema/subscription.schema';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/schema/notification.schema';
 import { SocketGateway } from '../../socket/socket.gateway';
+import { transformAttachment } from 'src/common/utils';
 
-function transformAttachment(att) {
-  if (!att) return null;
-  return att.url ? { url: att.url, _id: att._id, filename: att.filename } : null;
-}
+
 
 @Controller('identities')
 @UseGuards(AuthGuard)
@@ -807,6 +805,11 @@ export class IdentityController {
 
       const updatedIdentity = await this.identityService.getIdentityById(identityId);
 
+      // Trigger notification for admins
+      if (updatedIdentity) {
+        await this.identityService.createIdentityVerificationNotification(updatedIdentity);
+      }
+
       return {
         success: true,
         data: {
@@ -1269,6 +1272,11 @@ export class IdentityController {
       await this.identityService.updateCertificationStatus(identityId, IDE_TYPE.WAITING);
 
       const updatedIdentity = await this.identityService.getIdentityById(identityId);
+
+      // Trigger notification for admins
+      if (updatedIdentity) {
+        await this.identityService.createIdentityCertificationNotification(updatedIdentity);
+      }
 
       return {
         success: true,

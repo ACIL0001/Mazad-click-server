@@ -28,51 +28,10 @@ import { ProtectedRequest } from 'src/types/request.type';
 import { AttachmentAs } from '../attachment/schema/attachment.schema';
 import { UserService } from '../user/user.service';
 import { ConfigService } from '@nestjs/config';
+import { RoleCode } from '../apikey/entity/appType.entity';
+import { getApiBaseUrl, transformAttachment, sanitizeUser } from 'src/common/utils';
 
-// Helper to transform attachment(s) to minimal shape with fullUrl
-function transformAttachment(att, baseUrl?: string) {
-  if (!att) return null;
 
-  // Compute base URL if not provided
-  const apiBase = baseUrl || (() => {
-    const apiBaseUrl = process.env.API_BASE_URL ||
-      (() => {
-        const appHost = process.env.APP_HOST || 'http://localhost';
-        const appPort = process.env.APP_PORT || '3000';
-        const isProduction = process.env.NODE_ENV === 'production';
-
-        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-          return 'https://mazadclick-server.onrender.com';
-        }
-
-        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-      })();
-    return apiBaseUrl.replace(/\/$/, '');
-  })();
-
-  if (Array.isArray(att)) {
-    return att.filter(Boolean).map(a => {
-      if (!a || !a.url) return null;
-      const fullUrl = a.fullUrl || `${apiBase}${a.url}`;
-      return {
-        url: a.url,
-        fullUrl: fullUrl,
-        _id: a._id,
-        filename: a.filename
-      };
-    }).filter(Boolean);
-  }
-
-  if (!att.url) return null;
-  const fullUrl = att.fullUrl || `${apiBase}${att.url}`;
-  return {
-    url: att.url,
-    fullUrl: fullUrl,
-    _id: att._id,
-    filename: att.filename
-  };
-}
 
 @ApiTags('Tenders')
 @Controller('tender')
@@ -85,22 +44,70 @@ export class TenderController {
     private readonly userService: UserService,
     private readonly configService: ConfigService,
   ) {
-    // Compute base URL for fullUrl construction
-    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') ||
-      process.env.API_BASE_URL ||
-      (() => {
-        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
-        const appPort = this.configService.get<number>('APP_PORT', 3000);
-        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+    this.baseUrl = getApiBaseUrl();
+  }
 
-        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-          return 'https://mazadclick-server.onrender.com';
+  private sanitizeUser(u: any, isOwnerAccount = false, tender?: any, user?: any) {
+    if (!u) return null;
+    const isHidden = tender?.hidden === true;
+    const ownerId = tender?.owner?._id?.toString() || tender?.owner?.toString();
+    return sanitizeUser(u, user, { isOwnerAccount, isHidden, ownerId });
+  }
+
+  private sanitizeTender(tender: any, user: any) {
+    if (!tender) return null;
+
+    const userId = user?._id?.toString();
+    const ownerId = tender.owner && typeof tender.owner === 'object' ? tender.owner._id?.toString() : tender.owner?.toString();
+    const isAdmin = user?.type && (user.type === RoleCode.ADMIN || user.type === RoleCode.SOUS_ADMIN);
+    const isOwner = userId && ownerId && userId === ownerId;
+
+    // Whitelist fields
+    const allowedFields = [
+      '_id', 'title', 'description', 'requirements', 'category', 'subCategory',
+      'attachments', 'startingAt', 'endingAt', 'tenderType', 'auctionType',
+      'evaluationType', 'quantity', 'wilaya', 'location', 'isPro', 'professionalOnly',
+      'hidden', 'awardedTo', 'status', 'comments', 'participantsCount', 'createdAt', 'updatedAt'
+    ];
+
+    if (isAdmin || isOwner) {
+      allowedFields.push('contactNumber', 'maxBudget');
+    }
+
+    const sanitized: any = {};
+    for (const field of allowedFields) {
+      if (tender[field] !== undefined) {
+        sanitized[field] = tender[field];
+      }
+    }
+
+    // Sanitize owner
+    if (tender.owner && typeof tender.owner === 'object') {
+      sanitized.owner = this.sanitizeUser(tender.owner, true, tender, user);
+    }
+
+    // Sanitize awardedTo
+    if (tender.awardedTo && typeof tender.awardedTo === 'object') {
+      sanitized.awardedTo = this.sanitizeUser(tender.awardedTo, false, tender, user);
+    }
+
+    // Sanitize comments
+    if (tender.comments && Array.isArray(tender.comments)) {
+      const sanitizeComment = (c: any) => {
+        if (!c) return null;
+        const sc = { ...c };
+        if (c.user && typeof c.user === 'object') {
+          sc.user = this.sanitizeUser(c.user, false, tender, user);
         }
+        if (c.replies && Array.isArray(c.replies)) {
+          sc.replies = c.replies.map(r => sanitizeComment(r));
+        }
+        return sc;
+      };
+      sanitized.comments = tender.comments.map(c => sanitizeComment(c));
+    }
 
-        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-      })();
-    this.baseUrl = apiBaseUrl.replace(/\/$/, '');
+    return sanitized;
   }
 
   @Get()
@@ -108,23 +115,19 @@ export class TenderController {
   async findAll(@Request() req: any) {
     const user = req.session?.user;
     const tenders = await this.tenderService.findAll(user);
-    console.log('Tenders with populated attachments:', tenders.map(tender => ({
-      id: tender._id,
-      attachments: tender.attachments,
-    })));
-    return tenders.map((tender) => {
-      const tenderData = JSON.parse(JSON.stringify(tender));
-
-      // Ensure evaluationType is always present (default to MOINS_DISANT for old tenders)
-      if (!tenderData.evaluationType) {
-        tenderData.evaluationType = 'MOINS_DISANT';
+    return tenders.map((tender: any) => {
+      // Ensure evaluationType is always present
+      if (!tender.evaluationType) {
+        tender.evaluationType = 'MOINS_DISANT';
       }
 
+      const sanitized = this.sanitizeTender(tender, user);
+
       return {
-        ...tenderData,
+        ...sanitized,
         attachments: transformAttachment(tender.attachments, this.baseUrl),
         category: tender.category ? {
-          ...JSON.parse(JSON.stringify(tender.category)),
+          ...tender.category,
           thumb: transformAttachment(tender.category.thumb, this.baseUrl),
         } : null,
       };
@@ -183,35 +186,31 @@ export class TenderController {
 
   @Get(':id')
   @Public()
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string, @Request() req: any) {
     try {
       const tender = await this.tenderService.findOne(id);
+      const user = req.session?.user;
+
       let awardedUser: any = null;
 
       if (tender.awardedTo) {
         try {
           const getUser = await this.userService.getUserById(tender.awardedTo.toString());
-          awardedUser = getUser;
+          awardedUser = this.sanitizeUser(getUser, false, tender, user);
         } catch (userError) {
           console.error('Error fetching awarded user:', userError);
-          // Continue without the user data if there's an error
         }
       }
 
-      console.log('awardedUser:', awardedUser);
+      const sanitized = this.sanitizeTender(tender, user);
 
-      const tenderData = JSON.parse(JSON.stringify(tender));
-
-      // Ensure evaluationType is always present (default to MOINS_DISANT for old tenders)
-      if (!tenderData.evaluationType) {
-        tenderData.evaluationType = 'MOINS_DISANT';
-        console.log('⚠️ Tender missing evaluationType, defaulting to MOINS_DISANT');
+      // Ensure evaluationType
+      if (!sanitized.evaluationType) {
+        sanitized.evaluationType = 'MOINS_DISANT';
       }
 
-      console.log('✅ Tender evaluation type:', tenderData.evaluationType);
-
       return {
-        ...tenderData,
+        ...sanitized,
         attachments: transformAttachment(tender.attachments, this.baseUrl),
         awardedUser: awardedUser
       };
@@ -441,8 +440,17 @@ export class TenderController {
 
   @Get(':id/bids')
   @Public()
-  async getTenderBids(@Param('id') tenderId: string) {
-    return this.tenderService.getTenderBidsByTenderId(tenderId);
+  async getTenderBids(@Param('id') tenderId: string, @Request() req: any) {
+    const user = req.session?.user;
+    const bids = await this.tenderService.getTenderBidsByTenderId(tenderId);
+    
+    // Fetch tender for logic context
+    const tender = await this.tenderService.findOne(tenderId);
+
+    return bids.map(bid => ({
+      ...bid,
+      bidder: this.sanitizeUser(bid.bidder, false, tender, user)
+    }));
   }
 
   @Get('owner/:ownerId/bids')

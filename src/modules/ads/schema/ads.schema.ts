@@ -10,7 +10,7 @@ export class Ad {
   title: string;
 
   @Prop({ type: S.Types.ObjectId, ref: Attachment.name, required: true })
-  image: string;
+  image: Attachment | string;
 
   @Prop({ required: true, trim: true })
   url: string;

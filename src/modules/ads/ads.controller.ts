@@ -31,37 +31,9 @@ import { Public } from 'src/common/decorators/public.decorator';
 import { AttachmentService } from '../attachment/attachment.service';
 import { AttachmentAs } from '../attachment/schema/attachment.schema';
 import { ConfigService } from '@nestjs/config';
+import { getApiBaseUrl, transformAttachment } from 'src/common/utils';
 
-// Helper to transform attachment to minimal shape
-function transformAttachment(att, baseUrl?: string) {
-  if (!att) return null;
-  
-  const apiBase = baseUrl || (() => {
-    const apiBaseUrl = process.env.API_BASE_URL ||
-      (() => {
-        const appHost = process.env.APP_HOST || 'http://localhost';
-        const appPort = process.env.APP_PORT || '3000';
-        const isProduction = process.env.NODE_ENV === 'production';
-        
-        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-          return 'https://mazadclick-server.onrender.com';
-        }
-        
-        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-      })();
-    return apiBaseUrl.replace(/\/$/, '');
-  })();
-  
-  if (!att.url) return null;
-  const fullUrl = att.fullUrl || `${apiBase}${att.url}`;
-  return {
-    url: att.url,
-    fullUrl: fullUrl,
-    _id: att._id,
-    filename: att.filename
-  };
-}
+
 
 @ApiTags('Ads')
 @Controller('ads')
@@ -69,26 +41,14 @@ export class AdsController {
   private readonly baseUrl: string;
 
   constructor(
+
     private readonly adsService: AdsService,
     private readonly attachmentService: AttachmentService,
     private readonly configService: ConfigService,
   ) {
-    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') ||
-      process.env.API_BASE_URL ||
-      (() => {
-        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
-        const appPort = this.configService.get<number>('APP_PORT', 3000);
-        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-        
-        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-          return 'https://mazadclick-server.onrender.com';
-        }
-        
-        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-      })();
-    this.baseUrl = apiBaseUrl.replace(/\/$/, '');
+    this.baseUrl = getApiBaseUrl();
   }
+
 
   @Post()
   @UseInterceptors(FileInterceptor('image', {

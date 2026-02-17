@@ -8,6 +8,7 @@ import { MessageDocument } from '../messages/schema/schema.messages';
 import { UserService } from '../user/user.service';
 import { RoleCode } from '../apikey/entity/appType.entity';
 import { MessageService } from '../messages/messages.service';
+import { BroadcastFilterType } from './dto/broadcast.dto';
 
 
 
@@ -249,6 +250,7 @@ export class ChatService {
       return isValid;
     });
 
+
     // Add isAdminChat property to each chat
     const chatsWithAdminFlag = validChats.map(chat => {
       const isAdminChat = chat.users.some((user: any) =>
@@ -270,8 +272,25 @@ export class ChatService {
       };
     });
 
-    console.log(`✅ Returning ${chatsWithAdminFlag.length} valid chats (filtered from ${chats.length} total)`);
-    return chatsWithAdminFlag;
+    // Populate lastMessage and unreadCount
+    try {
+      const chatIds = chatsWithAdminFlag.map(c => c._id.toString());
+      // For admin checking, we might need to be careful with 'id' if it's 'admin' string vs user ID
+      // But usually 'id' passed here is the user's ID
+      const { lastMessageMap, unreadCountMap } = await this.messageService.getChatOverview(chatIds, id);
+
+      const chatsWithDetails = chatsWithAdminFlag.map(chat => ({
+        ...chat,
+        lastMessage: lastMessageMap.get(chat._id.toString()) || null,
+        unreadCount: unreadCountMap.get(chat._id.toString()) || 0
+      }));
+
+      console.log(`✅ Returning ${chatsWithDetails.length} chats with details`);
+      return chatsWithDetails;
+    } catch (error) {
+      console.error('Error populating chat details:', error);
+      return chatsWithAdminFlag;
+    }
   }
 
   async deletChat(id: string): Promise<Chat> {
@@ -292,7 +311,35 @@ export class ChatService {
     }).exec();
 
     console.log(`Found ${chats.length} admin chats`);
-    return chats;
+
+    // Add isAdminChat property (always true for admin chats) and populate messages
+    try {
+      const chatsWithAdminFlag = chats.map(chat => ({
+        ...chat.toObject(),
+        isAdminChat: true
+      }));
+
+      const chatIds = chatsWithAdminFlag.map(c => c._id.toString());
+      // Use admin role code to find all admin users
+      const adminUsers = await this.userService.findUsersByRoles([RoleCode.ADMIN]);
+      const adminIds = adminUsers.map(u => u._id.toString());
+
+      // Include 'admin' literal string and all specific admin IDs
+      const adminReceivers = ['admin', ...adminIds];
+
+      const { lastMessageMap, unreadCountMap } = await this.messageService.getChatOverview(chatIds, adminReceivers);
+
+      const chatsWithDetails = chatsWithAdminFlag.map(chat => ({
+        ...chat,
+        lastMessage: lastMessageMap.get(chat._id.toString()) || null,
+        unreadCount: unreadCountMap.get(chat._id.toString()) || 0
+      }));
+
+      return chatsWithDetails;
+    } catch (error) {
+      console.error('Error populating admin chat details:', error);
+      return chats;
+    }
   }
 
   async getGuestChats(): Promise<Chat[]> {
@@ -336,15 +383,17 @@ export class ChatService {
     return chat;
   }
 
-  async broadcastMessage(message: string, senderId: string): Promise<{ success: boolean; count: number }> {
-    console.log('📢 Starting broadcast message:', message);
+  async broadcastMessage(
+    message: string,
+    senderId: string,
+    filterType: BroadcastFilterType = BroadcastFilterType.ALL,
+    filterValue: string[] = []
+  ): Promise<{ success: boolean; count: number }> {
+    console.log('📢 Starting broadcast message:', { message, filterType, filterValue });
 
     try {
-      // 1. Fetch all users (excluding admin)
-      // Use findAllBuyers as a base, but we might want all users
-      // For now, let's target CLIENT users as they are the main audience
-      // We can also fetch all users and filter
-      const allUsers = await this.userService.findUsersByRoles([RoleCode.CLIENT, RoleCode.PROFESSIONAL, RoleCode.RESELLER]);
+      // 1. Fetch users based on filter
+      const allUsers = await this.userService.findUsersByFilter(filterType, filterValue);
       console.log(`📢 Found ${allUsers.length} users to broadcast to`);
 
       let sentCount = 0;
@@ -358,7 +407,6 @@ export class ChatService {
           if (userId === senderId) continue;
 
           // 3. Create or get chat between admin and user
-          // We can use the create method we already have
           const adminUser = {
             AccountType: 'admin',
             firstName: 'Admin',

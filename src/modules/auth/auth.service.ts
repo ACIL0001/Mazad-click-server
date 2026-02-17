@@ -52,7 +52,7 @@ export class AuthService {
     if (avatar) {
       try {
         const attachment = await this.attachmentService.upload(avatar, 'AVATAR', user._id.toString());
-        await this.userService.updateUserFields(user._id.toString(), { avatar: attachment as any }); // Cast as any because attachment is object but avatar expected as ObjectId sometimes? No, schema says ObjectId ref
+        await this.userService.updateUserFields(user._id.toString(), { avatar: (attachment as any)._id });
         // Wait, AttachmentService.upload returns Attachment object. schema expects ObjectId ref. 
         // But user.service.updateUserFields uses findByIdAndUpdate which works with object/id mix often but safer to pass ID if schema expects Ref.
         // Actually schema says: @Prop({ type: S.Types.ObjectId, ref: Attachment.name, required: false })

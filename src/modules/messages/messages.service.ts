@@ -82,9 +82,12 @@ export class MessageService {
         console.log('📨 Admin IDs:', admins.map(admin => admin._id));
 
         // Send message via socket to all admins (including attachment data)
-        this.MessageSocket.sendMessageToAllAdmins(sender, message, idChat, createMessage._id, createMessage.attachment);
+        const adminIds = [...new Set(admins.map(admin => admin._id.toString()))];
+        console.log('📨 Unique Admin IDs to notify:', adminIds);
+        this.MessageSocket.sendMessageToAllAdmins(sender, adminIds, message, idChat, createMessage._id, createMessage.attachment);
         console.log('✅ Socket message sent to all admins');
 
+        /* Notification is disabled for messages to Admin to avoid polluting the bell notification list
         // Create and send notifications to each admin
         for (const admin of admins) {
           console.log('📧 Creating notification for admin:', admin._id);
@@ -114,6 +117,8 @@ export class MessageService {
           this.MessageSocket.sendNotificationToUser(admin._id.toString(), notification);
           console.log('✅ Notification sent to admin:', admin._id);
         }
+        */
+        console.log('✅ Message sent to all admins (notification skipped)');
         console.log('✅ Message and notifications sent to all admins');
       } catch (error) {
         console.error('❌ Error sending message to admins:', error);
@@ -127,10 +132,15 @@ export class MessageService {
         this.MessageSocket.sendMessageFromAdminToUser('admin', reciver, message, idChat, createMessage._id, createMessage.attachment);
         console.log('📡 Backend emitted adminMessage and sendMessage events to user:', reciver);
 
+        /* Notification is disabled for Admin messages to avoid polluting the bell notification list
         // Create notification for the user
         const notificationTitle = 'Nouveau message de l\'admin';
-        const notificationMsg = `Vous avez reçu un nouveau message de l'équipe support: ${message}`;
+        const notificationMessage = message.includes('📎')
+          ? 'L\'admin vous a envoyé une pièce jointe.'
+          : `L'admin vous a envoyé un message : ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`;
+
         const notificationType = NotificationType.MESSAGE_RECEIVED;
+        /*
         const notificationData = {
           messageId: createMessage._id,
           chatId: idChat,
@@ -144,14 +154,15 @@ export class MessageService {
           reciver,
           notificationType,
           notificationTitle,
-          notificationMsg,
+          notificationMessage,
           notificationData,
           sender // senderId
         );
 
         // Send notification via socket to user
         this.MessageSocket.sendNotificationToUser(reciver, notification);
-        console.log('✅ Message and notification sent to user:', reciver);
+        */
+        console.log('✅ Message sent to user (notification skipped):', reciver);
 
         // Notify all admins about the sent message
         try {
@@ -192,6 +203,8 @@ export class MessageService {
         isSocket: true
       });
 
+
+      /* Notifications are disabled for regular messages to avoid polluting the bell notification list
       // Create notification for the receiver (Seller)
       const notificationTitle = 'Nouveau message';
       const notificationMsg = `Vous avez reçu un nouveau message: ${message}`;
@@ -248,6 +261,8 @@ export class MessageService {
       } catch (error) {
         console.error('❌ Error creating/sending message notifications:', error);
       }
+      */
+      console.log('✅ Message sent between users (notification skipped)');
     }
 
     return createMessage;
@@ -383,5 +398,54 @@ export class MessageService {
       console.error('Error getting unread messages:', error);
       throw error;
     }
+  }
+
+  async getChatOverview(chatIds: string[], userId?: string | string[]): Promise<{ lastMessageMap: Map<string, Message>, unreadCountMap: Map<string, number> }> {
+    const uniqueChatIds = [...new Set(chatIds)];
+
+    // 1. Get last message for each chat
+    const lastMessages = await this.MessageModel.aggregate([
+      { $match: { idChat: { $in: uniqueChatIds } } },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$idChat',
+          lastMessage: { $first: '$$ROOT' }
+        }
+      }
+    ]).exec();
+
+    // 2. Get unread count for each chat (for specific user if provided)
+    const matchStage: any = { idChat: { $in: uniqueChatIds }, isRead: false };
+    if (userId) {
+      if (Array.isArray(userId)) {
+        matchStage.reciver = { $in: userId };
+      } else {
+        matchStage.reciver = userId;
+      }
+    }
+
+    const unreadCounts = await this.MessageModel.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$idChat',
+          count: { $sum: 1 }
+        }
+      }
+    ]).exec();
+
+    // Convert arrays to Maps
+    const lastMessageMap = new Map<string, Message>();
+    if (Array.isArray(lastMessages)) {
+      lastMessages.forEach(item => lastMessageMap.set(item._id, item.lastMessage));
+    }
+
+    const unreadCountMap = new Map<string, number>();
+    if (Array.isArray(unreadCounts)) {
+      unreadCounts.forEach(item => unreadCountMap.set(item._id, item.count));
+    }
+
+    return { lastMessageMap, unreadCountMap };
   }
 }

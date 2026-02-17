@@ -1,6 +1,5 @@
 import * as winston from 'winston';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const DailyRotateFile = require('winston-daily-rotate-file');
+import DailyRotateFile from 'winston-daily-rotate-file';
 
 export const winstonLoggerOptions: winston.LoggerOptions = {
   transports: [

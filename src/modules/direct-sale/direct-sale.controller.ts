@@ -25,54 +25,10 @@ import { AuthGuard } from 'src/common/guards/auth.guard';
 import { ProtectedRequest } from 'src/types/request.type';
 import { AttachmentAs } from '../attachment/schema/attachment.schema';
 import { ConfigService } from '@nestjs/config';
+import { RoleCode } from '../apikey/entity/appType.entity';
+import { getApiBaseUrl, transformAttachment, sanitizeUser } from 'src/common/utils';
 
-// Helper to transform attachment(s) to minimal shape with fullUrl
-function transformAttachment(att, baseUrl?: string) {
-  if (!att) return null;
 
-  // Compute base URL if not provided
-  const apiBase = baseUrl || (() => {
-    const apiBaseUrl = process.env.API_BASE_URL ||
-      (() => {
-        const appHost = process.env.APP_HOST || 'http://localhost';
-        const appPort = process.env.APP_PORT || '3000';
-        const isProduction = process.env.NODE_ENV === 'production';
-
-        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-          return 'https://mazadclick-server.onrender.com';
-        }
-
-        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-      })();
-    return apiBaseUrl.replace(/\/$/, '');
-  })();
-
-  if (Array.isArray(att)) {
-    return att
-      .filter(Boolean)
-      .map((a) => {
-        if (!a || !a.url) return null;
-        const fullUrl = a.fullUrl || `${apiBase}${a.url}`;
-        return {
-          url: a.url,
-          fullUrl: fullUrl,
-          _id: a._id,
-          filename: a.filename
-        };
-      })
-      .filter(Boolean);
-  }
-
-  if (!att.url) return null;
-  const fullUrl = att.fullUrl || `${apiBase}${att.url}`;
-  return {
-    url: att.url,
-    fullUrl: fullUrl,
-    _id: att._id,
-    filename: att.filename
-  };
-}
 
 @ApiTags('Direct Sales')
 @Controller('direct-sale')
@@ -84,35 +40,85 @@ export class DirectSaleController {
     private readonly attachmentService: AttachmentService,
     private readonly configService: ConfigService,
   ) {
-    // Compute base URL for fullUrl construction
-    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') ||
-      process.env.API_BASE_URL ||
-      (() => {
-        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
-        const appPort = this.configService.get<number>('APP_PORT', 3000);
-        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+    this.baseUrl = getApiBaseUrl();
+  }
 
-        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-          return 'https://mazadclick-server.onrender.com';
+  private sanitizeUser(u: any, isOwnerAccount = false, directSale?: any, user?: any) {
+    if (!u) return null;
+    const isHidden = directSale?.hidden === true;
+    const ownerId = directSale?.owner?._id?.toString() || directSale?.owner?.toString();
+    return sanitizeUser(u, user, { isOwnerAccount, isHidden, ownerId });
+  }
+
+  private sanitizeDirectSale(directSale: any, user: any) {
+    if (!directSale) return null;
+
+    const userId = user?._id?.toString();
+    const ownerId = directSale.owner && typeof directSale.owner === 'object' ? directSale.owner._id?.toString() : directSale.owner?.toString();
+    const isAdmin = user?.type && (user.type === RoleCode.ADMIN || user.type === RoleCode.SOUS_ADMIN);
+    const isOwner = userId && ownerId && userId === ownerId;
+
+    // Whitelist fields
+    const allowedFields = [
+      '_id', 'title', 'description', 'attributes', 'productCategory', 'productSubCategory',
+      'thumbs', 'videos', 'saleType', 'price', 'quantity', 'soldQuantity', 'wilaya', 'place',
+      'isPro', 'professionalOnly', 'hidden', 'status', 'comments', 'createdAt', 'updatedAt'
+    ];
+
+    if (isAdmin || isOwner) {
+      allowedFields.push('contactNumber');
+    }
+
+    const sanitized: any = {};
+    for (const field of allowedFields) {
+      if (directSale[field] !== undefined) {
+        sanitized[field] = directSale[field];
+      }
+    }
+
+    // Sanitize owner
+    if (directSale.owner && typeof directSale.owner === 'object') {
+      sanitized.owner = this.sanitizeUser(directSale.owner, true, directSale, user);
+    }
+
+    // Sanitize comments
+    if (directSale.comments && Array.isArray(directSale.comments)) {
+      const sanitizeComment = (c: any) => {
+        if (!c) return null;
+        const sc = { ...c };
+        if (c.user && typeof c.user === 'object') {
+          sc.user = this.sanitizeUser(c.user, false, directSale, user);
         }
+        if (c.replies && Array.isArray(c.replies)) {
+          sc.replies = c.replies.map(r => sanitizeComment(r));
+        }
+        return sc;
+      };
+      sanitized.comments = directSale.comments.map(c => sanitizeComment(c));
+    }
 
-        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-      })();
-    this.baseUrl = apiBaseUrl.replace(/\/$/, '');
+    return sanitized;
   }
 
   @Get()
   @Public()
   @ApiOperation({ summary: 'Get all active direct sales' })
   async findAll(@Request() req: any) {
-    const user = req.session?.user;
-    const directSales = await this.directSaleService.findAll(user);
-    return directSales.map((directSale) => ({
-      ...JSON.parse(JSON.stringify(directSale)),
-      thumbs: transformAttachment(directSale.thumbs, this.baseUrl),
-      videos: transformAttachment(directSale.videos, this.baseUrl),
-    }));
+    try {
+      const user = req.session?.user;
+      const directSales = await this.directSaleService.findAll(user);
+      return directSales.map((directSale: any) => {
+        const sanitized = this.sanitizeDirectSale(directSale, user);
+        return {
+          ...sanitized,
+          thumbs: transformAttachment(directSale.thumbs, this.baseUrl),
+          videos: transformAttachment(directSale.videos, this.baseUrl),
+        };
+      });
+    } catch (error) {
+      console.error('❌ Error in DirectSaleController.findAll:', error);
+      throw error;
+    }
   }
 
   @Get('admin/all')
@@ -120,8 +126,8 @@ export class DirectSaleController {
   @ApiOperation({ summary: 'Get all direct sales for admin' })
   async findAllForAdmin() {
     const directSales = await this.directSaleService.findAllForAdmin();
-    return directSales.map((directSale) => ({
-      ...JSON.parse(JSON.stringify(directSale)),
+    return directSales.map((directSale: any) => ({
+      ...directSale,
       thumbs: transformAttachment(directSale.thumbs, this.baseUrl),
       videos: transformAttachment(directSale.videos, this.baseUrl),
     }));
@@ -157,33 +163,20 @@ export class DirectSaleController {
   @Get(':id')
   @Public()
   @ApiOperation({ summary: 'Get a direct sale by ID' })
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string, @Request() req: any) {
     try {
       const directSale = await this.directSaleService.findOne(id);
+      
+      // Get user from session
+      const user = (req as any).session?.user;
 
-      // DEBUG: Log contactNumber before transformation
-      console.log('📦 [CONTROLLER] Direct Sale before transform:', {
-        id: directSale._id,
-        title: directSale.title,
-        contactNumber: directSale.contactNumber,
-        hasContactNumber: !!directSale.contactNumber,
-      });
+      const sanitized = this.sanitizeDirectSale(directSale, user);
 
-      const response = {
-        ...JSON.parse(JSON.stringify(directSale)),
+      return {
+        ...sanitized,
         thumbs: transformAttachment(directSale.thumbs, this.baseUrl),
         videos: transformAttachment(directSale.videos, this.baseUrl),
       };
-
-      // DEBUG: Log contactNumber after transformation
-      console.log('📤 [CONTROLLER] API Response:', {
-        id: response._id,
-        title: response.title,
-        contactNumber: response.contactNumber,
-        hasContactNumber: !!response.contactNumber,
-      });
-
-      return response;
     } catch (error) {
       console.error('Error in findOne:', error);
       throw error;

@@ -19,6 +19,10 @@ export class AuthGuard implements CanActivate {
   ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (context.getType() === 'ws') {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest();
     const token = this.extractToken(request);
 
@@ -27,18 +31,17 @@ export class AuthGuard implements CanActivate {
       try {
         const session = await this.sessionService.ValidateSession(token);
         request.session = session;
-        this.logger.debug('Session validated successfully:', {
-          userId: session.user._id,
-          userType: session.user.type
-        });
+
       } catch (error) {
-        this.logger.error('Token validation failed:', {
+        this.logger.error(`❌ Token validation failed for ${request.url}:`, {
           error: error.message,
-          tokenPreview: token.substring(0, 20) + '...',
-          url: request.url
+          tokenPreview: token.substring(0, 10) + '...',
+          stack: error.stack
         });
         // We do NOT throw here yet. We check if it's public first.
       }
+    } else {
+      this.logger.warn(`⚠️ No token found in request to ${request.url}`);
     }
 
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -52,14 +55,12 @@ export class AuthGuard implements CanActivate {
 
     // If not public, we MUST have a valid session
     if (!token) {
-      this.logger.warn('Token not found in request headers', {
-        url: request.url,
-        headers: Object.keys(request.headers)
-      });
+      this.logger.warn(`⛔ Unauthorized: Token missing for ${request.url}`);
       throw new UnauthorizedException('Token not found');
     }
 
     if (!request.session) {
+      this.logger.warn(`⛔ Unauthorized: Invalid session/token for ${request.url}`);
       throw new UnauthorizedException('Invalid token');
     }
 

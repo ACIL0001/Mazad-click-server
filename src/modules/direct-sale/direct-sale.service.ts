@@ -20,6 +20,7 @@ import { UpdateDirectSaleDto } from './dto/update-direct-sale.dto';
 import { PurchaseDirectSaleDto } from './dto/purchase-direct-sale.dto';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/schema/notification.schema';
+import { addProfessionalFilter, isValidObjectId } from 'src/common/utils';
 import { ClientService } from '../user/services/client.service';
 import { AttachmentService } from '../attachment/attachment.service';
 import { ChatService } from '../chat/chat.service';
@@ -41,16 +42,11 @@ export class DirectSaleService {
     private searchService: SearchService,
   ) { }
 
-  async findAll(user?: any): Promise<DirectSaleDocument[]> {
+  async findAll(user?: any): Promise<any[]> {
     const query: any = {
       status: { $nin: [DIRECT_SALE_STATUS.ARCHIVED, DIRECT_SALE_STATUS.INACTIVE] }
     };
-
-    // If not professional, only show items NOT marked as professionalOnly
-    const isProfessional = user?.type === 'PROFESSIONAL';
-    if (!isProfessional) {
-      query.professionalOnly = { $ne: true };
-    }
+    addProfessionalFilter(query, user);
 
     return this.directSaleModel
       .find(query)
@@ -65,10 +61,11 @@ export class DirectSaleService {
       .populate('videos')
       .populate('productCategory')
       .populate('productSubCategory')
+      .lean()
       .exec();
   }
 
-  async findAllForAdmin(): Promise<DirectSaleDocument[]> {
+  async findAllForAdmin(): Promise<any[]> {
     return this.directSaleModel
       .find()
       .populate({
@@ -83,13 +80,14 @@ export class DirectSaleService {
       .populate('productCategory')
       .populate('productSubCategory')
       .sort({ createdAt: -1 })
+      .lean()
       .exec();
   }
 
-  async findOne(id: string): Promise<DirectSaleDocument> {
+  async findOne(id: string): Promise<DirectSale> {
     try {
-      if (!id || !/^[0-9a-fA-F]{24}$/.test(id)) {
-        throw new NotFoundException(`Invalid direct sale ID format: "${id}"`);
+      if (!isValidObjectId(id)) {
+        throw new BadRequestException('ID invalide');
       }
 
       const directSale = await this.directSaleModel
@@ -121,6 +119,7 @@ export class DirectSaleService {
             }
           ]
         })
+        .lean()
         .exec();
 
       if (!directSale) {
@@ -135,7 +134,7 @@ export class DirectSaleService {
         hasContactNumber: !!directSale.contactNumber,
       });
 
-      return directSale;
+      return directSale as any;
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;

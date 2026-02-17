@@ -29,7 +29,7 @@ export class User {
   @Prop({ type: String, required: true })
   lastName: string;
 
-  @Prop({ type: String, required: false })
+  @Prop({ type: String, required: false, unique: true, sparse: true })
   email: string;
 
   @Prop({ type: String, required: false })

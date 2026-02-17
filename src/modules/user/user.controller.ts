@@ -18,6 +18,8 @@ import { User } from './schema/user.schema';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/schema/notification.schema';
 import { SocketGateway } from '../../socket/socket.gateway';
+import { sanitizeUser, SanitizedUser } from 'src/common/utils';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('users')
 export class UserController {
@@ -31,7 +33,7 @@ export class UserController {
   ) { }
 
   @Get('test')
-  @Public()
+  @UseGuards(AuthGuard)
   async testEndpoint() {
     return { message: 'User controller is working', timestamp: new Date().toISOString() };
   }
@@ -48,6 +50,10 @@ export class UserController {
       isAllowed: ['CLIENT', 'PROFESSIONAL', 'RESELLER'].includes(user.type),
       timestamp: new Date().toISOString()
     };
+  }
+
+  private sanitizeUserResponse(u: User | any, currentUser?: User | any): SanitizedUser {
+    return sanitizeUser(u, currentUser);
   }
 
   @Get('/me')
@@ -70,7 +76,7 @@ export class UserController {
 
   @Put('/me')
   @UseGuards(AuthGuard)
-  async updateProfile(@Request() req: ProtectedRequest, @Body() updateData: any) {
+  async updateProfile(@Request() req: ProtectedRequest, @Body() updateData: UpdateUserDto) {
     const userId = req.session.user._id.toString();
 
     // Validate input data
@@ -625,39 +631,32 @@ export class UserController {
 
   // ORIGINAL ENDPOINTS - Return all users by role (for admin purposes)
   @Get('/professionals')
-  @Public()
-  async getProfessionals() {
+  @UseGuards(AuthGuard)
+  async getProfessionals(@Request() req: ProtectedRequest) {
+    const user = req.session?.user;
     console.log('Getting ALL professionals (verified and unverified)...');
     const professionals = await this.userService.findUsersByRoles([RoleCode.PROFESSIONAL]);
     console.log(`Found ${professionals.length} total professionals`);
 
-    // Ensure subscriptionPlan is in response - explicitly add if missing
-    const professionalsWithPlan = professionals.map((prof: any) => {
-      if (!('subscriptionPlan' in prof)) {
-        console.log(`⚠️ Professional ${prof._id} missing subscriptionPlan field, adding null`);
-        prof.subscriptionPlan = null;
-      }
-      console.log(`Professional ${prof._id}: subscriptionPlan =`, prof.subscriptionPlan);
-      return prof;
-    });
-
-    return professionalsWithPlan;
+    return professionals.map((prof: User) => this.sanitizeUserResponse(prof, user));
   }
 
   @Get('/resellers')
-  @Public()
-  async getResellers() {
+  @UseGuards(AuthGuard)
+  async getResellers(@Request() req: ProtectedRequest) {
+    const user = req.session?.user;
     const roles = [RoleCode.RESELLER];
     console.log('Querying for resellers with roles:', roles);
     const resellers = await this.userService.findUsersByRoles(roles);
     console.log('Reseller users found:', resellers);
-    return resellers;
+    return resellers.map((reseller: User) => this.sanitizeUserResponse(reseller, user));
   }
 
   // NEW ENDPOINTS - Return only verified users (identity status = DONE)
   @Get('/professionals/verified')
   @Public()
-  async getVerifiedProfessionals() {
+  async getVerifiedProfessionals(@Request() req: ProtectedRequest) {
+    const user = req.session?.user;
     console.log('Getting verified professionals...');
 
     try {
@@ -676,7 +675,7 @@ export class UserController {
       const professionals = await this.userService.findUsersByIds(userIds);
 
       console.log('Verified professionals found:', professionals.length);
-      return professionals;
+      return professionals.map((prof: User) => this.sanitizeUserResponse(prof, user));
     } catch (error) {
       console.error('Error getting verified professionals:', error);
       throw new BadRequestException('Failed to fetch verified professionals');
@@ -685,7 +684,8 @@ export class UserController {
 
   @Get('/resellers/verified')
   @Public()
-  async getVerifiedResellers() {
+  async getVerifiedResellers(@Request() req: ProtectedRequest) {
+    const user = req.session?.user;
     console.log('Getting verified resellers...');
 
     try {
@@ -699,7 +699,7 @@ export class UserController {
       for (const reseller of allResellers) {
         const identity = await this.identityService.getIdentityByUser(reseller._id.toString());
         if (identity && identity.status === IDE_TYPE.DONE) {
-          verifiedResellers.push(reseller);
+          verifiedResellers.push(this.sanitizeUserResponse(reseller, user));
         }
       }
 
@@ -712,33 +712,41 @@ export class UserController {
   }
 
   @Get('/clients')
-  @Public()
-  async getClients() {
-    return this.userService.findUsersByRoles([RoleCode.CLIENT]);
+  @UseGuards(AuthGuard, AdminGuard)
+  async getClients(@Request() req: ProtectedRequest) {
+    const user = req.session?.user;
+    const clients = await this.userService.findUsersByRoles([RoleCode.CLIENT]);
+    return clients.map((client: User) => this.sanitizeUserResponse(client, user));
   }
 
   @Get('/admins')
-  async getAdmins() {
-    return this.userService.findUsersByRoles([RoleCode.ADMIN]);
+  @UseGuards(AuthGuard, AdminGuard)
+  async getAdmins(@Request() req: ProtectedRequest) {
+    const user = req.session?.user;
+    const admins = await this.userService.findUsersByRoles([RoleCode.ADMIN]);
+    return admins.map((admin: User) => this.sanitizeUserResponse(admin, user));
   }
 
   @Get('/all')
-  @Public()
-  async getAllUsers() {
-    return this.userService.findUser();
+  @UseGuards(AuthGuard, AdminGuard)
+  async getAllUsers(@Request() req: ProtectedRequest) {
+    const user = req.session?.user;
+    const users = await this.userService.findUser();
+    return users.map((u: User) => this.sanitizeUserResponse(u, user));
   }
 
   @Get('/:id')
-  @Public()
-  async getUserById(@Param('id') id: string) {
+  @UseGuards(AuthGuard)
+  async getUserById(@Param('id') id: string, @Request() req: ProtectedRequest) {
     const user = await this.userService.findUserById(id);
     if (!user) {
       throw new BadRequestException('User not found');
     }
+    const sanitized = this.sanitizeUserResponse(user, req.session?.user);
     return {
       success: true,
-      user: user,
-      data: user
+      user: sanitized,
+      data: sanitized
     };
   }
 

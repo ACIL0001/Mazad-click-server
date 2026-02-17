@@ -32,6 +32,9 @@ export const SearchTermSchema = SchemaFactory.createForClass(SearchTerm);
 // Create compound index for unique normalized_term + type
 SearchTermSchema.index({ normalizedTerm: 1, type: 1 }, { unique: true });
 
+// Add text index for fuzzy search performance
+SearchTermSchema.index({ term: 'text', normalizedTerm: 'text', 'metadata.aliases': 'text' });
+
 @Schema({ timestamps: true, collection: 'search_edge_weights' })
 export class SearchEdgeWeight extends Document {
     @Prop({ required: true, index: true })
@@ -92,3 +95,9 @@ export class NotifyMeRequest extends Document {
 }
 
 export const NotifyMeRequestSchema = SchemaFactory.createForClass(NotifyMeRequest);
+
+// Add text index for matching against new items
+NotifyMeRequestSchema.index({ searchQuery: 'text' });
+
+// Add TTL index for automatic cleanup
+NotifyMeRequestSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

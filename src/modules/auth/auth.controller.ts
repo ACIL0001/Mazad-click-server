@@ -11,6 +11,7 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { ProtectedRequest, PublicRequest } from 'src/types/request.type';
 import { CreateUserDto } from './dto/createUser.dto';
@@ -35,6 +36,7 @@ export class AuthController {
   ) { }
 
   @Public()
+  @Throttle({ short: { limit: 5, ttl: 300000 } }) // 5 signups per 5 minutes
   @Post('signup')
   @UseInterceptors(FileInterceptor('avatar'))
   async signup(
@@ -48,6 +50,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ short: { limit: 3, ttl: 60000 } }) // 3 attempts per minute
   @Post('signin')
   async signin(
     @Request() request: PublicRequest,

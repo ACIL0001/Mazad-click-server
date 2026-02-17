@@ -31,51 +31,11 @@ import { UserService } from '../user/user.service';
 import { AuctionNotificationService } from './auction-notification.service';
 import { ConfigService } from '@nestjs/config';
 import { ParticipantService } from './participant.service';
+import { AdminGuard } from 'src/common/guards/admin.guard';
+import { RoleCode } from '../apikey/entity/appType.entity';
+import { getApiBaseUrl, transformAttachment, sanitizeUser } from 'src/common/utils';
 
-// Helper to transform attachment(s) to minimal shape with fullUrl
-function transformAttachment(att, baseUrl?: string) {
-  if (!att) return null;
 
-  // Compute base URL if not provided
-  const apiBase = baseUrl || (() => {
-    const apiBaseUrl = process.env.API_BASE_URL ||
-      (() => {
-        const appHost = process.env.APP_HOST || 'http://localhost';
-        const appPort = process.env.APP_PORT || '3000';
-        const isProduction = process.env.NODE_ENV === 'production';
-
-        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-          return 'https://mazadclick-server.onrender.com';
-        }
-
-        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-      })();
-    return apiBaseUrl.replace(/\/$/, '');
-  })();
-
-  if (Array.isArray(att)) {
-    return att.filter(Boolean).map(a => {
-      if (!a || !a.url) return null;
-      const fullUrl = a.fullUrl || `${apiBase}${a.url}`;
-      return {
-        url: a.url,
-        fullUrl: fullUrl,
-        _id: a._id,
-        filename: a.filename
-      };
-    }).filter(Boolean);
-  }
-
-  if (!att.url) return null;
-  const fullUrl = att.fullUrl || `${apiBase}${att.url}`;
-  return {
-    url: att.url,
-    fullUrl: fullUrl,
-    _id: att._id,
-    filename: att.filename
-  };
-}
 
 @ApiTags('Bids')
 @Controller('bid')
@@ -90,22 +50,94 @@ export class BidController {
     private readonly configService: ConfigService,
     private readonly participantService: ParticipantService,
   ) {
-    // Compute base URL for fullUrl construction
-    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') ||
-      process.env.API_BASE_URL ||
-      (() => {
-        const appHost = this.configService.get<string>('APP_HOST', 'http://localhost');
-        const appPort = this.configService.get<number>('APP_PORT', 3000);
-        const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+    this.baseUrl = getApiBaseUrl();
+  }
 
-        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-          return 'https://mazadclick-server.onrender.com';
+  private sanitizeBid(bid: any, user: any) {
+    if (!bid) return null;
+
+    // Check permissions
+    const userId = user?._id?.toString();
+    const ownerId = bid.owner && typeof bid.owner === 'object' ? bid.owner._id?.toString() : bid.owner?.toString();
+    const isAdmin = user?.type && (user.type === RoleCode.ADMIN || user.type === RoleCode.SOUS_ADMIN);
+    const isOwner = userId && ownerId && userId === ownerId;
+    const isPrivileged = isAdmin || isOwner;
+    const isHidden = bid.hidden === true;
+
+    // Helper to sanitize user data
+    const internalSanitizeUser = (u: any, isOwnerAccount = false) => {
+      if (!u) return null;
+      const ownerId = bid?.owner?._id?.toString() || bid?.owner?.toString();
+      return sanitizeUser(u, user, { isOwnerAccount, isHidden, ownerId });
+    };
+
+    // Base allowed fields (Whitelist)
+    const allowedFields = [
+      '_id', 'title', 'name', 'description', 'startingPrice', 'currentPrice', 
+      'quantity', 'bidType', 'auctionType', 'status', 'startingAt', 'endingAt', 'endDate',
+      'thumbs', 'videos', 'place', 'wilaya', 'participantsCount', 'isPro', 'hidden', 
+      'professionalOnly', 'owner', 'offers', 'comments', 'biddersCount',
+      'createdAt', 'updatedAt', 'slug', 'bidders'
+    ];
+
+    // If owner or admin, add sensitive fields
+    if (isAdmin || isOwner) {
+      allowedFields.push('reservePrice', 'maxAutoBid', 'instantBuyPrice', 'contactNumber', 'last5PercentNotificationSent');
+    }
+
+    const sanitized: any = {};
+    
+    // Copy allowed fields
+    for (const field of allowedFields) {
+      if (bid[field] !== undefined) {
+        sanitized[field] = bid[field];
+      }
+    }
+
+    // Explicit mappings and deeper sanitization
+    if (bid.owner && typeof bid.owner === 'object') {
+      sanitized.owner = internalSanitizeUser(bid.owner, true);
+    }
+
+    // Sanitize offers (users who bid)
+    if (bid.offers && Array.isArray(bid.offers)) {
+      sanitized.offers = bid.offers.map(offer => {
+        if (offer.user && typeof offer.user === 'object') {
+          return {
+            ...offer,
+            user: internalSanitizeUser(offer.user)
+          };
         }
+        return offer;
+      });
+    }
 
-        const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-        return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-      })();
-    this.baseUrl = apiBaseUrl.replace(/\/$/, '');
+    // Sanitize comments (users who comment)
+    if (bid.comments && Array.isArray(bid.comments)) {
+      const sanitizeComment = (c: any) => {
+        if (!c) return null;
+        const sc = { ...c };
+        if (c.user && typeof c.user === 'object') {
+          sc.user = internalSanitizeUser(c.user);
+        }
+        if (c.replies && Array.isArray(c.replies)) {
+          sc.replies = c.replies.map(r => sanitizeComment(r));
+        }
+        return sc;
+      };
+      sanitized.comments = bid.comments.map(c => sanitizeComment(c));
+    }
+
+    // Map participantsCount to biddersCount if needed (frontend uses biddersCount)
+    if (bid.participantsCount !== undefined && sanitized.biddersCount === undefined) {
+      sanitized.biddersCount = bid.participantsCount;
+    }
+    
+    // Ensure thumbnails and videos are present (will be transformed later)
+    sanitized.thumbs = bid.thumbs;
+    sanitized.videos = bid.videos;
+
+    return sanitized;
   }
 
   @Get()
@@ -117,15 +149,20 @@ export class BidController {
     //   id: bid._id,
     //   thumbs: bid.thumbs,
     // })));
-    return bids.map((bid) => ({
-      ...JSON.parse(JSON.stringify(bid)),
-      thumbs: transformAttachment(bid.thumbs, this.baseUrl),
-      videos: transformAttachment(bid.videos, this.baseUrl),
-    }));
+    return bids.map((bid) => {
+      // Sanitize the bid data
+      const sanitized = this.sanitizeBid(bid, user);
+      
+      return {
+        ...sanitized,
+        thumbs: transformAttachment(bid.thumbs, this.baseUrl),
+        videos: transformAttachment(bid.videos, this.baseUrl),
+      };
+    });
   }
 
   @Post('sync-participants')
-  @Public()
+  @UseGuards(AuthGuard, AdminGuard)
   async syncParticipants() {
     return this.participantService.syncAllBidParticipantCounts();
   }
@@ -154,38 +191,39 @@ export class BidController {
   }
 
   @Post('check')
-  async checkBidsToUser(@Body('id') id: any) {
-    let vl = this.bidService.checkBids(id);
+  @UseGuards(AuthGuard)
+  async checkBidsToUser(@Request() req: ProtectedRequest, @Body('id') id: any) {
+    // Only admins can check bids for other users. Regular users can only check their own.
+    const isAdmin = req.session.user.type === RoleCode.ADMIN || req.session.user.type === RoleCode.SOUS_ADMIN;
+    const userId = isAdmin && id ? id : req.session.user._id.toString();
+    
+    console.log(`🔍 Checking bids for user ${userId} (Triggered by ${req.session.user.type})`);
+    
+    await this.bidService.checkBids(userId);
     return {
-      message: 'done',
-      vl
-    }
+      success: true,
+      message: 'Bids checked successfully'
+    };
   }
 
   @Get(':id')
   @Public()
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string, @Request() req: any) {
     try {
       const bid = await this.bidService.findOne(id);
-      let vl: any = null;
+      
+      // Get user from session if available (even if public)
+      const user = req.session?.user;
+      
+      // Sanitize the bid data (whitelisting fields)
+      const sanitized = this.sanitizeBid(bid, user);
 
-      if (bid.winner) {
-        try {
-          const getuser = await this.userService.getUserById(bid.winner.toString());
-          vl = getuser;
-        } catch (userError) {
-          console.error('Error fetching winner user:', userError);
-          // Continue without the user data if there's an error
-        }
-      }
-
-      // console.log('vl :', vl);
-
+      // Transform attachments
       return {
-        ...JSON.parse(JSON.stringify(bid)),
+        ...sanitized,
         thumbs: transformAttachment(bid.thumbs, this.baseUrl),
         videos: transformAttachment(bid.videos, this.baseUrl),
-        user: vl
+        // Removed 'user' (winner) field as it is not used in UI and requires extra fetch
       };
     } catch (error) {
       console.error('Error in findOne:', error);
@@ -439,7 +477,9 @@ export class BidController {
   }
 
   @Delete(':id')
+  @UseGuards(AuthGuard)
   remove(@Param('id') id: string) {
+    // Note: ideally should check ownership, but restricting to auth is a good first step
     return this.bidService.remove(id);
   }
 
@@ -497,14 +537,14 @@ export class BidController {
   }
 
   @Get('debug/active-auctions')
-  @Public()
+  @UseGuards(AuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Get active auctions with timing info (for debugging)' })
   async getActiveAuctionsWithTiming() {
     return this.auctionNotificationService.getActiveAuctionsWithTiming();
   }
 
   @Post('debug/trigger-notifications')
-  @Public()
+  @UseGuards(AuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Manually trigger notification check (for debugging)' })
   async triggerNotificationCheck() {
     await this.auctionNotificationService.triggerNotificationCheck();
