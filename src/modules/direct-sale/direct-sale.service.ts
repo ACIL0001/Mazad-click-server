@@ -398,10 +398,10 @@ export class DirectSaleService {
           status: savedPurchase.status
         },
         sellerId: directSale.owner._id.toString(),
-        sellerName: `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`
+        sellerName: directSale.owner?.companyName || directSale.owner?.entreprise || `${directSale.owner?.firstName || ''} ${directSale.owner?.lastName || ''}`.trim() || 'Vendeur'
       },
       directSale.owner._id.toString(),
-      `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`,
+      directSale.owner?.companyName || directSale.owner?.entreprise || `${directSale.owner?.firstName || ''} ${directSale.owner?.lastName || ''}`.trim() || 'Vendeur',
       directSale.owner?.email,
     );
 
@@ -497,6 +497,18 @@ export class DirectSaleService {
       const buyerNotificationTitle = `Commande Confirmée - ${totalPrice} DA`;
       const buyerNotificationMessage = `Votre commande a été confirmée. Félicitations! Vous pouvez maintenant discuter avec le vendeur.`;
 
+      // Fetch the seller user to get their real name (directSale.owner is not populated here)
+      let sellerUser: any = null;
+      try {
+        sellerUser = await this.userService.findOne(sellerId);
+      } catch (e) {
+        console.error('Could not fetch seller user for notification:', e);
+      }
+      // Priority: companyName > entreprise > firstName + lastName
+      const sellerFullName = sellerUser
+        ? (sellerUser.companyName || sellerUser.entreprise || `${sellerUser.firstName || ''} ${sellerUser.lastName || ''}`.trim()) || 'Vendeur'
+        : (directSale.owner?.companyName || directSale.owner?.entreprise || `${directSale.owner?.firstName || ''} ${directSale.owner?.lastName || ''}`.trim()) || 'Vendeur';
+
       await this.notificationService.create(
         buyer._id.toString(),
         NotificationType.ORDER,
@@ -506,7 +518,8 @@ export class DirectSaleService {
           directSale: {
             _id: directSale._id,
             title: directSale.title,
-            price: directSale.price
+            price: directSale.price,
+            contactNumber: directSale.contactNumber // User requested to use the contact number from the sale
           },
           purchase: {
             _id: purchase._id,
@@ -516,13 +529,13 @@ export class DirectSaleService {
             status: purchase.status
           },
           sellerId: sellerId,
-          sellerName: `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`,
+          sellerName: sellerFullName,
           buyerId: buyer._id.toString(),
           chatId: chatId // Include chat ID for redirection
         },
         sellerId,
-        `${directSale.owner?.firstName || 'Vendeur'} ${directSale.owner?.lastName || ''}`,
-        directSale.owner?.email || '',
+        sellerFullName,
+        sellerUser?.email || directSale.owner?.email || '',
       );
     }
 

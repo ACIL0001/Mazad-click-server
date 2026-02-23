@@ -6,6 +6,7 @@ import { Bid, BidDocument, BID_STATUS } from './schema/bid.schema';
 import { Offer, OfferDocument } from './schema/offer.schema';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/schema/notification.schema';
+import { Chat, ChatDocument } from '../chat/schema/chat.schema';
 
 @Injectable()
 export class AuctionNotificationService {
@@ -14,6 +15,7 @@ export class AuctionNotificationService {
   constructor(
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectModel(Offer.name) private offerModel: Model<OfferDocument>,
+    @InjectModel(Chat.name) private chatModel: Model<ChatDocument>,
     private notificationService: NotificationService,
   ) {
     this.logger.log('🚀 AuctionNotificationService initialized');
@@ -189,6 +191,174 @@ export class AuctionNotificationService {
   async triggerNotificationCheck() {
     this.logger.log('🔧 Manual trigger: Checking for auctions in last 5% of time...');
     await this.checkAuctionsInLast5Percent();
+  }
+
+  /**
+   * Get all active auctions with detailed timing info (for debugging)
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async checkEndedAuctions() {
+    const now = new Date();
+    try {
+      const endedAuctions = await this.bidModel
+        .find({
+          status: { $in: [BID_STATUS.OPEN, BID_STATUS.ON_AUCTION] },
+          endingAt: { $lte: now },
+          isSoldProcessed: { $ne: true }
+        })
+        .populate('owner')
+        .populate('productCategory', 'name')
+        .exec();
+
+      if (endedAuctions.length > 0) {
+        this.logger.log(`Found ${endedAuctions.length} ended auctions to process`);
+      }
+
+      for (const auction of endedAuctions) {
+        await this.processEndedAuction(auction);
+      }
+    } catch (error) {
+      this.logger.error('Error checking ended auctions:', error);
+    }
+  }
+
+  private async processEndedAuction(auction: BidDocument) {
+    try {
+      // Find highest offer
+      const winningOffer = await this.offerModel
+        .findOne({ bid: auction._id })
+        .sort({ price: -1 })
+        .populate('user')
+        .exec();
+
+      if (winningOffer && winningOffer.user) {
+        const winnerId = winningOffer.user._id.toString();
+        const sellerId = auction.owner._id.toString();
+
+        // Find existing chat
+        let chat = await this.chatModel.findOne({
+          $and: [
+            { 'users._id': winnerId },
+            { 'users._id': sellerId }
+          ]
+        });
+
+        // 1. Notify Winner
+        await this.notificationService.create(
+          winnerId,
+          NotificationType.AUCTION_WON,
+          '🎉 Félicitations ! Vous avez remporté l\'enchère',
+          `Vous avez remporté l'enchère "${auction.title}" avec une offre de ${winningOffer.price} DA.`,
+          {
+            auctionId: auction._id,
+            price: winningOffer.price,
+            amount: winningOffer.price,
+            sellerId: sellerId,
+            sellerName: `${auction.owner.firstName} ${auction.owner.lastName}`,
+            chatAvailable: !!chat,
+            chatId: chat ? chat._id : null,
+            productTitle: auction.title
+          },
+          sellerId
+        );
+
+        // 2. Notify Owner
+        await this.notificationService.create(
+          auction.owner._id.toString(),
+          NotificationType.ITEM_SOLD,
+          '📦 Votre article a été vendu !',
+          `Votre enchère "${auction.title}" s'est terminée avec une offre de ${winningOffer.price} DA.`,
+          { auctionId: auction._id, price: winningOffer.price, amount: winningOffer.price, buyerId: winnerId },
+          winnerId
+        );
+
+        // 3. Notify Losers
+        const otherOffers = await this.offerModel
+          .find({ bid: auction._id, user: { $ne: winningOffer.user._id } })
+          .distinct('user');
+
+        for (const userId of otherOffers) {
+          await this.notificationService.create(
+            userId.toString(),
+            NotificationType.AUCTION_LOST,
+            'Enchère terminée',
+            `L'enchère "${auction.title}" est terminée.`,
+            { auctionId: auction._id }
+          );
+        }
+
+        // Update Auction
+        auction.winner = winningOffer.user;
+        auction.status = BID_STATUS.CLOSED; // Or whatever closed status you use
+        auction.isSoldProcessed = true;
+
+        // Set feedback timer for 30 mins later
+        const feedbackTime = new Date();
+        feedbackTime.setMinutes(feedbackTime.getMinutes() + 30);
+        auction.feedbackAvailableAt = feedbackTime;
+        auction.feedbackNotificationSent = false;
+
+        await auction.save();
+        this.logger.log(`Processed won auction ${auction._id}. Winner: ${winnerId}`);
+
+      } else {
+        // No bids
+        auction.status = BID_STATUS.CLOSED;
+        auction.isSoldProcessed = true;
+        await auction.save();
+
+        // Notify owner
+        await this.notificationService.create(
+          auction.owner._id.toString(),
+          NotificationType.BID_ENDED,
+          'Enchère terminée sans offres',
+          `Votre enchère "${auction.title}" s'est terminée sans aucune offre.`,
+          { auctionId: auction._id }
+        );
+        this.logger.log(`Processed empty auction ${auction._id}`);
+      }
+
+    } catch (error) {
+      this.logger.error(`Error processing ended auction ${auction._id}:`, error);
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async checkFeedbackReminders() {
+    const now = new Date();
+    try {
+      const auctionsNeedingFeedback = await this.bidModel.find({
+        feedbackAvailableAt: { $lte: now },
+        feedbackNotificationSent: false,
+        winner: { $exists: true }, // Ensure there is a winner
+        isSoldProcessed: true,
+        feedbackAction: { $exists: false }
+      }).populate('winner').populate('productCategory', 'name').exec();
+
+      if (auctionsNeedingFeedback.length > 0) {
+        this.logger.log(`Found ${auctionsNeedingFeedback.length} auctions needing feedback reminder`);
+      }
+
+      for (const auction of auctionsNeedingFeedback) {
+        if (auction.winner) {
+          await this.notificationService.create(
+            auction.winner._id.toString(),
+            NotificationType.FEEDBACK_REMINDER,
+            'Avis sur votre achat',
+            `Comment s'est passée votre transaction pour "${auction.title}" ? Donnez votre avis !`,
+            { auctionId: auction._id },
+            auction.owner.toString()
+          );
+
+          auction.feedbackNotificationSent = true;
+          await auction.save();
+          this.logger.log(`Sent feedback reminder for auction ${auction._id}`);
+        }
+      }
+
+    } catch (error) {
+      this.logger.error('Error checking feedback reminders:', error);
+    }
   }
 
   /**

@@ -73,9 +73,9 @@ export class BidController {
 
     // Base allowed fields (Whitelist)
     const allowedFields = [
-      '_id', 'title', 'name', 'description', 'startingPrice', 'currentPrice', 
+      '_id', 'title', 'name', 'description', 'startingPrice', 'currentPrice',
       'quantity', 'bidType', 'auctionType', 'status', 'startingAt', 'endingAt', 'endDate',
-      'thumbs', 'videos', 'place', 'wilaya', 'participantsCount', 'isPro', 'hidden', 
+      'thumbs', 'videos', 'place', 'wilaya', 'participantsCount', 'isPro', 'hidden',
       'professionalOnly', 'owner', 'offers', 'comments', 'biddersCount',
       'createdAt', 'updatedAt', 'slug', 'bidders'
     ];
@@ -86,7 +86,7 @@ export class BidController {
     }
 
     const sanitized: any = {};
-    
+
     // Copy allowed fields
     for (const field of allowedFields) {
       if (bid[field] !== undefined) {
@@ -132,7 +132,7 @@ export class BidController {
     if (bid.participantsCount !== undefined && sanitized.biddersCount === undefined) {
       sanitized.biddersCount = bid.participantsCount;
     }
-    
+
     // Ensure thumbnails and videos are present (will be transformed later)
     sanitized.thumbs = bid.thumbs;
     sanitized.videos = bid.videos;
@@ -152,7 +152,7 @@ export class BidController {
     return bids.map((bid) => {
       // Sanitize the bid data
       const sanitized = this.sanitizeBid(bid, user);
-      
+
       return {
         ...sanitized,
         thumbs: transformAttachment(bid.thumbs, this.baseUrl),
@@ -196,9 +196,9 @@ export class BidController {
     // Only admins can check bids for other users. Regular users can only check their own.
     const isAdmin = req.session.user.type === RoleCode.ADMIN || req.session.user.type === RoleCode.SOUS_ADMIN;
     const userId = isAdmin && id ? id : req.session.user._id.toString();
-    
+
     console.log(`🔍 Checking bids for user ${userId} (Triggered by ${req.session.user.type})`);
-    
+
     await this.bidService.checkBids(userId);
     return {
       success: true,
@@ -211,10 +211,10 @@ export class BidController {
   async findOne(@Param('id') id: string, @Request() req: any) {
     try {
       const bid = await this.bidService.findOne(id);
-      
+
       // Get user from session if available (even if public)
       const user = req.session?.user;
-      
+
       // Sanitize the bid data (whitelisting fields)
       const sanitized = this.sanitizeBid(bid, user);
 
@@ -536,6 +536,26 @@ export class BidController {
     }
   }
 
+  @Post(':id/delay-feedback')
+  @UseGuards(AuthGuard)
+  async delayFeedback(@Param('id') id: string, @Request() req: ProtectedRequest) {
+    const userId = req.session.user._id.toString();
+    await this.bidService.delayFeedback(id, userId);
+    return { success: true, message: 'Feedback delayed' };
+  }
+
+  @Post(':id/feedback')
+  @UseGuards(AuthGuard)
+  async saveFeedback(
+    @Param('id') id: string,
+    @Request() req: ProtectedRequest,
+    @Body() body: { action: 'LIKE' | 'DISLIKE', reason?: string }
+  ) {
+    const userId = req.session.user._id.toString();
+    await this.bidService.saveFeedback(id, userId, body.action, body.reason);
+    return { success: true, message: 'Feedback saved' };
+  }
+
   @Get('debug/active-auctions')
   @UseGuards(AuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Get active auctions with timing info (for debugging)' })
@@ -547,7 +567,7 @@ export class BidController {
   @UseGuards(AuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Manually trigger notification check (for debugging)' })
   async triggerNotificationCheck() {
-    await this.auctionNotificationService.triggerNotificationCheck();
+    await this.auctionNotificationService.checkEndedAuctions(); // Updated to check ended auctions too
     return { message: 'Notification check triggered manually' };
   }
 }

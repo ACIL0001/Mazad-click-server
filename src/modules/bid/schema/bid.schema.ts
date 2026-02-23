@@ -148,6 +148,24 @@ export class Bid {
 
   @Prop({ type: Number, default: 0 })
   participantsCount: number;
+
+  @Prop({ type: Date })
+  feedbackAvailableAt: Date;
+
+  @Prop({ type: Boolean, default: false })
+  feedbackNotificationSent: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  isSoldProcessed: boolean;
+
+  @Prop({ type: String, enum: ['LIKE', 'DISLIKE'] })
+  feedbackAction: string;
+
+  @Prop({ type: String })
+  feedbackReason: string;
+
+  @Prop({ type: Date })
+  feedbackDate: Date;
 }
 
 export type BidDocument = HydratedDocument<Bid>;

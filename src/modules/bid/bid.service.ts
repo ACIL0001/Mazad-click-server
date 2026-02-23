@@ -273,412 +273,412 @@ export class BidService {
     }
 
     const now = new Date();
-    const getAllBids = await this.bidModel.find({ 
-      owner: id, 
+    const getAllBids = await this.bidModel.find({
+      owner: id,
       status: BID_STATUS.OPEN,
       endingAt: { $lt: now }
     }).exec();
 
     for (let index = 0; index < getAllBids.length; index++) {
-        // Date check is now handled by the query
+      // Date check is now handled by the query
 
 
-        const getOffers = await this.OfferModel.find({ bid: getAllBids[index]._id });
+      const getOffers = await this.OfferModel.find({ bid: getAllBids[index]._id });
 
-        if (getAllBids[index].bidType == BID_TYPE.PRODUCT) {
+      if (getAllBids[index].bidType == BID_TYPE.PRODUCT) {
 
 
-          if (
-            getOffers.length != 0 &&
-            getAllBids[index].currentPrice >= getAllBids[index].reservePrice
-          ) {
-            let max = getOffers[0];
+        if (
+          getOffers.length != 0 &&
+          getAllBids[index].currentPrice >= getAllBids[index].reservePrice
+        ) {
+          let max = getOffers[0];
 
-            for (let i = 0; i < getOffers.length; i++) {
-              if (getOffers[i].price > max.price) {
-                max = getOffers[i];
-              }
+          for (let i = 0; i < getOffers.length; i++) {
+            if (getOffers[i].price > max.price) {
+              max = getOffers[i];
             }
-
-            await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
-              status: BID_STATUS.ON_AUCTION,
-              winner: max.user,
-              // isSell: true,
-            });
-
-            const getAther = await this.userModel.findOne({ _id: max.user });
-
-            let users = [getUser, getAther];
-            let createdAt = new Date();
-
-            const chat = new this.chatModel({ users, createdAt })
-            await chat.save()
-
-            // Send socket notification for new chat to buyer
-            this.ChatGateWay.sendNewChatToBuyer(
-              max.user._id.toString(),
-              {
-                type: 'NEW_CHAT',
-                title: 'Nouveau chat créé',
-                message: `Un nouveau chat a été créé avec le vendeur ${getUser.firstName} ${getUser.lastName} pour finaliser votre achat de "${getAllBids[index].title || 'le produit'}".`,
-                chatId: chat._id,
-                sellerName: getUser.firstName + ' ' + getUser.lastName,
-                productTitle: getAllBids[index].title
-              }
-            );
-
-            // Send socket notification for new chat to seller
-            this.ChatGateWay.sendNewChatToSeller(
-              getUser._id.toString(),
-              {
-                type: 'NEW_CHAT',
-                title: 'Nouveau chat avec le gagnant',
-                message: `Un nouveau chat a été créé avec l'acheteur ${getAther.firstName} ${getAther.lastName} pour finaliser la vente de "${getAllBids[index].title || 'le produit'}".`,
-                chatId: chat._id,
-                winnerName: getAther.firstName + ' ' + getAther.lastName,
-                productTitle: getAllBids[index].title
-              }
-            );
-
-            // Send winner notification (DB)
-            await this.notificationService.create(
-              max.user._id.toString(),
-              NotificationType.BID_WON,
-              'Félicitations! Vous avez remporté l\'enchère',
-              `Vous avez remporté l'enchère pour "${getAllBids[index].title || 'le produit'}". Un chat a été créé avec le vendeur pour finaliser la transaction.`,
-              {
-                bidId: getAllBids[index]._id,
-                productTitle: getAllBids[index].title,
-                sellerId: getUser._id,
-                buyerId: max.user._id,
-                finalPrice: max.price,
-                chatId: chat._id
-              },
-              getUser._id.toString(),
-              `${getUser.firstName} ${getUser.lastName}`,
-              getUser.email
-            );
-
-            // Send seller notification for sale (DB)
-            await this.notificationService.create(
-              getUser._id.toString(),
-              NotificationType.ITEM_SOLD,
-              'Félicitations! Votre article a été vendu',
-              `Votre article "${getAllBids[index].title || 'le produit'}" a été vendu à ${getAther.firstName} ${getAther.lastName} pour ${max.price} DA. Un chat a été créé pour finaliser la vente.`,
-              {
-                bidId: getAllBids[index]._id,
-                productTitle: getAllBids[index].title,
-                buyerId: max.user._id,
-                buyerName: getAther.firstName + ' ' + getAther.lastName,
-                finalPrice: max.price,
-                chatId: chat._id
-              }
-            );
-
-            // Add CHAT_CREATED notification for buyer
-            await this.notificationService.create(
-              max.user._id.toString(),
-              NotificationType.CHAT_CREATED,
-              'Nouveau chat créé',
-              `Un nouveau chat a été créé avec le vendeur ${getUser.firstName} ${getUser.lastName} pour finaliser votre achat de "${getAllBids[index].title || 'le produit'}".`,
-              {
-                chatId: chat._id,
-                sellerName: getUser.firstName + ' ' + getUser.lastName,
-                productTitle: getAllBids[index].title
-              },
-              getUser._id.toString(), // senderId
-              `${getUser.firstName} ${getUser.lastName}`, // senderName
-              getUser.email // senderEmail
-            );
-
-            // Add CHAT_CREATED notification for seller
-            await this.notificationService.create(
-              getUser._id.toString(),
-              NotificationType.CHAT_CREATED,
-              'Nouveau chat avec le gagnant',
-              `Un nouveau chat a été créé avec l'acheteur ${getAther.firstName} ${getAther.lastName} pour finaliser la vente de "${getAllBids[index].title || 'le produit'}".`,
-              {
-                chatId: chat._id,
-                winnerName: getAther.firstName + ' ' + getAther.lastName,
-                productTitle: getAllBids[index].title
-              },
-              getAther._id.toString(), // senderId
-              `${getAther.firstName} ${getAther.lastName}`, // senderName
-              getAther.email // senderEmail
-            );
-
-            // Send socket notification to winner (buyer)
-            this.ChatGateWay.sendBidWonNotificationToUser(
-              max.user._id.toString(),
-              {
-                type: 'BID_WON',
-                title: 'Félicitations! Vous avez remporté l\'enchère',
-                message: `Vous avez remporté l'enchère pour "${getAllBids[index].title || 'le produit'}". Un chat a été créé avec le vendeur pour finaliser la transaction.`,
-                bidId: getAllBids[index]._id,
-                chatId: chat._id,
-                sellerName: getUser.firstName + ' ' + getUser.lastName,
-                productTitle: getAllBids[index].title
-              }
-            );
-
-            // Send socket notification to seller
-            this.ChatGateWay.sendAuctionSoldNotificationToUser(
-              getUser._id.toString(),
-              {
-                type: 'AUCTION_SOLD',
-                title: 'Votre enchère a été vendue',
-                message: `Votre enchère "${getAllBids[index].title || 'le produit'}" a été remportée par ${getAther.firstName} ${getAther.lastName}. Un chat a été créé avec l\'acheteur pour finaliser la transaction.`,
-                bidId: getAllBids[index]._id,
-                chatId: chat._id,
-                winnerName: getAther.firstName + ' ' + getAther.lastName,
-                productTitle: getAllBids[index].title
-              }
-            );
-
-            this.ChatGateWay.sendNotificationChatCreateToOne(max.user._id.toString())
-
-            // Notify all losing bidders
-            for (const offer of getOffers) {
-              const offerUserId = offer.user._id ? offer.user._id.toString() : offer.user.toString();
-              const winnerUserId = max.user._id ? max.user._id.toString() : max.user.toString();
-
-              // Skip notification for the winner
-              if (offerUserId !== winnerUserId) {
-                await this.notificationService.create(
-                  offerUserId,
-                  NotificationType.AUCTION_LOST,
-                  'Enchère terminée',
-                  `L'enchère "${getAllBids[index].title || 'le produit'}" a été remportée par un autre participant. Merci d'avoir participé !`,
-                  {
-                    bidId: getAllBids[index]._id,
-                    productTitle: getAllBids[index].title,
-                    winnerId: winnerUserId,
-                    finalPrice: max.price
-                  },
-                  getUser._id.toString(),
-                  `${getUser.firstName} ${getUser.lastName}`,
-                  getUser.email
-                );
-              }
-            }
-
-            // Send auction end notification to seller
-            //  await this.notificationService.create(
-            //    getUser._id.toString(),
-            //    NotificationType.BID_CREATED, // You may want to create a new notification type for this
-            //    'Votre enchère est terminée',
-            //    `Votre enchère "${getAllBids[index].title || 'le produit'}" est maintenant terminée et a été vendue à ${getAther.firstName} ${getAther.lastName}.`,
-            //    {
-            //      bidId: getAllBids[index]._id,
-            //      productTitle: getAllBids[index].title,
-            //      winnerName: getAther.firstName + ' ' + getAther.lastName
-            //    }
-            //  );
-
-
-            continue
-
           }
 
           await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
-            status: BID_STATUS.CLOSED,
+            status: BID_STATUS.ON_AUCTION,
+            winner: max.user,
+            // isSell: true,
           });
 
+          const getAther = await this.userModel.findOne({ _id: max.user });
 
+          let users = [getUser, getAther];
+          let createdAt = new Date();
 
+          const chat = new this.chatModel({ users, createdAt })
+          await chat.save()
 
-        } else {
-          // SERVICE auctions now work like PRODUCT auctions - highest bidder wins
-          if (
-            getOffers.length != 0 &&
-            getAllBids[index].currentPrice >= getAllBids[index].reservePrice
-          ) {
-            let max = getOffers[0];
-            for (let i = 0; i < getOffers.length; i++) {
-              if (getOffers[i].price > max.price) {
-                max = getOffers[i];
-              }
+          // Send socket notification for new chat to buyer
+          this.ChatGateWay.sendNewChatToBuyer(
+            max.user._id.toString(),
+            {
+              type: 'NEW_CHAT',
+              title: 'Nouveau chat créé',
+              message: `Un nouveau chat a été créé avec le vendeur ${getUser.firstName} ${getUser.lastName} pour finaliser votre achat de "${getAllBids[index].title || 'le produit'}".`,
+              chatId: chat._id,
+              sellerName: getUser.firstName + ' ' + getUser.lastName,
+              productTitle: getAllBids[index].title
             }
-            await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
-              status: BID_STATUS.ON_AUCTION,
-              winner: max.user,
-            });
-            let users = [getUser._id, max.user._id ? max.user._id : max.user];
-            let createdAt = new Date();
+          );
 
-            const chat = new this.chatModel({ users, createdAt })
-            await chat.save()
-
-            // Send socket notification for new chat to buyer
-            this.ChatGateWay.sendNewChatToBuyer(
-              max.user._id ? max.user._id.toString() : max.user.toString(),
-              {
-                type: 'NEW_CHAT',
-                title: 'Nouveau chat créé',
-                message: `Un nouveau chat a été créé avec le vendeur ${getUser.firstName} ${getUser.lastName} pour finaliser votre achat de "${getAllBids[index].title || 'le service'}".`,
-                chatId: chat._id,
-                sellerName: getUser.firstName + ' ' + getUser.lastName,
-                productTitle: getAllBids[index].title
-              }
-            );
-
-            // Send socket notification for new chat to seller
-            this.ChatGateWay.sendNewChatToSeller(
-              getUser._id.toString(),
-              {
-                type: 'NEW_CHAT',
-                title: 'Nouveau chat avec le gagnant',
-                message: `Un nouveau chat a été créé avec l'acheteur ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour finaliser la vente de "${getAllBids[index].title || 'le service'}".`,
-                chatId: chat._id,
-                winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
-                productTitle: getAllBids[index].title
-              }
-            );
-
-            // Send winner notification (DB)
-            await this.notificationService.create(
-              max.user._id ? max.user._id.toString() : max.user.toString(),
-              NotificationType.BID_WON,
-              'Félicitations! Vous avez remporté l\'enchère',
-              `Vous avez remporté l'enchère pour "${getAllBids[index].title || 'le service'}". Un chat a été créé avec le vendeur pour finaliser la transaction.`,
-              {
-                bidId: getAllBids[index]._id,
-                chatId: chat._id,
-                sellerName: getUser.firstName + ' ' + getUser.lastName,
-                productTitle: getAllBids[index].title
-              },
-              getUser._id.toString(),
-              `${getUser.firstName} ${getUser.lastName}`,
-              getUser.email
-            );
-
-            // Send seller notification for service sale (DB)
-            await this.notificationService.create(
-              getUser._id.toString(),
-              NotificationType.ITEM_SOLD,
-              'Félicitations! Votre service a été vendu',
-              `Votre service "${getAllBids[index].title || 'le service'}" a été vendu à ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour ${max.price} DA. Un chat a été créé pour finaliser la vente.`,
-              {
-                bidId: getAllBids[index]._id,
-                productTitle: getAllBids[index].title,
-                buyerId: max.user._id ? max.user._id : max.user,
-                buyerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
-                finalPrice: max.price,
-                chatId: chat._id
-              }
-            );
-
-            // Add CHAT_CREATED notification for buyer
-            await this.notificationService.create(
-              max.user._id ? max.user._id.toString() : max.user.toString(),
-              NotificationType.CHAT_CREATED,
-              'Nouveau chat créé',
-              `Un nouveau chat a été créé avec le vendeur ${getUser.firstName} ${getUser.lastName} pour finaliser votre achat de "${getAllBids[index].title || 'le service'}".`,
-              {
-                chatId: chat._id,
-                sellerName: getUser.firstName + ' ' + getUser.lastName,
-                productTitle: getAllBids[index].title
-              },
-              getUser._id.toString(), // senderId
-              `${getUser.firstName} ${getUser.lastName}`, // senderName
-              getUser.email // senderEmail
-            );
-
-            // Add CHAT_CREATED notification for seller
-            await this.notificationService.create(
-              getUser._id.toString(),
-              NotificationType.CHAT_CREATED,
-              'Nouveau chat avec le gagnant',
-              `Un nouveau chat a été créé avec l'acheteur ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour finaliser la vente de "${getAllBids[index].title || 'le service'}".`,
-              {
-                chatId: chat._id,
-                winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
-                productTitle: getAllBids[index].title
-              },
-              max.user._id ? max.user._id.toString() : max.user.toString(), // senderId
-              `${max.user.firstName || ''} ${max.user.lastName || ''}`, // senderName
-              max.user.email // senderEmail
-            );
-
-            // Send socket notification to winner (buyer)
-            this.ChatGateWay.sendBidWonNotificationToUser(
-              max.user._id ? max.user._id.toString() : max.user.toString(),
-              {
-                type: 'BID_WON',
-                title: 'Félicitations! Vous avez remporté l\'enchère',
-                message: `Vous avez remporté l'enchère pour "${getAllBids[index].title || 'le service'}". Un chat a été créé avec le vendeur pour finaliser la transaction.`,
-                bidId: getAllBids[index]._id,
-                chatId: chat._id,
-                sellerName: getUser.firstName + ' ' + getUser.lastName,
-                productTitle: getAllBids[index].title
-              }
-            );
-
-            // Send socket notification to seller
-            this.ChatGateWay.sendAuctionSoldNotificationToUser(
-              getUser._id.toString(),
-              {
-                type: 'AUCTION_SOLD',
-                title: 'Votre enchère a été vendue',
-                message: `Votre enchère "${getAllBids[index].title || 'le service'}" a été remportée par ${max.user.firstName || ''} ${max.user.lastName || ''}. Un chat a été créé avec l\'acheteur pour finaliser la transaction.`,
-                bidId: getAllBids[index]._id,
-                chatId: chat._id,
-                winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
-                productTitle: getAllBids[index].title
-              }
-            );
-
-            this.ChatGateWay.sendNotificationChatCreateToOne(users[1].toString())
-
-            // Notify all losing bidders
-            for (const offer of getOffers) {
-              const offerUserId = offer.user._id ? offer.user._id.toString() : offer.user.toString();
-              const winnerUserId = max.user._id ? max.user._id.toString() : max.user.toString();
-
-              // Skip notification for the winner
-              if (offerUserId !== winnerUserId) {
-                await this.notificationService.create(
-                  offerUserId,
-                  NotificationType.AUCTION_LOST,
-                  'Enchère terminée',
-                  `L'enchère "${getAllBids[index].title || 'le service'}" a été remportée par un autre participant. Merci d'avoir participé !`,
-                  {
-                    bidId: getAllBids[index]._id,
-                    productTitle: getAllBids[index].title,
-                    winnerId: winnerUserId,
-                    finalPrice: max.price
-                  },
-                  getUser._id.toString(),
-                  `${getUser.firstName} ${getUser.lastName}`,
-                  getUser.email
-                );
-              }
+          // Send socket notification for new chat to seller
+          this.ChatGateWay.sendNewChatToSeller(
+            getUser._id.toString(),
+            {
+              type: 'NEW_CHAT',
+              title: 'Nouveau chat avec le gagnant',
+              message: `Un nouveau chat a été créé avec l'acheteur ${getAther.firstName} ${getAther.lastName} pour finaliser la vente de "${getAllBids[index].title || 'le produit'}".`,
+              chatId: chat._id,
+              winnerName: getAther.firstName + ' ' + getAther.lastName,
+              productTitle: getAllBids[index].title
             }
+          );
 
-            // Send auction end notification to seller
-            //  await this.notificationService.create(
-            //    getUser._id.toString(),
-            //    NotificationType.BID_CREATED, // You may want to create a new notification type for this
-            //    'Votre enchère est terminée',
-            //    `Votre enchère \"${getAllBids[index].title || 'le service'}\" est maintenant terminée et a été vendue à ${(max.user.firstName || '')} ${(max.user.lastName || '')}.`,
-            //    {
-            //      bidId: getAllBids[index]._id,
-            //      productTitle: getAllBids[index].title,
-            //      winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || '')
-            //    }
-            //  );
+          // Send winner notification (DB)
+          await this.notificationService.create(
+            max.user._id.toString(),
+            NotificationType.BID_WON,
+            'Félicitations! Vous avez remporté l\'enchère',
+            `Vous avez remporté l'enchère pour "${getAllBids[index].title || 'le produit'}". Un chat a été créé avec le vendeur pour finaliser la transaction.`,
+            {
+              bidId: getAllBids[index]._id,
+              productTitle: getAllBids[index].title,
+              sellerId: getUser._id,
+              buyerId: max.user._id,
+              finalPrice: max.price,
+              chatId: chat._id
+            },
+            getUser._id.toString(),
+            `${getUser.firstName} ${getUser.lastName}`,
+            getUser.email
+          );
 
-            continue
+          // Send seller notification for sale (DB)
+          await this.notificationService.create(
+            getUser._id.toString(),
+            NotificationType.ITEM_SOLD,
+            'Félicitations! Votre article a été vendu',
+            `Votre article "${getAllBids[index].title || 'le produit'}" a été vendu à ${getAther.firstName} ${getAther.lastName} pour ${max.price} DA. Un chat a été créé pour finaliser la vente.`,
+            {
+              bidId: getAllBids[index]._id,
+              productTitle: getAllBids[index].title,
+              buyerId: max.user._id,
+              buyerName: getAther.firstName + ' ' + getAther.lastName,
+              finalPrice: max.price,
+              chatId: chat._id
+            }
+          );
 
+          // Add CHAT_CREATED notification for buyer
+          await this.notificationService.create(
+            max.user._id.toString(),
+            NotificationType.CHAT_CREATED,
+            'Nouveau chat créé',
+            `Un nouveau chat a été créé avec le vendeur ${getUser.firstName} ${getUser.lastName} pour finaliser votre achat de "${getAllBids[index].title || 'le produit'}".`,
+            {
+              chatId: chat._id,
+              sellerName: getUser.firstName + ' ' + getUser.lastName,
+              productTitle: getAllBids[index].title
+            },
+            getUser._id.toString(), // senderId
+            `${getUser.firstName} ${getUser.lastName}`, // senderName
+            getUser.email // senderEmail
+          );
+
+          // Add CHAT_CREATED notification for seller
+          await this.notificationService.create(
+            getUser._id.toString(),
+            NotificationType.CHAT_CREATED,
+            'Nouveau chat avec le gagnant',
+            `Un nouveau chat a été créé avec l'acheteur ${getAther.firstName} ${getAther.lastName} pour finaliser la vente de "${getAllBids[index].title || 'le produit'}".`,
+            {
+              chatId: chat._id,
+              winnerName: getAther.firstName + ' ' + getAther.lastName,
+              productTitle: getAllBids[index].title
+            },
+            getAther._id.toString(), // senderId
+            `${getAther.firstName} ${getAther.lastName}`, // senderName
+            getAther.email // senderEmail
+          );
+
+          // Send socket notification to winner (buyer)
+          this.ChatGateWay.sendBidWonNotificationToUser(
+            max.user._id.toString(),
+            {
+              type: 'BID_WON',
+              title: 'Félicitations! Vous avez remporté l\'enchère',
+              message: `Vous avez remporté l'enchère pour "${getAllBids[index].title || 'le produit'}". Un chat a été créé avec le vendeur pour finaliser la transaction.`,
+              bidId: getAllBids[index]._id,
+              chatId: chat._id,
+              sellerName: getUser.firstName + ' ' + getUser.lastName,
+              productTitle: getAllBids[index].title
+            }
+          );
+
+          // Send socket notification to seller
+          this.ChatGateWay.sendAuctionSoldNotificationToUser(
+            getUser._id.toString(),
+            {
+              type: 'AUCTION_SOLD',
+              title: 'Votre enchère a été vendue',
+              message: `Votre enchère "${getAllBids[index].title || 'le produit'}" a été remportée par ${getAther.firstName} ${getAther.lastName}. Un chat a été créé avec l\'acheteur pour finaliser la transaction.`,
+              bidId: getAllBids[index]._id,
+              chatId: chat._id,
+              winnerName: getAther.firstName + ' ' + getAther.lastName,
+              productTitle: getAllBids[index].title
+            }
+          );
+
+          this.ChatGateWay.sendNotificationChatCreateToOne(max.user._id.toString())
+
+          // Notify all losing bidders
+          for (const offer of getOffers) {
+            const offerUserId = offer.user._id ? offer.user._id.toString() : offer.user.toString();
+            const winnerUserId = max.user._id ? max.user._id.toString() : max.user.toString();
+
+            // Skip notification for the winner
+            if (offerUserId !== winnerUserId) {
+              await this.notificationService.create(
+                offerUserId,
+                NotificationType.AUCTION_LOST,
+                'Enchère terminée',
+                `L'enchère "${getAllBids[index].title || 'le produit'}" a été remportée par un autre participant. Merci d'avoir participé !`,
+                {
+                  bidId: getAllBids[index]._id,
+                  productTitle: getAllBids[index].title,
+                  winnerId: winnerUserId,
+                  finalPrice: max.price
+                },
+                getUser._id.toString(),
+                `${getUser.firstName} ${getUser.lastName}`,
+                getUser.email
+              );
+            }
           }
 
-          await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
-            status: BID_STATUS.CLOSED,
-          });
+          // Send auction end notification to seller
+          //  await this.notificationService.create(
+          //    getUser._id.toString(),
+          //    NotificationType.BID_CREATED, // You may want to create a new notification type for this
+          //    'Votre enchère est terminée',
+          //    `Votre enchère "${getAllBids[index].title || 'le produit'}" est maintenant terminée et a été vendue à ${getAther.firstName} ${getAther.lastName}.`,
+          //    {
+          //      bidId: getAllBids[index]._id,
+          //      productTitle: getAllBids[index].title,
+          //      winnerName: getAther.firstName + ' ' + getAther.lastName
+          //    }
+          //  );
 
 
+          continue
 
         }
+
+        await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
+          status: BID_STATUS.CLOSED,
+        });
+
+
+
+
+      } else {
+        // SERVICE auctions now work like PRODUCT auctions - highest bidder wins
+        if (
+          getOffers.length != 0 &&
+          getAllBids[index].currentPrice >= getAllBids[index].reservePrice
+        ) {
+          let max = getOffers[0];
+          for (let i = 0; i < getOffers.length; i++) {
+            if (getOffers[i].price > max.price) {
+              max = getOffers[i];
+            }
+          }
+          await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
+            status: BID_STATUS.ON_AUCTION,
+            winner: max.user,
+          });
+          let users = [getUser._id, max.user._id ? max.user._id : max.user];
+          let createdAt = new Date();
+
+          const chat = new this.chatModel({ users, createdAt })
+          await chat.save()
+
+          // Send socket notification for new chat to buyer
+          this.ChatGateWay.sendNewChatToBuyer(
+            max.user._id ? max.user._id.toString() : max.user.toString(),
+            {
+              type: 'NEW_CHAT',
+              title: 'Nouveau chat créé',
+              message: `Un nouveau chat a été créé avec le vendeur ${getUser.firstName} ${getUser.lastName} pour finaliser votre achat de "${getAllBids[index].title || 'le service'}".`,
+              chatId: chat._id,
+              sellerName: getUser.firstName + ' ' + getUser.lastName,
+              productTitle: getAllBids[index].title
+            }
+          );
+
+          // Send socket notification for new chat to seller
+          this.ChatGateWay.sendNewChatToSeller(
+            getUser._id.toString(),
+            {
+              type: 'NEW_CHAT',
+              title: 'Nouveau chat avec le gagnant',
+              message: `Un nouveau chat a été créé avec l'acheteur ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour finaliser la vente de "${getAllBids[index].title || 'le service'}".`,
+              chatId: chat._id,
+              winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
+              productTitle: getAllBids[index].title
+            }
+          );
+
+          // Send winner notification (DB)
+          await this.notificationService.create(
+            max.user._id ? max.user._id.toString() : max.user.toString(),
+            NotificationType.BID_WON,
+            'Félicitations! Vous avez remporté l\'enchère',
+            `Vous avez remporté l'enchère pour "${getAllBids[index].title || 'le service'}". Un chat a été créé avec le vendeur pour finaliser la transaction.`,
+            {
+              bidId: getAllBids[index]._id,
+              chatId: chat._id,
+              sellerName: getUser.firstName + ' ' + getUser.lastName,
+              productTitle: getAllBids[index].title
+            },
+            getUser._id.toString(),
+            `${getUser.firstName} ${getUser.lastName}`,
+            getUser.email
+          );
+
+          // Send seller notification for service sale (DB)
+          await this.notificationService.create(
+            getUser._id.toString(),
+            NotificationType.ITEM_SOLD,
+            'Félicitations! Votre service a été vendu',
+            `Votre service "${getAllBids[index].title || 'le service'}" a été vendu à ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour ${max.price} DA. Un chat a été créé pour finaliser la vente.`,
+            {
+              bidId: getAllBids[index]._id,
+              productTitle: getAllBids[index].title,
+              buyerId: max.user._id ? max.user._id : max.user,
+              buyerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
+              finalPrice: max.price,
+              chatId: chat._id
+            }
+          );
+
+          // Add CHAT_CREATED notification for buyer
+          await this.notificationService.create(
+            max.user._id ? max.user._id.toString() : max.user.toString(),
+            NotificationType.CHAT_CREATED,
+            'Nouveau chat créé',
+            `Un nouveau chat a été créé avec le vendeur ${getUser.firstName} ${getUser.lastName} pour finaliser votre achat de "${getAllBids[index].title || 'le service'}".`,
+            {
+              chatId: chat._id,
+              sellerName: getUser.firstName + ' ' + getUser.lastName,
+              productTitle: getAllBids[index].title
+            },
+            getUser._id.toString(), // senderId
+            `${getUser.firstName} ${getUser.lastName}`, // senderName
+            getUser.email // senderEmail
+          );
+
+          // Add CHAT_CREATED notification for seller
+          await this.notificationService.create(
+            getUser._id.toString(),
+            NotificationType.CHAT_CREATED,
+            'Nouveau chat avec le gagnant',
+            `Un nouveau chat a été créé avec l'acheteur ${(max.user.firstName || '')} ${(max.user.lastName || '')} pour finaliser la vente de "${getAllBids[index].title || 'le service'}".`,
+            {
+              chatId: chat._id,
+              winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
+              productTitle: getAllBids[index].title
+            },
+            max.user._id ? max.user._id.toString() : max.user.toString(), // senderId
+            `${max.user.firstName || ''} ${max.user.lastName || ''}`, // senderName
+            max.user.email // senderEmail
+          );
+
+          // Send socket notification to winner (buyer)
+          this.ChatGateWay.sendBidWonNotificationToUser(
+            max.user._id ? max.user._id.toString() : max.user.toString(),
+            {
+              type: 'BID_WON',
+              title: 'Félicitations! Vous avez remporté l\'enchère',
+              message: `Vous avez remporté l'enchère pour "${getAllBids[index].title || 'le service'}". Un chat a été créé avec le vendeur pour finaliser la transaction.`,
+              bidId: getAllBids[index]._id,
+              chatId: chat._id,
+              sellerName: getUser.firstName + ' ' + getUser.lastName,
+              productTitle: getAllBids[index].title
+            }
+          );
+
+          // Send socket notification to seller
+          this.ChatGateWay.sendAuctionSoldNotificationToUser(
+            getUser._id.toString(),
+            {
+              type: 'AUCTION_SOLD',
+              title: 'Votre enchère a été vendue',
+              message: `Votre enchère "${getAllBids[index].title || 'le service'}" a été remportée par ${max.user.firstName || ''} ${max.user.lastName || ''}. Un chat a été créé avec l\'acheteur pour finaliser la transaction.`,
+              bidId: getAllBids[index]._id,
+              chatId: chat._id,
+              winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || ''),
+              productTitle: getAllBids[index].title
+            }
+          );
+
+          this.ChatGateWay.sendNotificationChatCreateToOne(users[1].toString())
+
+          // Notify all losing bidders
+          for (const offer of getOffers) {
+            const offerUserId = offer.user._id ? offer.user._id.toString() : offer.user.toString();
+            const winnerUserId = max.user._id ? max.user._id.toString() : max.user.toString();
+
+            // Skip notification for the winner
+            if (offerUserId !== winnerUserId) {
+              await this.notificationService.create(
+                offerUserId,
+                NotificationType.AUCTION_LOST,
+                'Enchère terminée',
+                `L'enchère "${getAllBids[index].title || 'le service'}" a été remportée par un autre participant. Merci d'avoir participé !`,
+                {
+                  bidId: getAllBids[index]._id,
+                  productTitle: getAllBids[index].title,
+                  winnerId: winnerUserId,
+                  finalPrice: max.price
+                },
+                getUser._id.toString(),
+                `${getUser.firstName} ${getUser.lastName}`,
+                getUser.email
+              );
+            }
+          }
+
+          // Send auction end notification to seller
+          //  await this.notificationService.create(
+          //    getUser._id.toString(),
+          //    NotificationType.BID_CREATED, // You may want to create a new notification type for this
+          //    'Votre enchère est terminée',
+          //    `Votre enchère \"${getAllBids[index].title || 'le service'}\" est maintenant terminée et a été vendue à ${(max.user.firstName || '')} ${(max.user.lastName || '')}.`,
+          //    {
+          //      bidId: getAllBids[index]._id,
+          //      productTitle: getAllBids[index].title,
+          //      winnerName: (max.user.firstName || '') + ' ' + (max.user.lastName || '')
+          //    }
+          //  );
+
+          continue
+
+        }
+
+        await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
+          status: BID_STATUS.CLOSED,
+        });
+
+
+
+      }
     }
     return;
   }
@@ -892,5 +892,51 @@ export class BidService {
       console.error('Error in relaunch process:', error);
       throw error;
     }
+  }
+
+
+  async delayFeedback(bidId: string, userId: string): Promise<void> {
+    const bid = await this.bidModel.findById(bidId);
+    if (!bid) {
+      throw new NotFoundException('Bid not found');
+    }
+
+    // Only winner can delay feedback
+    const winnerId = bid.winner && typeof bid.winner === 'object' ? (bid.winner as any)._id.toString() : bid.winner?.toString();
+    if (winnerId !== userId) {
+      // Also allow if user is owner? No, feedback is FROM winner.
+      throw new BadRequestException('Only the winner can submit feedback');
+    }
+
+    // Delay by 2 hours
+    const nextFeedbackTime = new Date();
+    nextFeedbackTime.setHours(nextFeedbackTime.getHours() + 2);
+
+    bid.feedbackAvailableAt = nextFeedbackTime;
+    bid.feedbackNotificationSent = false;
+    await bid.save();
+  }
+
+  async saveFeedback(bidId: string, userId: string, action: 'LIKE' | 'DISLIKE', reason?: string): Promise<void> {
+    const bid = await this.bidModel.findById(bidId);
+    if (!bid) {
+      throw new NotFoundException('Bid not found');
+    }
+
+    const winnerId = bid.winner && typeof bid.winner === 'object' ? (bid.winner as any)._id.toString() : bid.winner?.toString();
+    if (winnerId !== userId) {
+      throw new BadRequestException('Only the winner can submit feedback');
+    }
+
+    bid.feedbackAction = action;
+    bid.feedbackReason = reason;
+    bid.feedbackDate = new Date();
+
+    // Stop reminders by tricking the system (or relying on Query filter)
+    // We already added query filter check for feedbackAction existence.
+    // But setting notificationSent = true helps as double safety.
+    bid.feedbackNotificationSent = true;
+
+    await bid.save();
   }
 }

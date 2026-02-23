@@ -28,6 +28,7 @@ export enum NotificationType {
   USER_CERTIFIED = 'USER_CERTIFIED',
   COMMENT_RECEIVED = 'COMMENT_RECEIVED',
   COMMENT_REPLY = 'COMMENT_REPLY',
+  FEEDBACK_REMINDER = 'FEEDBACK_REMINDER',
 }
 
 @Schema({ timestamps: true })
