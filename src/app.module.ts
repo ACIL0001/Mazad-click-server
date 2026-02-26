@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import appConfiguration, {
   ConfigKeys,
   validationSchema,
@@ -26,6 +27,7 @@ import { AttachmentModule } from './modules/attachment/attachment.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './common/guards/auth.guard';
+import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 
 import { MulterModule } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -70,6 +72,23 @@ import { EmailModule } from './modules/email/email.module';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1000,
+        limit: 10,
+      },
+      {
+        name: 'medium',
+        ttl: 10000,
+        limit: 50,
+      },
+      {
+        name: 'long',
+        ttl: 60000,
+        limit: 200,
+      },
+    ]),
     ConfigModule.forRoot({
       isGlobal: true,
       // cache: true,
@@ -232,6 +251,10 @@ import { EmailModule } from './modules/email/email.module';
     EmailModule,
   ],
   providers: [
+    {
+      provide: APP_GUARD,
+      useClass: CustomThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: AuthGuard,
