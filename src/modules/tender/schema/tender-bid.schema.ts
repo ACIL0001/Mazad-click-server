@@ -28,6 +28,9 @@ export class TenderBid {
   @Prop({ type: String })
   proposal: string; // Description of their proposal
 
+  @Prop({ type: String })
+  proposalFile?: string; // URL of the uploaded proposal document (PDF/DOCX)
+
   @Prop({ type: Number })
   deliveryTime?: number; // Estimated delivery time in days
 
@@ -41,10 +44,10 @@ export class TenderBid {
 export type TenderBidDocument = HydratedDocument<TenderBid>;
 export const TenderBidSchema = SchemaFactory.createForClass(TenderBid);
 
-TenderBidSchema.pre(['find', 'findOne'], function() {
+TenderBidSchema.pre(['find', 'findOne'], function () {
   this.populate({
     path: 'bidder',
     select: 'firstName lastName phone username email'
   });
-  this.populate('tender', 'title');
+  this.populate('tender', 'title category evaluationType');
 });

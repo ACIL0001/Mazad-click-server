@@ -455,9 +455,13 @@ export class TenderService {
 
     // Validate based on evaluation type
     if (isMieuxDisant) {
-      // For MIEUX_DISANT: Proposal is required
-      if (!createTenderBidDto.proposal || createTenderBidDto.proposal.trim().length < 10) {
-        throw new BadRequestException('Une proposition détaillée est requise (minimum 10 caractères)');
+      // For MIEUX_DISANT: proposal text (≥10 chars) OR uploaded file URL is required
+      const hasProposalText = createTenderBidDto.proposal && createTenderBidDto.proposal.trim().length >= 10;
+      const hasProposalFile = !!createTenderBidDto.proposalFile;
+      if (!hasProposalText && !hasProposalFile) {
+        throw new BadRequestException(
+          'Veuillez rédiger une proposition (minimum 10 caractères) ou joindre un fichier PDF/DOCX'
+        );
       }
     } else {
       // For MOINS_DISANT: Bid amount must be positive
@@ -562,7 +566,7 @@ export class TenderService {
     return this.tenderBidModel
       .find({ tender: tenderId })
       .populate('bidder', 'firstName lastName phone email username')
-      .populate('tender', 'title category')
+      .populate('tender', 'title category evaluationType')
       .lean()
       .exec();
   }
@@ -576,7 +580,7 @@ export class TenderService {
     return this.tenderBidModel
       .find({ tender: { $in: tenderIds } })
       .populate('bidder', 'firstName lastName phone email username')
-      .populate('tender', 'title category')
+      .populate('tender', 'title category evaluationType')
       .lean()
       .exec();
   }
@@ -585,7 +589,7 @@ export class TenderService {
     return this.tenderBidModel
       .find({ bidder: bidderId })
       .populate('bidder', 'firstName lastName phone email username')
-      .populate('tender', 'title category')
+      .populate('tender', 'title category evaluationType')
       .lean()
       .exec();
   }
@@ -598,7 +602,7 @@ export class TenderService {
         path: 'bidder',
         populate: { path: 'avatar' }
       })
-      .populate('tender', 'title category')
+      .populate('tender', 'title category evaluationType')
       .exec();
 
     if (!bid) {

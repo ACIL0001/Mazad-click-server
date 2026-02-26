@@ -106,6 +106,7 @@ export class IdentityService {
             userId: identity.user,
             conversionType: identity.conversionType,
             status: identity.status,
+            badgeType: 'verified',
             submittedAt: identity.createdAt
           },
           identity.user ? ((identity.user as any)._id || identity.user).toString() : undefined,
@@ -149,6 +150,7 @@ export class IdentityService {
             userId: identity.user,
             type: 'CERTIFICATION',
             status: identity.certificationStatus,
+            badgeType: 'certified',
             submittedAt: new Date()
           },
           identity.user ? ((identity.user as any)._id || identity.user).toString() : undefined,

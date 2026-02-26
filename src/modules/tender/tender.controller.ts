@@ -7,13 +7,14 @@ import {
   Delete,
   Put,
   UploadedFiles,
+  UploadedFile,
   Request,
   Req,
   UseGuards,
   UseInterceptors,
   BadRequestException,
 } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { TenderService } from './tender.service';
@@ -117,7 +118,7 @@ export class TenderController {
     const tenders = await this.tenderService.findAll(user);
     return tenders.map((tender: any) => {
       // Ensure evaluationType is always present
-      if (!tender.evaluationType) {
+      if (tender && typeof tender === 'object' && !tender.evaluationType) {
         tender.evaluationType = 'MOINS_DISANT';
       }
 
@@ -152,8 +153,27 @@ export class TenderController {
 
   @Get('my-tenders')
   @UseGuards(AuthGuard)
-  findMyTenders(@Request() request: ProtectedRequest) {
-    return this.tenderService.findByOwner(request.session.user._id.toString());
+  async findMyTenders(@Request() request: ProtectedRequest) {
+    const user = request.session?.user;
+    const tenders = await this.tenderService.findByOwner(request.session.user._id.toString());
+
+    return tenders.map((tender: any) => {
+      // Ensure evaluationType is always present
+      if (tender && typeof tender === 'object' && !tender.evaluationType) {
+        tender.evaluationType = 'MOINS_DISANT';
+      }
+
+      const sanitized = this.sanitizeTender(tender, user);
+
+      return {
+        ...sanitized,
+        attachments: transformAttachment(tender.attachments, this.baseUrl),
+        category: tender.category ? {
+          ...tender.category,
+          thumb: transformAttachment(tender.category.thumb, this.baseUrl),
+        } : null,
+      };
+    });
   }
 
   @Post('check')
@@ -386,13 +406,37 @@ export class TenderController {
     return this.tenderService.remove(id);
   }
 
-  // Tender bid endpoints
   @Post(':id/bid')
   @UseGuards(AuthGuard)
+  @UseInterceptors(
+    FileInterceptor('proposalFile', {
+      storage: diskStorage({
+        destination: './uploads',
+        filename: (req, file, cb) => {
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, uniqueSuffix + extname(file.originalname));
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+        if (allowedMimes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Seuls les fichiers PDF et DOCX sont acceptés'), false);
+        }
+      },
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+    }),
+  )
   async createTenderBid(
     @Param('id') tenderId: string,
     @Body() createTenderBidDto: CreateTenderBidDto,
     @Request() req: ProtectedRequest,
+    @UploadedFile() proposalFileUpload?: Express.Multer.File,
   ) {
     const userId = req.session?.user?._id?.toString();
     if (!userId) {
@@ -403,37 +447,63 @@ export class TenderController {
     const tender = await this.tenderService.findOne(tenderId);
     const isMieuxDisant = tender.evaluationType === 'MIEUX_DISANT';
 
+    const hasProposalText = createTenderBidDto.proposal && createTenderBidDto.proposal.trim().length >= 10;
+    const hasProposalFile = !!proposalFileUpload;
+
     console.log('🔍 [TenderController] Bid validation:', {
       tenderId,
       evaluationType: tender.evaluationType,
       isMieuxDisant,
       bidAmount: createTenderBidDto.bidAmount,
-      hasProposal: !!createTenderBidDto.proposal,
-      proposalLength: createTenderBidDto.proposal?.length
+      hasProposalText,
+      hasProposalFile,
     });
 
     if (isMieuxDisant) {
-      // For MIEUX_DISANT: Proposal is required, bidAmount can be 0
-      if (!createTenderBidDto.proposal || createTenderBidDto.proposal.trim().length < 10) {
-        throw new BadRequestException('Une proposition détaillée est requise (minimum 10 caractères)');
+      // For MIEUX_DISANT: require proposal text (≥10 chars) OR an uploaded file (or both)
+      if (!hasProposalText && !hasProposalFile) {
+        throw new BadRequestException(
+          'Veuillez rédiger une proposition (minimum 10 caractères) ou joindre un fichier PDF/DOCX'
+        );
       }
     } else {
-      // For MOINS_DISANT: Bid amount must be positive
+      // For MOINS_DISANT: bid amount must be positive
       if (!createTenderBidDto.bidAmount || createTenderBidDto.bidAmount <= 0) {
         throw new BadRequestException('Le montant de l\'offre doit être un nombre positif');
+      }
+    }
+
+    // If a file was uploaded, save it via AttachmentService and store its URL
+    if (proposalFileUpload) {
+      try {
+        const attachment = await this.attachmentService.upload(
+          proposalFileUpload,
+          AttachmentAs.BID,
+          userId,
+        );
+        createTenderBidDto.proposalFile = attachment.url
+          ? (attachment.url.startsWith('http') ? attachment.url : `${this.baseUrl}${attachment.url}`)
+          : `${this.baseUrl}/uploads/${proposalFileUpload.filename}`;
+        console.log('📎 Proposal file uploaded:', createTenderBidDto.proposalFile);
+      } catch (uploadError) {
+        console.error('Error uploading proposal file:', uploadError);
+        throw new BadRequestException('Échec du téléchargement du fichier de proposition');
       }
     }
 
     // Set the bidder from the authenticated user
     createTenderBidDto.bidder = userId;
 
-    // Set tender owner (already fetched above for validation)
+    // Set tender owner
     if (!tender.owner || !tender.owner._id) {
       throw new BadRequestException('Tender owner not found');
     }
     createTenderBidDto.tenderOwner = tender.owner._id.toString();
 
-    console.log('Controller - Final DTO before service call:', createTenderBidDto);
+    console.log('Controller - Final DTO before service call:', {
+      ...createTenderBidDto,
+      proposalFile: createTenderBidDto.proposalFile ? '[URL]' : undefined,
+    });
 
     return this.tenderService.createTenderBid(tenderId, createTenderBidDto, isMieuxDisant);
   }
@@ -443,7 +513,7 @@ export class TenderController {
   async getTenderBids(@Param('id') tenderId: string, @Request() req: any) {
     const user = req.session?.user;
     const bids = await this.tenderService.getTenderBidsByTenderId(tenderId);
-    
+
     // Fetch tender for logic context
     const tender = await this.tenderService.findOne(tenderId);
 
@@ -455,14 +525,38 @@ export class TenderController {
 
   @Get('owner/:ownerId/bids')
   @UseGuards(AuthGuard)
-  async getTenderBidsByOwner(@Param('ownerId') ownerId: string) {
-    return this.tenderService.getTenderBidsByOwnerId(ownerId);
+  async getTenderBidsByOwner(@Param('ownerId') ownerId: string, @Request() req: any) {
+    const user = req.session?.user;
+    const bids = await this.tenderService.getTenderBidsByOwnerId(ownerId);
+
+    return bids.map(bid => {
+      const tender = bid.tender as any;
+      if (tender && typeof tender === 'object' && !tender.evaluationType) {
+        tender.evaluationType = 'MOINS_DISANT';
+      }
+      return {
+        ...bid,
+        bidder: this.sanitizeUser(bid.bidder, false, tender, user)
+      };
+    });
   }
 
   @Get('bidder/:bidderId/bids')
   @UseGuards(AuthGuard)
-  async getTenderBidsByBidder(@Param('bidderId') bidderId: string) {
-    return this.tenderService.getTenderBidsByBidderId(bidderId);
+  async getTenderBidsByBidder(@Param('bidderId') bidderId: string, @Request() req: any) {
+    const user = req.session?.user;
+    const bids = await this.tenderService.getTenderBidsByBidderId(bidderId);
+
+    return bids.map(bid => {
+      const tender = bid.tender as any;
+      if (tender && typeof tender === 'object' && !tender.evaluationType) {
+        tender.evaluationType = 'MOINS_DISANT';
+      }
+      return {
+        ...bid,
+        bidder: this.sanitizeUser(bid.bidder, false, tender, user)
+      };
+    });
   }
 
   // Debug endpoint to check tender data
@@ -546,8 +640,29 @@ export class TenderController {
    */
   @Get('bids/:bidId')
   @Public()
-  async getTenderBidById(@Param('bidId') bidId: string) {
-    return this.tenderService.getTenderBidById(bidId);
+  async getTenderBidById(@Param('bidId') bidId: string, @Request() req: any) {
+    const user = req.session?.user;
+    const bid = await this.tenderService.getTenderBidById(bidId);
+    if (!bid) return null;
+
+    const tender = bid.tender as any;
+    if (tender && typeof tender === 'object' && !tender.evaluationType) {
+      tender.evaluationType = 'MOINS_DISANT';
+    }
+
+    // Explicitly construct the response to ensure all fields are present
+    return {
+      _id: bid._id,
+      bidAmount: bid.bidAmount,
+      proposal: bid.proposal,
+      proposalFile: bid.proposalFile,
+      deliveryTime: bid.deliveryTime,
+      status: bid.status,
+      createdAt: bid.createdAt,
+      updatedAt: bid.updatedAt,
+      tender: tender,
+      bidder: this.sanitizeUser(bid.bidder, false, tender, user)
+    };
   }
 
   @Get('debug/version')

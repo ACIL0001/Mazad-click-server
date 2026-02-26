@@ -19,7 +19,7 @@ export function getApiBaseUrl(): string {
       const hostPart = appHost.replace(/\/$/, '');
       return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
     })();
-  
+
   return apiBaseUrl.replace(/\/$/, '');
 }
 
@@ -96,7 +96,7 @@ export function sanitizeUser(u: User | any, currentUser?: User | any, options: {
   const { isOwnerAccount = false, isHidden = false, ownerId } = options;
   const userId = currentUser?._id?.toString();
   const isAdmin = currentUser?.type && (currentUser.type === RoleCode.ADMIN || currentUser.type === RoleCode.SOUS_ADMIN);
-  
+
   // If ownerId is provided, use it for ownership check, otherwise try u._id
   const targetUserId = ownerId || u._id?.toString() || u.id;
   const isOwner = userId && targetUserId === userId;

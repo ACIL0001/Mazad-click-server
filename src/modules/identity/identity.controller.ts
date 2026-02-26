@@ -17,6 +17,8 @@ import {
   Query // Added Query import
 } from '@nestjs/common';
 import { IdentityService } from './identity.service';
+import { IdentityHistoryService } from './identity-history.service';
+import { ACTION_TYPE } from './identity-history.schema';
 import { Types } from 'mongoose';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import { CreateIdentityDto } from './dto/create-identity.dto';
@@ -49,6 +51,7 @@ import { transformAttachment } from 'src/common/utils';
 export class IdentityController {
   constructor(
     private readonly identityService: IdentityService,
+    private readonly identityHistoryService: IdentityHistoryService,
     @InjectModel(Identity.name) private identityModel: Model<IdentityDocument>,
     @InjectModel(Professional.name) private proModel: Model<ProfessionalDocument>,
     private readonly attachmentService: AttachmentService,
@@ -808,6 +811,7 @@ export class IdentityController {
       // Trigger notification for admins
       if (updatedIdentity) {
         await this.identityService.createIdentityVerificationNotification(updatedIdentity);
+        await this.identityHistoryService.logHistory(updatedIdentity, ACTION_TYPE.SUBMITTED, undefined, 'Soumis pour vérification');
       }
 
       return {
@@ -844,7 +848,8 @@ export class IdentityController {
   @UseGuards(AdminGuard)
   async verifyIdentity(
     @Param('id') identityId: string,
-    @Body() body: { action: 'accept' | 'reject' }
+    @Body() body: { action: 'accept' | 'reject' },
+    @Request() req
   ) {
     const { action } = body;
 
@@ -967,10 +972,21 @@ export class IdentityController {
         });
       }
 
+      const finalIdentity = await this.identityService.getIdentityById(identityId);
+      const adminId = req.session?.user?._id;
+      if (finalIdentity) {
+        await this.identityHistoryService.logHistory(
+          finalIdentity,
+          action === 'accept' ? ACTION_TYPE.APPROVED : ACTION_TYPE.REJECTED,
+          adminId,
+          `Vérification ${action === 'accept' ? 'acceptée' : 'rejetée'}`
+        );
+      }
+
       return {
         success: true,
         message: `Identity ${action}ed successfully`,
-        identity: await this.identityService.getIdentityById(identityId)
+        identity: finalIdentity
       };
     } catch (error) {
       console.error('Error verifying identity:', error);
@@ -1276,6 +1292,7 @@ export class IdentityController {
       // Trigger notification for admins
       if (updatedIdentity) {
         await this.identityService.createIdentityCertificationNotification(updatedIdentity);
+        await this.identityHistoryService.logHistory(updatedIdentity, ACTION_TYPE.SUBMITTED, undefined, 'Soumis pour certification');
       }
 
       return {
@@ -1313,7 +1330,8 @@ export class IdentityController {
   @UseGuards(AdminGuard)
   async verifyCertification(
     @Param('id') identityId: string,
-    @Body() body: { action: 'accept' | 'reject' }
+    @Body() body: { action: 'accept' | 'reject' },
+    @Request() req
   ) {
     const { action } = body;
 
@@ -1367,10 +1385,21 @@ export class IdentityController {
         });
       }
 
+      const finalIdentity = await this.identityService.getIdentityById(identityId);
+      const adminId = req.session?.user?._id;
+      if (finalIdentity) {
+        await this.identityHistoryService.logHistory(
+          finalIdentity,
+          action === 'accept' ? ACTION_TYPE.APPROVED : ACTION_TYPE.REJECTED,
+          adminId,
+          `Certification ${action === 'accept' ? 'acceptée' : 'rejetée'}`
+        );
+      }
+
       return {
         success: true,
         message: `Certification ${action}ed successfully`,
-        identity: await this.identityService.getIdentityById(identityId)
+        identity: finalIdentity
       };
     } catch (error) {
       console.error('Error verifying certification:', error);
