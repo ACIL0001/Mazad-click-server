@@ -231,6 +231,9 @@ export class BidService {
       populatedBid._id.toString()
     ).catch(err => console.error('Error notifying interested users:', err));
 
+    // Broadcast new listing to all connected clients for real-time updates
+    this.ChatGateWay.broadcastNewListing('auction', populatedBid);
+
     return populatedBid;
   }
 

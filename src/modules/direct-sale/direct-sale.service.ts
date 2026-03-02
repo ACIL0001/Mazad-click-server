@@ -26,6 +26,7 @@ import { AttachmentService } from '../attachment/attachment.service';
 import { ChatService } from '../chat/chat.service';
 import { UserService } from '../user/user.service';
 import { SearchService } from '../search/search.service';
+import { SocketGateway } from 'src/socket/socket.gateway';
 
 @Injectable()
 export class DirectSaleService {
@@ -40,6 +41,7 @@ export class DirectSaleService {
     private chatService: ChatService,
     private userService: UserService,
     private searchService: SearchService,
+    private readonly chatGateway: SocketGateway,
   ) { }
 
   async findAll(user?: any): Promise<any[]> {
@@ -252,6 +254,9 @@ export class DirectSaleService {
       'direct-sale',
       populatedDirectSale._id.toString()
     ).catch(err => console.error('Error notifying interested users:', err));
+
+    // Broadcast new listing to all connected clients for real-time updates
+    this.chatGateway.broadcastNewListing('directSale', populatedDirectSale);
 
     return populatedDirectSale;
   }

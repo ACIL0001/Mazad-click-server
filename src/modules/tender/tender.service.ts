@@ -3,7 +3,9 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import * as mongoose from 'mongoose';
 import { Model, RootFilterQuery, Types } from 'mongoose';
@@ -42,6 +44,8 @@ export class TenderService {
     private userService: UserService,
     private searchService: SearchService,
   ) { }
+
+  private readonly logger = new Logger(TenderService.name);
 
   // Add the missing findAllSellers method
   private async findAllSellers(): Promise<User[]> {
@@ -227,6 +231,9 @@ export class TenderService {
       populatedTender._id.toString()
     ).catch(err => console.error('Error notifying interested users:', err));
 
+    // Broadcast new listing to all connected clients for real-time updates
+    this.chatGateway.broadcastNewListing('tender', populatedTender);
+
     return populatedTender;
   }
 
@@ -270,143 +277,30 @@ export class TenderService {
           }
         }
 
-        // Check if tender owner is a professional user for automatic awarding
-        const tenderOwner = await this.userModel.findById(getAllTenders[index].owner).exec();
-        const isProfessionalOwner = tenderOwner && tenderOwner.type === 'PROFESSIONAL';
+        // Ensure atomic update to prevent duplicate processing
+        const updatedTender = await this.tenderModel.findOneAndUpdate(
+          { _id: getAllTenders[index]._id, status: TENDER_STATUS.OPEN },
+          { status: TENDER_STATUS.AWARDED, awardedTo: lowestBid.bidder },
+          { new: true }
+        );
 
-        if (isProfessionalOwner) {
-          // Award the tender to the lowest bidder automatically for professional users
-          await this.tenderModel.findByIdAndUpdate(getAllTenders[index]._id, {
-            status: TENDER_STATUS.AWARDED,
-            awardedTo: lowestBid.bidder,
-          });
-        } else {
-          // For non-professional users, just close the tender without automatic awarding
-          await this.tenderModel.findByIdAndUpdate(getAllTenders[index]._id, {
-            status: TENDER_STATUS.CLOSED,
-          });
-          continue;
+        if (!updatedTender) {
+          continue; // Already processed
         }
 
         const getWinner = await this.userModel.findOne({ _id: lowestBid.bidder });
 
-        let users = [getUser, getWinner];
-        let createdAt = new Date();
-
-        const chat = new this.chatModel({ users, createdAt })
-        await chat.save()
-
-        // Send socket notification for new chat to winner (seller)
-        this.chatGateway.sendNewChatToBuyer(
-          lowestBid.bidder._id.toString(),
-          {
-            type: 'TENDER_WON',
-            title: 'Félicitations! Vous avez remporté l\'appel d\'offres',
-            message: `Vous avez remporté l'appel d'offres pour "${getAllTenders[index].title || 'le projet'}" avec votre offre de ${lowestBid.bidAmount} DA. Un chat a été créé avec l'acheteur pour finaliser la transaction.`,
-            chatId: chat._id,
-            buyerName: getUser.firstName + ' ' + getUser.lastName,
-            tenderTitle: getAllTenders[index].title
-          }
-        );
-
-        // Send socket notification for new chat to tender owner (buyer)
-        this.chatGateway.sendNewChatToSeller(
-          getUser._id.toString(),
-          {
-            type: 'TENDER_AWARDED',
-            title: 'Votre appel d\'offres a été attribué',
-            message: `Votre appel d'offres "${getAllTenders[index].title || 'le projet'}" a été attribué à ${getWinner.firstName} ${getWinner.lastName} pour ${lowestBid.bidAmount} DA. Un chat a été créé pour finaliser la transaction.`,
-            chatId: chat._id,
-            winnerName: getWinner.firstName + ' ' + getWinner.lastName,
-            tenderTitle: getAllTenders[index].title
-          }
-        );
-
-        // Send winner notification (DB) to seller
-        await this.notificationService.create(
-          lowestBid.bidder._id.toString(),
-          NotificationType.BID_WON,
-          'Félicitations! Vous avez remporté l\'appel d\'offres',
-          `Vous avez remporté l'appel d'offres pour "${getAllTenders[index].title || 'le projet'}". Un chat a été créé avec l'acheteur pour finaliser la transaction.`,
-          {
-            tenderId: getAllTenders[index]._id,
-            tenderTitle: getAllTenders[index].title,
-            quantity: getAllTenders[index].quantity,
-            ownerName: getUser.firstName + ' ' + getUser.lastName,
-            contactNumber: getAllTenders[index].contactNumber,
-            buyerId: getUser._id,
-            sellerId: lowestBid.bidder._id,
-            finalPrice: lowestBid.bidAmount,
-            chatId: chat._id
-          },
-          getUser._id.toString(),
-          `${getUser.firstName} ${getUser.lastName}`,
-          getUser.email
-        );
-
-        // Send buyer notification for tender award (DB)
-        await this.notificationService.create(
-          getUser._id.toString(),
-          NotificationType.ITEM_SOLD,
-          'Votre appel d\'offres a été attribué',
-          `Votre appel d'offres "${getAllTenders[index].title || 'le projet'}" a été attribué à ${getWinner.firstName} ${getWinner.lastName} pour ${lowestBid.bidAmount} DA. Un chat a été créé pour finaliser la transaction.`,
-          {
-            tenderId: getAllTenders[index]._id,
-            tenderTitle: getAllTenders[index].title,
-            sellerId: lowestBid.bidder._id,
-            sellerName: getWinner.firstName + ' ' + getWinner.lastName,
-            finalPrice: lowestBid.bidAmount,
-            chatId: chat._id
-          },
-          lowestBid.bidder._id.toString(), // senderId
-          `${getWinner.firstName} ${getWinner.lastName}`, // senderName
-          getWinner.email // senderEmail
-        );
-
-        // Add CHAT_CREATED notification for seller
-        await this.notificationService.create(
-          lowestBid.bidder._id.toString(),
-          NotificationType.CHAT_CREATED,
-          'Nouveau chat créé',
-          `Un nouveau chat a été créé avec l'acheteur ${getUser.firstName} ${getUser.lastName} pour finaliser votre projet "${getAllTenders[index].title || 'le projet'}".`,
-          {
-            chatId: chat._id,
-            buyerName: getUser.firstName + ' ' + getUser.lastName,
-            tenderTitle: getAllTenders[index].title
-          },
-          getUser._id.toString(), // senderId
-          `${getUser.firstName} ${getUser.lastName}`, // senderName
-          getUser.email // senderEmail
-        );
-
-        // Add CHAT_CREATED notification for buyer
-        await this.notificationService.create(
-          getUser._id.toString(),
-          NotificationType.CHAT_CREATED,
-          'Nouveau chat avec le gagnant',
-          `Un nouveau chat a été créé avec le prestataire ${getWinner.firstName} ${getWinner.lastName} pour finaliser votre projet "${getAllTenders[index].title || 'le projet'}".`,
-          {
-            chatId: chat._id,
-            winnerName: getWinner.firstName + ' ' + getWinner.lastName,
-            tenderTitle: getAllTenders[index].title
-          },
-          getWinner._id.toString(), // senderId
-          `${getWinner.firstName} ${getWinner.lastName}`, // senderName
-          getWinner.email // senderEmail
-        );
-
-        this.chatGateway.sendNotificationChatCreateToOne(lowestBid.bidder._id.toString());
-
-        // Send notifications to all participants about the tender result
-        await this.notifyAllParticipants(getAllTenders[index]._id, lowestBid, getAllTenders[index].title);
+        // Process the award (creates chats, sends detailed notifications)
+        await this.processTenderAwarded(updatedTender, lowestBid, getUser, getWinner);
 
         continue;
       }
 
       // If no acceptable bids, close the tender
-      await this.tenderModel.findByIdAndUpdate(getAllTenders[index]._id, {
-        status: TENDER_STATUS.CLOSED,
-      });
+      await this.tenderModel.findOneAndUpdate(
+        { _id: getAllTenders[index]._id, status: TENDER_STATUS.OPEN },
+        { status: TENDER_STATUS.CLOSED }
+      );
 
     }
     return;
@@ -860,22 +754,23 @@ export class TenderService {
 
   /**
    * Check all open tenders and automatically award them if they have ended
-   * This method should be called periodically (e.g., via cron job)
+   * Runs every minute via cron job
    */
+  @Cron(CronExpression.EVERY_MINUTE)
   async checkAllTendersForAutoAward(): Promise<void> {
-    console.log('Checking all tenders for automatic awarding...');
+    this.logger.log('Checking all tenders for automatic awarding...');
 
     try {
       // Get all open tenders
       const openTenders = await this.tenderModel.find({ status: TENDER_STATUS.OPEN }).exec();
-      console.log(`Found ${openTenders.length} open tenders to check`);
+      this.logger.log(`Found ${openTenders.length} open tenders to check`);
 
       for (const tender of openTenders) {
         const now = Date.now();
         const endDate = new Date(tender.endingAt).getTime();
 
         if (endDate < now) {
-          console.log(`Tender ${tender._id} has ended, checking for automatic awarding...`);
+          this.logger.log(`Tender ${tender._id} has ended, checking for automatic awarding...`);
 
           // Get all bids for this tender
           const tenderBids = await this.tenderBidModel.find({ tender: tender._id }).exec();
@@ -889,60 +784,48 @@ export class TenderService {
               }
             }
 
-            // Check if tender owner is a professional user
-            const tenderOwner = await this.userModel.findById(tender.owner).exec();
-            const isProfessionalOwner = tenderOwner && tenderOwner.type === 'PROFESSIONAL';
+            this.logger.log(`Auto-awarding tender ${tender._id} to lowest bidder ${lowestBid.bidder}`);
 
-            if (isProfessionalOwner) {
-              console.log(`Auto-awarding tender ${tender._id} to lowest bidder ${lowestBid.bidder}`);
+            // Atomically award the tender to the lowest bidder
+            const updatedTender = await this.tenderModel.findOneAndUpdate(
+              { _id: tender._id, status: TENDER_STATUS.OPEN },
+              { status: TENDER_STATUS.AWARDED, awardedTo: lowestBid.bidder },
+              { new: true }
+            );
 
-              // Award the tender to the lowest bidder
-              await this.tenderModel.findByIdAndUpdate(tender._id, {
-                status: TENDER_STATUS.AWARDED,
-                awardedTo: lowestBid.bidder,
-              });
-
-              // Get winner details
-              const getWinner = await this.userModel.findById(lowestBid.bidder).exec();
-              const getTenderOwner = await this.userModel.findById(tender.owner).exec();
-
-              // Create chat between winner and tender owner
-              const users = [getTenderOwner, getWinner];
-              const createdAt = new Date();
-              const chat = new this.chatModel({ users, createdAt });
-              await chat.save();
-
-              // Send notifications to all participants
-              await this.notifyAllParticipants(tender._id, lowestBid, tender.title);
-
-              console.log(`Tender ${tender._id} automatically awarded successfully`);
-            } else {
-              // For non-professional users, just close the tender
-              await this.tenderModel.findByIdAndUpdate(tender._id, {
-                status: TENDER_STATUS.CLOSED,
-              });
-              console.log(`Tender ${tender._id} closed (non-professional owner)`);
+            if (!updatedTender) {
+              continue; // Already processed
             }
+
+            // Get winner details
+            const getWinner = await this.userModel.findById(lowestBid.bidder).exec();
+            const getTenderOwner = await this.userModel.findById(tender.owner).exec();
+
+            // Process the award (creates chats, sends detailed notifications)
+            await this.processTenderAwarded(tender, lowestBid, getTenderOwner, getWinner);
+
+            this.logger.log(`Tender ${tender._id} automatically awarded successfully`);
           } else {
             // No bids, close the tender
-            await this.tenderModel.findByIdAndUpdate(tender._id, {
-              status: TENDER_STATUS.CLOSED,
-            });
-            console.log(`Tender ${tender._id} closed (no bids)`);
+            await this.tenderModel.findOneAndUpdate(
+              { _id: tender._id, status: TENDER_STATUS.OPEN },
+              { status: TENDER_STATUS.CLOSED }
+            );
+            this.logger.log(`Tender ${tender._id} closed (no bids)`);
           }
         }
       }
 
-      console.log('All tenders checked for automatic awarding');
+      this.logger.log('All tenders checked for automatic awarding');
     } catch (error) {
-      console.error('Error checking tenders for auto-award:', error);
+      this.logger.error('Error checking tenders for auto-award:', error);
     }
   }
 
   /**
    * Notify all participants about tender results
    */
-  private async notifyAllParticipants(tenderId: string, winningBid: any, tenderTitle: string): Promise<void> {
+  private async notifyAllParticipants(tenderId: string, winningBid: any, tenderTitle: string, tenderOwner?: any, chatId?: string, skipWinner: boolean = false): Promise<void> {
     try {
       // Get all bids for this tender
       const allBids = await this.tenderBidModel
@@ -950,13 +833,13 @@ export class TenderService {
         .populate('bidder', 'firstName lastName email')
         .exec();
 
-      console.log(`Notifying ${allBids.length} participants about tender results`);
+      this.logger.log(`Notifying ${allBids.length} participants about tender results`);
 
       // Send notifications to all participants
       for (const bid of allBids) {
         const isWinner = bid._id.toString() === winningBid._id.toString();
 
-        if (isWinner) {
+        if (isWinner && !skipWinner) {
           // Winner notification
           await this.notificationService.create(
             bid.bidder._id.toString(),
@@ -967,10 +850,12 @@ export class TenderService {
               tenderId: tenderId,
               tenderTitle: tenderTitle,
               bidAmount: bid.bidAmount,
-              isWinner: true
+              isWinner: true,
+              ownerName: tenderOwner ? `${tenderOwner.firstName || ''} ${tenderOwner.lastName || ''}`.trim() || undefined : undefined,
+              chatId: chatId
             }
           );
-        } else {
+        } else if (!isWinner) {
           // Loser notification
           await this.notificationService.create(
             bid.bidder._id.toString(),
@@ -988,10 +873,90 @@ export class TenderService {
         }
       }
 
-      console.log('All participant notifications sent successfully');
+      this.logger.log('All participant notifications sent successfully');
     } catch (error) {
-      console.error('Error notifying participants:', error);
+      this.logger.error('Error notifying participants:', error);
       // Don't throw error to avoid breaking the main flow
     }
+  }
+
+  private async processTenderAwarded(tender: any, lowestBid: any, tenderOwner: any, winner: any): Promise<void> {
+    // Create chat between winner and tender owner
+    const users = [tenderOwner, winner];
+    const createdAt = new Date();
+    const chat = new this.chatModel({ users, createdAt });
+    await chat.save();
+
+    // Send socket notification for new chat to winner (seller)
+    this.chatGateway.sendNewChatToBuyer(
+      lowestBid.bidder._id.toString(),
+      {
+        type: 'TENDER_WON',
+        title: 'Félicitations! Vous avez remporté l\'appel d\'offres',
+        message: `Vous avez remporté l'appel d'offres pour "${tender.title || 'le projet'}" avec votre offre de ${lowestBid.bidAmount} DA. Un chat a été créé avec l'acheteur pour finaliser la transaction.`,
+        chatId: chat._id,
+        buyerName: tenderOwner.firstName + ' ' + tenderOwner.lastName,
+        tenderTitle: tender.title
+      }
+    );
+
+    // Send socket notification for new chat to tender owner (buyer)
+    this.chatGateway.sendNewChatToSeller(
+      tenderOwner._id.toString(),
+      {
+        type: 'TENDER_AWARDED',
+        title: 'Votre appel d\'offres a été attribué',
+        message: `Votre appel d'offres "${tender.title || 'le projet'}" a été attribué à ${winner.firstName} ${winner.lastName} pour ${lowestBid.bidAmount} DA. Un chat a été créé pour finaliser la transaction.`,
+        chatId: chat._id,
+        winnerName: winner.firstName + ' ' + winner.lastName,
+        tenderTitle: tender.title
+      }
+    );
+
+    // Send winner notification (DB) to seller
+    await this.notificationService.create(
+      lowestBid.bidder._id.toString(),
+      NotificationType.BID_WON,
+      'Félicitations! Vous avez remporté l\'appel d\'offres',
+      `Vous avez remporté l'appel d'offres pour "${tender.title || 'le projet'}". Un chat a été créé avec l'acheteur pour finaliser la transaction.`,
+      {
+        tenderId: tender._id,
+        tenderTitle: tender.title,
+        quantity: tender.quantity,
+        ownerName: tenderOwner.firstName + ' ' + tenderOwner.lastName,
+        contactNumber: tender.contactNumber,
+        buyerId: tenderOwner._id,
+        sellerId: lowestBid.bidder._id,
+        finalPrice: lowestBid.bidAmount,
+        chatId: chat._id
+      },
+      tenderOwner._id.toString(),
+      `${tenderOwner.firstName} ${tenderOwner.lastName}`,
+      tenderOwner.email
+    );
+
+    // Send buyer notification for tender award (DB)
+    await this.notificationService.create(
+      tenderOwner._id.toString(),
+      NotificationType.ITEM_SOLD,
+      'Votre appel d\'offres a été attribué',
+      `Votre appel d'offres "${tender.title || 'le projet'}" a été attribué à ${winner.firstName} ${winner.lastName} pour ${lowestBid.bidAmount} DA. Un chat a été créé pour finaliser la transaction.`,
+      {
+        tenderId: tender._id,
+        tenderTitle: tender.title,
+        sellerId: lowestBid.bidder._id,
+        sellerName: winner.firstName + ' ' + winner.lastName,
+        finalPrice: lowestBid.bidAmount,
+        chatId: chat._id
+      },
+      lowestBid.bidder._id.toString(), // senderId
+      `${winner.firstName} ${winner.lastName}`, // senderName
+      winner.email // senderEmail
+    );
+
+    this.chatGateway.sendNotificationChatCreateToOne(lowestBid.bidder._id.toString());
+
+    // Send notifications to all participants about the tender result (skip winner since we just sent a detailed one)
+    await this.notifyAllParticipants(tender._id, lowestBid, tender.title, tenderOwner, chat._id, true);
   }
 }

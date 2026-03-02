@@ -15,6 +15,7 @@ import { UserModule } from '../user/user.module';
 import { AttachmentModule } from '../attachment/attachment.module';
 import { ChatModule } from '../chat/chat.module';
 import { SearchModule } from '../search/search.module';
+import { SocketModule } from 'src/socket/socket.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { SearchModule } from '../search/search.module';
     AttachmentModule,
     ChatModule,
     SearchModule,
+    SocketModule,
   ],
   controllers: [DirectSaleController],
   providers: [DirectSaleService],

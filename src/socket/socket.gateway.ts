@@ -380,6 +380,10 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.emit('notification', notification);
   }
 
+  broadcastNewListing(type: 'tender' | 'auction' | 'directSale', item: any) {
+    this.server.emit('newListingCreated', { type, item });
+  }
+
   sendNotificationToUser(userId: string, notification: any) {
     console.log('📧 sendNotificationToUser called:', { userId, notification });
     const user = this.onlineUsers.find((u) => u.userId === userId);
