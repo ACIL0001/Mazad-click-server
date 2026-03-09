@@ -69,6 +69,7 @@ import { TenderModule } from './modules/tender/tender.module';
 import { DirectSaleModule } from './modules/direct-sale/direct-sale.module';
 import { AdsModule } from './modules/ads/ads.module';
 import { EmailModule } from './modules/email/email.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 @Module({
   imports: [
@@ -249,6 +250,7 @@ import { EmailModule } from './modules/email/email.module';
     DirectSaleModule,
     AdsModule,
     EmailModule,
+    SettingsModule,
   ],
   providers: [
     {
