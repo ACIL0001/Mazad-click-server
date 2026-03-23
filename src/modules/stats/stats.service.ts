@@ -7,13 +7,26 @@ import { Category, CategoryDocument } from '../category/schema/category.schema';
 import { Tender, TenderDocument, TENDER_STATUS } from '../tender/schema/tender.schema';
 import { RoleCode } from '../apikey/entity/appType.entity';
 
+export interface UserStatusStats {
+  total: number;
+  verified: number;
+  unverified: number;
+  active: number;
+  inactive: number;
+  banned: number;
+  notBanned: number;
+  recommended: number;
+  notRecommended: number;
+  certified?: number;
+}
+
 export interface UserStats {
   total: number;
   byType: {
-    admin: number;
-    professional: number;
-    client: number;
-    reseller: number;
+    admin: UserStatusStats | number;
+    professional: UserStatusStats;
+    client: UserStatusStats;
+    reseller: UserStatusStats;
   };
 }
 
@@ -75,19 +88,29 @@ export class StatsService {
   async getUserStats(): Promise<UserStats> {
     const users = await this.userModel.find({}).lean().exec() as User[];
 
-    // Count by type
-    const admins = users.filter(user => user.type === RoleCode.ADMIN);
-    const professionals = users.filter(user => user.type === RoleCode.PROFESSIONAL);
-    const clients = users.filter(user => user.type === RoleCode.CLIENT);
-    const resellers = users.filter(user => user.type === RoleCode.RESELLER);
+    const getStatsForType = (type: RoleCode) => {
+      const typeUsers = users.filter(user => user.type === type);
+      return {
+        total: typeUsers.length,
+        verified: typeUsers.filter(u => u.isVerified).length,
+        unverified: typeUsers.filter(u => !u.isVerified).length,
+        active: typeUsers.filter(u => u.isActive).length,
+        inactive: typeUsers.filter(u => !u.isActive).length,
+        banned: typeUsers.filter(u => u.isBanned).length,
+        notBanned: typeUsers.filter(u => !u.isBanned).length,
+        recommended: typeUsers.filter(u => u.isRecommended).length,
+        notRecommended: typeUsers.filter(u => !u.isRecommended).length,
+        certified: typeUsers.filter(u => (u as any).isCertified).length,
+      };
+    };
 
     return {
       total: users.length,
       byType: {
-        admin: admins.length,
-        professional: professionals.length,
-        client: clients.length,
-        reseller: resellers.length,
+        admin: users.filter(user => user.type === RoleCode.ADMIN).length,
+        professional: getStatsForType(RoleCode.PROFESSIONAL),
+        client: getStatsForType(RoleCode.CLIENT),
+        reseller: getStatsForType(RoleCode.RESELLER),
       },
     };
   }

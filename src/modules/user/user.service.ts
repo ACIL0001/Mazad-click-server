@@ -619,4 +619,48 @@ export class UserService implements OnModuleInit {
   async incrementLoginCount(userId: string) {
     return this.userModel.findByIdAndUpdate(userId, { $inc: { loginCount: 1 } });
   }
+
+  async getList(query: any) {
+    const { page = 0, limit = 10, search = '', type, verified, active, banned, certified, recommended } = query;
+    const filter: any = {};
+
+    if (type) filter.type = type;
+    if (verified !== undefined) filter.isVerified = verified === 'true';
+    if (active !== undefined) filter.isActive = active === 'true';
+    if (banned !== undefined) filter.isBanned = banned === 'true';
+    if (certified !== undefined) filter.isCertified = certified === 'true';
+    if (recommended !== undefined) filter.isRecommended = recommended === 'true';
+
+    if (search) {
+      filter.$or = [
+        { firstName: { $regex: search, $options: 'i' } },
+        { lastName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const total = await this.userModel.countDocuments(filter);
+    const users = await this.userModel
+      .find(filter)
+      .populate(['avatar', 'coverPhoto'])
+      .sort({ createdAt: -1 })
+      .skip(Number(page) * Number(limit))
+      .limit(Number(limit))
+      .exec();
+
+    // Enrich users
+    const enrichedUsers = [];
+    for (const user of users) {
+      await this.convertSecteurIdToName(user);
+      enrichedUsers.push(this.enrichUserWithAvatarUrls(user));
+    }
+
+    return {
+      data: enrichedUsers,
+      total,
+      page: Number(page),
+      limit: Number(limit),
+    };
+  }
 }

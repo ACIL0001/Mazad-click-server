@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, UseGuards, Request, Body, Patch, Param, BadRequestException, UseInterceptors, UploadedFile, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Put, UseGuards, Request, Body, Patch, Param, BadRequestException, UseInterceptors, UploadedFile, Delete, Query } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { AuthGuard } from 'src/common/guards/auth.guard';
@@ -54,6 +54,12 @@ export class UserController {
 
   private sanitizeUserResponse(u: User | any, currentUser?: User | any): SanitizedUser {
     return sanitizeUser(u, currentUser);
+  }
+
+  @Get('list')
+  @UseGuards(AdminGuard)
+  async getList(@Query() query: any) {
+    return this.userService.getList(query);
   }
 
   @Get('/me')
