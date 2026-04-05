@@ -38,7 +38,7 @@ export class StatsController {
       totalUsers: users.total,
       totalAuctions: auctions.total,
       totalTenders: tenders.total,
-      totalActiveUsers: users.byType.professional.total + users.byType.client.total,
+      totalActiveUsers: users.byType.professional + users.byType.client,
       lastUpdated: new Date(),
     };
   }
@@ -69,7 +69,7 @@ export class StatsController {
         },
         {
           title: 'Active Users',
-          value: users.byType.professional.total + users.byType.client.total,
+          value: users.byType.professional + users.byType.client,
           icon: 'active-users',
         },
       ],

@@ -77,7 +77,7 @@ export class BidController {
       'quantity', 'bidType', 'auctionType', 'status', 'startingAt', 'endingAt', 'endDate',
       'thumbs', 'videos', 'place', 'wilaya', 'participantsCount', 'isPro', 'hidden',
       'professionalOnly', 'owner', 'offers', 'comments', 'biddersCount',
-      'createdAt', 'updatedAt', 'slug', 'bidders'
+      'createdAt', 'updatedAt', 'slug', 'bidders', 'productCategory', 'productSubCategory'
     ];
 
     // If owner or admin, add sensitive fields
