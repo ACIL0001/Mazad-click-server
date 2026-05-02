@@ -40,10 +40,12 @@ export class IdentityDto {
 }
 
 export class CreateUserDto {
+  @ValidateIf((o) => o.type !== 'PROFESSIONAL')
   @IsString()
   @IsNotEmpty()
   firstName: string;
 
+  @ValidateIf((o) => o.type !== 'PROFESSIONAL')
   @IsString()
   @IsNotEmpty()
   lastName: string;

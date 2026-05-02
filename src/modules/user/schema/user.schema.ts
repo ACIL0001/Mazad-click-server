@@ -23,10 +23,10 @@ export class User {
   @Prop({ type: String, enum: Object.values(GENDER), required: false })
   gender: GENDER;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: false })
   firstName: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: false })
   lastName: string;
 
   @Prop({ type: String, required: false, unique: true, sparse: true })
@@ -61,6 +61,10 @@ export class User {
 
   @Prop({ type: Number, min: 1, max: 10 })
   rate: number;
+
+  /** Average of all announcement ratingPercents (0–100). Review-derived. */
+  @Prop({ type: Number, default: 0, min: 0, max: 100 })
+  score: number;
 
   @Prop({ type: String, required: false })
   subscriptionPlan?: string;
