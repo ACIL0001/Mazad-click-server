@@ -420,7 +420,7 @@ export class DirectSaleService {
     const purchase = await this.directSalePurchaseModel
       .findById(purchaseId)
       .populate('directSale')
-      .populate('buyer')
+      .populate('buyer', 'firstName lastName phone email username companyName entreprise')
       .exec();
 
     if (!purchase) {
@@ -460,6 +460,7 @@ export class DirectSaleService {
 
     purchase.status = PURCHASE_STATUS.CONFIRMED;
     purchase.paidAt = new Date();
+    purchase.reviewAvailableAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // +24h review window
     await purchase.save();
 
     // Create chat between seller and buyer
@@ -585,7 +586,7 @@ export class DirectSaleService {
     return this.directSalePurchaseModel
       .find({ buyer: buyerId })
       .populate('directSale')
-      .populate('seller')
+      .populate('seller', 'firstName lastName phone email username companyName entreprise')
       .exec();
   }
 
@@ -593,7 +594,7 @@ export class DirectSaleService {
     return this.directSalePurchaseModel
       .find({ seller: sellerId })
       .populate('directSale')
-      .populate('buyer')
+      .populate('buyer', 'firstName lastName phone email username companyName entreprise')
       .exec();
   }
 
@@ -602,7 +603,7 @@ export class DirectSaleService {
   ): Promise<DirectSalePurchase[]> {
     return this.directSalePurchaseModel
       .find({ directSale: directSaleId })
-      .populate('buyer')
+      .populate('buyer', 'firstName lastName phone email username companyName entreprise')
       .exec();
   }
 }

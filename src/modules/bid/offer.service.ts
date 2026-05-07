@@ -170,7 +170,7 @@ export class OfferService {
   async getOffersByBidId(bidId: string): Promise<Offer[]> {
     return this.offerModel
       .find({ bid: bidId })
-      .populate('user', 'firstName lastName phone email username')
+      .populate('user', 'firstName lastName phone email username companyName entreprise')
       .populate('bid', 'title currentPrice category')
       .lean()
       .exec();
@@ -182,7 +182,7 @@ export class OfferService {
   async getOffersByTenderId(tenderId: string): Promise<Offer[]> {
     return this.offerModel
       .find({ tenderId: tenderId })
-      .populate('user', 'firstName lastName phone email username')
+      .populate('user', 'firstName lastName phone email username companyName entreprise')
       .lean()
       .exec();
   }
@@ -198,7 +198,7 @@ export class OfferService {
     // Find all offers associated with these bid IDs
     return this.offerModel
       .find({ bid: { $in: bidIds } })
-      .populate('user', 'firstName lastName phone email username')
+      .populate('user', 'firstName lastName phone email username companyName entreprise')
       .populate('bid', 'title currentPrice category')
       .lean()
       .exec();
@@ -210,7 +210,7 @@ export class OfferService {
   async getOffersByUserId(userId: string): Promise<Offer[]> {
     return this.offerModel
       .find({ user: userId })
-      .populate('user', 'firstName lastName phone email username')
+      .populate('user', 'firstName lastName phone email username companyName entreprise')
       .populate('bid', 'title currentPrice category')
       .lean()
       .exec();
@@ -232,7 +232,7 @@ export class OfferService {
       // Option 1: Get offers made BY this user (as a buyer)
       const offersMadeByUser = await this.offerModel
         .find({ user: data._id })
-        .populate('user', 'firstName lastName phone email username')
+        .populate('user', 'firstName lastName phone email username companyName entreprise')
         .populate('bid', 'title currentPrice category owner')
         .lean()
         .exec();
@@ -245,7 +245,7 @@ export class OfferService {
 
       const offersOnUserBids = await this.offerModel
         .find({ bid: { $in: userBidIds } })
-        .populate('user', 'firstName lastName phone email username')
+        .populate('user', 'firstName lastName phone email username companyName entreprise')
         .populate('bid', 'title currentPrice category owner')
         .lean()
         .exec();
@@ -277,7 +277,7 @@ export class OfferService {
 
     const allOffers = await this.offerModel
       .find({})
-      .populate('user', 'firstName lastName phone email username')
+      .populate('user', 'firstName lastName phone email username companyName entreprise')
       .populate('bid', 'title currentPrice category owner')
       .lean()
       .exec();

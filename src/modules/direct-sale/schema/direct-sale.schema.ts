@@ -109,6 +109,22 @@ export class DirectSale {
     default: [],
   })
   comments: MongooseSchema.Types.ObjectId[];
+
+  // ── Rating system fields (write-time cached) ──
+  @Prop({ type: Date })
+  reviewAvailableAt?: Date;
+
+  @Prop({ type: Number, default: 0 })
+  ratingSum: number;
+
+  @Prop({ type: Number, default: 0 })
+  ratingCount: number;
+
+  @Prop({ type: Number, default: 0 })
+  ratingAvg: number;
+
+  @Prop({ type: Number, default: 0 })
+  ratingPercent: number;
 }
 
 @Schema({ timestamps: true })
@@ -164,6 +180,10 @@ export class DirectSalePurchase {
   @Prop({ type: Date })
   completedAt?: Date;
 
+  /** Set to Date.now() + 24h when purchase status → CONFIRMED */
+  @Prop({ type: Date })
+  reviewAvailableAt?: Date;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -186,7 +206,7 @@ DirectSaleSchema.pre('findOne', function () {
 
 DirectSalePurchaseSchema.pre(['find', 'findOne'], function () {
   this.populate('directSale');
-  this.populate('buyer', 'firstName lastName phone email username');
-  this.populate('seller', 'firstName lastName phone email username');
+  this.populate('buyer', 'firstName lastName phone email username companyName entreprise');
+  this.populate('seller', 'firstName lastName phone email username companyName entreprise');
 });
 

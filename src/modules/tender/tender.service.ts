@@ -280,7 +280,11 @@ export class TenderService {
         // Ensure atomic update to prevent duplicate processing
         const updatedTender = await this.tenderModel.findOneAndUpdate(
           { _id: getAllTenders[index]._id, status: TENDER_STATUS.OPEN },
-          { status: TENDER_STATUS.AWARDED, awardedTo: lowestBid.bidder },
+          {
+            status: TENDER_STATUS.AWARDED,
+            awardedTo: lowestBid.bidder,
+            reviewAvailableAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // +24 hours
+          },
           { new: true }
         );
 
@@ -459,7 +463,7 @@ export class TenderService {
   async getTenderBidsByTenderId(tenderId: string): Promise<TenderBid[]> {
     return this.tenderBidModel
       .find({ tender: tenderId })
-      .populate('bidder', 'firstName lastName phone email username')
+      .populate('bidder', 'firstName lastName phone email username companyName entreprise')
       .populate('tender', 'title category evaluationType')
       .lean()
       .exec();
@@ -473,7 +477,7 @@ export class TenderService {
     // Find all bids associated with these tender IDs
     return this.tenderBidModel
       .find({ tender: { $in: tenderIds } })
-      .populate('bidder', 'firstName lastName phone email username')
+      .populate('bidder', 'firstName lastName phone email username companyName entreprise')
       .populate('tender', 'title category evaluationType')
       .lean()
       .exec();
@@ -482,7 +486,7 @@ export class TenderService {
   async getTenderBidsByBidderId(bidderId: string): Promise<TenderBid[]> {
     return this.tenderBidModel
       .find({ bidder: bidderId })
-      .populate('bidder', 'firstName lastName phone email username')
+      .populate('bidder', 'firstName lastName phone email username companyName entreprise')
       .populate('tender', 'title category evaluationType')
       .lean()
       .exec();
@@ -491,7 +495,7 @@ export class TenderService {
   async getTenderBidById(bidId: string): Promise<TenderBid> {
     const bid = await this.tenderBidModel
       .findById(bidId)
-      .populate('bidder', 'firstName lastName phone email username')
+      .populate('bidder', 'firstName lastName phone email username companyName entreprise')
       .populate({
         path: 'bidder',
         populate: { path: 'avatar' }
@@ -789,7 +793,11 @@ export class TenderService {
             // Atomically award the tender to the lowest bidder
             const updatedTender = await this.tenderModel.findOneAndUpdate(
               { _id: tender._id, status: TENDER_STATUS.OPEN },
-              { status: TENDER_STATUS.AWARDED, awardedTo: lowestBid.bidder },
+              {
+                status: TENDER_STATUS.AWARDED,
+                awardedTo: lowestBid.bidder,
+                reviewAvailableAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // +24 hours
+              },
               { new: true }
             );
 

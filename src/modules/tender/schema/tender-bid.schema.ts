@@ -47,7 +47,7 @@ export const TenderBidSchema = SchemaFactory.createForClass(TenderBid);
 TenderBidSchema.pre(['find', 'findOne'], function () {
   this.populate({
     path: 'bidder',
-    select: 'firstName lastName phone username email'
+    select: 'firstName lastName phone username email companyName entreprise'
   });
   this.populate('tender', 'title category evaluationType');
 });

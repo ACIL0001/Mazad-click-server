@@ -91,7 +91,24 @@ export class BidService {
         throw new NotFoundException(`Bid with ID "${id}" not found`);
       }
 
-      return bid as any;
+      // Fetch offers for this bid
+      const offers = await this.OfferModel.find({ bid: id })
+        .populate({
+          path: 'user',
+          select: 'firstName lastName phone username email companyName entreprise profileImage avatar',
+          populate: {
+            path: 'avatar',
+            model: 'Attachment'
+          }
+        })
+        .sort({ createdAt: -1 })
+        .lean()
+        .exec();
+
+      return {
+        ...bid,
+        offers
+      } as any;
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
@@ -306,7 +323,7 @@ export class BidService {
           await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
             status: BID_STATUS.ON_AUCTION,
             winner: max.user,
-            // isSell: true,
+            reviewAvailableAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // +24 hours
           });
 
           const getAther = await this.userModel.findOne({ _id: max.user });
@@ -505,6 +522,7 @@ export class BidService {
           await this.bidModel.findByIdAndUpdate(getAllBids[index]._id, {
             status: BID_STATUS.ON_AUCTION,
             winner: max.user,
+            reviewAvailableAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // +24 hours
           });
           let users = [getUser._id, max.user._id ? max.user._id : max.user];
           let createdAt = new Date();

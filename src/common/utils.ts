@@ -17,7 +17,8 @@ export function getApiBaseUrl(): string {
       }
 
       const hostPart = appHost.replace(/\/$/, '');
-      return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
+      const hasPort = hostPart.split('://')[1]?.includes(':');
+      return appPort && !hasPort ? `${hostPart}:${appPort}` : hostPart;
     })();
 
   return apiBaseUrl.replace(/\/$/, '');
@@ -175,4 +176,27 @@ export function addProfessionalFilter(query: any, user?: User | any): any {
   }
   return query;
 }
+/**
+ * Normalizes a URL, ensuring localhost has the correct port if missing.
+ */
+export function normalizeUrl(url: string, baseUrl?: string): string {
+  if (!url || typeof url !== 'string') return url;
 
+  const apiBase = baseUrl || getApiBaseUrl();
+
+  // If it's a relative path, prepend baseUrl
+  if (url.startsWith('/')) {
+    return `${apiBase}${url}`;
+  }
+
+  // If it's a localhost URL missing the port (e.g., http://localhost/static/...)
+  if (url.includes('://localhost/') && !url.includes('://localhost:')) {
+    return url.replace('://localhost/', `://localhost:${process.env.APP_PORT || '3000'}/`);
+  }
+  
+  if (url.includes('://127.0.0.1/') && !url.includes('://127.0.0.1:')) {
+    return url.replace('://127.0.0.1/', `://127.0.0.1:${process.env.APP_PORT || '3000'}/`);
+  }
+
+  return url;
+}

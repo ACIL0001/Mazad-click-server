@@ -42,7 +42,7 @@ export const OfferSchema = SchemaFactory.createForClass(Offer);
 OfferSchema.pre(['find', 'findOne'], function() {
   this.populate({
     path: 'user',
-    select: 'firstName lastName phone username email'
+    select: 'firstName lastName phone username email companyName entreprise'
   });
   this.populate('bid', 'title');
 });

@@ -30,7 +30,7 @@ import { AttachmentAs } from '../attachment/schema/attachment.schema';
 import { UserService } from '../user/user.service';
 import { ConfigService } from '@nestjs/config';
 import { RoleCode } from '../apikey/entity/appType.entity';
-import { getApiBaseUrl, transformAttachment, sanitizeUser } from 'src/common/utils';
+import { getApiBaseUrl, transformAttachment, sanitizeUser, normalizeUrl } from 'src/common/utils';
 
 
 
@@ -68,11 +68,11 @@ export class TenderController {
       '_id', 'title', 'description', 'requirements', 'category', 'subCategory',
       'attachments', 'startingAt', 'endingAt', 'tenderType', 'auctionType',
       'evaluationType', 'quantity', 'wilaya', 'location', 'isPro', 'professionalOnly',
-      'hidden', 'awardedTo', 'status', 'comments', 'participantsCount', 'createdAt', 'updatedAt'
+      'hidden', 'awardedTo', 'status', 'comments', 'participantsCount', 'createdAt', 'updatedAt', 'maxBudget'
     ];
 
     if (isAdmin || isOwner) {
-      allowedFields.push('contactNumber', 'maxBudget');
+      allowedFields.push('contactNumber');
     }
 
     const sanitized: any = {};
@@ -519,6 +519,7 @@ export class TenderController {
 
     return bids.map(bid => ({
       ...bid,
+      proposalFile: normalizeUrl(bid.proposalFile, this.baseUrl),
       bidder: this.sanitizeUser(bid.bidder, false, tender, user)
     }));
   }
@@ -536,6 +537,7 @@ export class TenderController {
       }
       return {
         ...bid,
+        proposalFile: normalizeUrl(bid.proposalFile, this.baseUrl),
         bidder: this.sanitizeUser(bid.bidder, false, tender, user)
       };
     });
@@ -554,6 +556,7 @@ export class TenderController {
       }
       return {
         ...bid,
+        proposalFile: normalizeUrl(bid.proposalFile, this.baseUrl),
         bidder: this.sanitizeUser(bid.bidder, false, tender, user)
       };
     });
@@ -655,7 +658,7 @@ export class TenderController {
       _id: bid._id,
       bidAmount: bid.bidAmount,
       proposal: bid.proposal,
-      proposalFile: bid.proposalFile,
+      proposalFile: normalizeUrl(bid.proposalFile, this.baseUrl),
       deliveryTime: bid.deliveryTime,
       status: bid.status,
       createdAt: bid.createdAt,

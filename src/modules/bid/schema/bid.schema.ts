@@ -166,6 +166,23 @@ export class Bid {
 
   @Prop({ type: Date })
   feedbackDate: Date;
+
+  // ── Rating system fields (announcement-level, write-time cached) ──
+  /** Set to Date.now() + 24h when bid.winner is assigned */
+  @Prop({ type: Date })
+  reviewAvailableAt?: Date;
+
+  @Prop({ type: Number, default: 0 })
+  ratingSum: number;          // Σ stars from all AnnouncementReviews
+
+  @Prop({ type: Number, default: 0 })
+  ratingCount: number;        // total reviews
+
+  @Prop({ type: Number, default: 0 })
+  ratingAvg: number;          // ratingSum / ratingCount
+
+  @Prop({ type: Number, default: 0 })
+  ratingPercent: number;      // (ratingAvg / 5) * 100
 }
 
 export type BidDocument = HydratedDocument<Bid>;

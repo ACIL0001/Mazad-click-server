@@ -218,12 +218,27 @@ export class BidController {
       // Sanitize the bid data (whitelisting fields)
       const sanitized = this.sanitizeBid(bid, user);
 
+      // Transform offer user avatars so the frontend gets absolute URLs
+      if (sanitized.offers && Array.isArray(sanitized.offers)) {
+        sanitized.offers = sanitized.offers.map((offer: any) => {
+          if (offer.user && typeof offer.user === 'object' && offer.user.avatar) {
+            return {
+              ...offer,
+              user: {
+                ...offer.user,
+                avatar: transformAttachment(offer.user.avatar, this.baseUrl)
+              }
+            };
+          }
+          return offer;
+        });
+      }
+
       // Transform attachments
       return {
         ...sanitized,
         thumbs: transformAttachment(bid.thumbs, this.baseUrl),
         videos: transformAttachment(bid.videos, this.baseUrl),
-        // Removed 'user' (winner) field as it is not used in UI and requires extra fetch
       };
     } catch (error) {
       console.error('Error in findOne:', error);

@@ -133,6 +133,23 @@ export class Tender {
 
   @Prop({ type: Number, default: 0 })
   participantsCount: number;
+
+  // ── Rating system fields (write-time cached) ──
+  /** Set to Date.now() + 24h when tender.awardedTo is assigned */
+  @Prop({ type: Date })
+  reviewAvailableAt?: Date;
+
+  @Prop({ type: Number, default: 0 })
+  ratingSum: number;
+
+  @Prop({ type: Number, default: 0 })
+  ratingCount: number;
+
+  @Prop({ type: Number, default: 0 })
+  ratingAvg: number;
+
+  @Prop({ type: Number, default: 0 })
+  ratingPercent: number;
 }
 
 export type TenderDocument = HydratedDocument<Tender>;
