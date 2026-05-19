@@ -1,0 +1,16 @@
+{
+  "BID": {
+    "NOT_FOUND": "Bid with ID {id} not found",
+    "CREATED": "New Bid Created",
+    "CREATED_MESSAGE": "Your bid for {title} has been created successfully"
+  },
+  "OFFER": {
+    "PRICE_TOO_LOW": "Offer price must be higher than current bid price",
+    "NEW_OFFER_RECEIVED": "New Offer Received",
+    "NEW_OFFER_MESSAGE": "A new offer of {price} has been placed on your bid {title}"
+  },
+  "PARTICIPANT": {
+    "ALREADY_EXISTS": "Participant already exists for this bid",
+    "NOT_FOUND": "Participant with ID {id} not found"
+  }
+}

@@ -1,0 +1,5 @@
+export enum SELLER_TYPE {
+  CLASSIC = 'CLASSIC',
+  RESELLER = 'RESELLER',
+  PRO = 'PRO',
+}
