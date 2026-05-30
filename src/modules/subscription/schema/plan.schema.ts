@@ -20,11 +20,41 @@ export class Plan {
   @Prop({ type: Boolean, default: true })
   isActive: boolean;
 
-  @Prop({ type: String, enum: ['PROFESSIONAL', 'RESELLER'], required: true })
+  @Prop({ type: String, enum: ['PROFESSIONAL', 'CLIENT'], required: true })
   role: string;
 
   @Prop({ type: [String], default: [] })
   benefits: string[];
+
+  @Prop({ type: Number, default: -1 })
+  announcesPerMonth: number;
+
+  @Prop({ type: Number, default: 0 })
+  photosVideosLimit: number;
+
+  @Prop({ type: Number, default: 0 })
+  enchereSoumissionLimit: number;
+
+  @Prop({ type: Boolean, default: false })
+  hasChatAndMessaging: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  hasRatingAndHistory: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  isDurationUnlimited: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  hasAutoTranslation: boolean;
+
+  @Prop({ type: String, enum: ['STANDARD', 'BASIC', 'ADVANCED'], default: 'STANDARD' })
+  statisticsLevel: string;
+
+  @Prop({ type: Boolean, default: false })
+  hasMiseEnAvant: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  hasEmailNotification: boolean;
 }
 
 export type PlanDocument = HydratedDocument<Plan>;

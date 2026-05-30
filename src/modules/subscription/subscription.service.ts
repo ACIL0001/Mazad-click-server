@@ -274,58 +274,15 @@ export class SubscriptionService implements OnModuleInit {
    */
   async createDefaultPlans(): Promise<void> {
     try {
-      this.logger.log('Checking for existing plans...');
-      const existingPlans = await this.planModel.countDocuments();
-      this.logger.log(`Found ${existingPlans} existing plans`);
-      
-      if (existingPlans === 0) {
-        this.logger.log('No plans found, creating default plans...');
-        const defaultPlans = [
-          // Professional Plans
-          {
-            name: '6mois',
-            description: 'Accédez à un réseau de professionnels et facilitez vos enchères pendant 6 mois.',
-            price: 8000,
-            duration: 6, // 6 months
-            role: 'PROFESSIONAL',
-            isActive: true
-          },
-          {
-            name: '1an',
-            description: "Profitez d'avantages exclusifs pour développer votre activité et votre réputation pendant 1 an.",
-            price: 10000,
-            duration: 12, // 12 months
-            role: 'PROFESSIONAL',
-            isActive: true
-          },
-          // Reseller Plans
-          {
-            name: '6mois',
-            description: 'Accédez à des outils avancés de revente et maximisez vos profits pendant 6 mois.',
-            price: 12000,
-            duration: 6, // 6 months
-            role: 'RESELLER',
-            isActive: true
-          },
-          {
-            name: '1an',
-            description: "Profitez d'avantages premium pour développer votre réseau de revente pendant 1 an.",
-            price: 15000,
-            duration: 12, // 12 months
-            role: 'RESELLER',
-            isActive: true
-          }
-        ];
-        const createdPlans = await this.planModel.insertMany(defaultPlans);
-        this.logger.log(`Default subscription plans created: ${createdPlans.map(p => `${p.name} (${p.role})`).join(', ')}`);
-      } else {
-        this.logger.log('Plans already exist, skipping creation');
-        // Log existing plans for debugging
-        const plans = await this.planModel.find().exec();
-        this.logger.log(`Existing plans: ${plans.map(p => `${p.name} (${p.role})`).join(', ')}`);
+      this.logger.log('Checking for old default plans to remove...');
+      const deleteResult = await this.planModel.deleteMany({
+        name: { $in: ['6mois', '1an'] }
+      });
+      if (deleteResult.deletedCount > 0) {
+        this.logger.log(`Deleted ${deleteResult.deletedCount} old default plans from the database`);
       }
     } catch (error) {
-      this.logger.error('Error creating default plans:', error);
+      this.logger.error('Error removing default plans:', error);
     }
   }
 
@@ -376,12 +333,27 @@ export class SubscriptionService implements OnModuleInit {
    */
   private calculateExpirationDate(plan: Plan): Date {
     const now = new Date();
-    if (plan.name === '6mois') {
-      return new Date(now.getTime() + 6 * 30 * 24 * 60 * 60 * 1000); // 6 months
-    } else if (plan.name === '1an') {
-      return new Date(now.getTime() + 12 * 30 * 24 * 60 * 60 * 1000); // 12 months
+    
+    if (plan.isDurationUnlimited) {
+      const unlimitedDate = new Date();
+      unlimitedDate.setFullYear(unlimitedDate.getFullYear() + 100); // 100 years
+      return unlimitedDate;
     }
-    return new Date();
+
+    let durationInMonths = plan.duration;
+    if (!durationInMonths || durationInMonths <= 0) {
+      if (plan.name === '6mois') {
+        durationInMonths = 6;
+      } else if (plan.name === '1an') {
+        durationInMonths = 12;
+      } else {
+        durationInMonths = 1;
+      }
+    }
+
+    const expirationDate = new Date();
+    expirationDate.setMonth(expirationDate.getMonth() + durationInMonths);
+    return expirationDate;
   }
 
   /**
