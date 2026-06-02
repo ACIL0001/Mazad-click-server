@@ -30,7 +30,10 @@ export class Plan {
   announcesPerMonth: number;
 
   @Prop({ type: Number, default: 0 })
-  photosVideosLimit: number;
+  photosLimit: number;
+
+  @Prop({ type: Number, default: 0 })
+  videosLimit: number;
 
   @Prop({ type: Number, default: 0 })
   enchereSoumissionLimit: number;
@@ -55,6 +58,9 @@ export class Plan {
 
   @Prop({ type: Boolean, default: false })
   hasEmailNotification: boolean;
+
+  @Prop({ type: String, default: '#0EA5E9' })
+  color: string;
 }
 
 export type PlanDocument = HydratedDocument<Plan>;
