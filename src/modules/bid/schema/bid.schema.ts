@@ -188,12 +188,6 @@ export class Bid {
 export type BidDocument = HydratedDocument<Bid>;
 export const BidSchema = SchemaFactory.createForClass(Bid);
 
-BidSchema.pre('find', function () {
-  this.populate('productCategory');
-  this.populate('productSubCategory');
-});
-
-BidSchema.pre('findOne', function () {
-  this.populate('productCategory');
-  this.populate('productSubCategory');
-});
+BidSchema.index({ owner: 1, status: 1, endingAt: 1 });
+BidSchema.index({ status: 1, endingAt: 1, isSoldProcessed: 1 });
+BidSchema.index({ status: 1, startingAt: 1, endingAt: 1 });

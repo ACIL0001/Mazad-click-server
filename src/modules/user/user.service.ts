@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { Professional } from './schema/pro.schema';
 import { AttachmentService } from '../attachment/attachment.service';
 import { Category } from '../category/schema/category.schema';
+import { getApiBaseUrl } from 'src/common/utils';
 
 @Injectable()
 export class UserService implements OnModuleInit {
@@ -57,48 +58,12 @@ export class UserService implements OnModuleInit {
     else if ((user as any)?._doc?.subscriptionPlan) {
       subscriptionPlan = (user as any)._doc.subscriptionPlan;
     }
-
-    console.log('🔍 enrichUserWithAvatarUrls - subscriptionPlan found:', subscriptionPlan);
-
     const userObj = user.toObject ? user.toObject({ virtuals: true, getters: true }) : { ...user };
 
     // ALWAYS explicitly set subscriptionPlan field - even if null, so it appears in JSON response
     userObj.subscriptionPlan = subscriptionPlan || null;
-
-    console.log('🔍 enrichUserWithAvatarUrls - userObj.subscriptionPlan set to:', userObj.subscriptionPlan);
-
     // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
-    const apiBaseUrl = process.env.API_BASE_URL ||
-      (() => {
-        const appHost = process.env.APP_HOST || 'http://localhost';
-        const appPort = process.env.APP_PORT || 3000;
-        const isProduction = process.env.NODE_ENV === 'production';
-
-        // In production, use https://api.mazad.click if APP_HOST is not explicitly set
-        if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-          return 'https://api.mazad.click';
-        }
-
-        // Parse the host to check if it already has a port
-        let hostPart = appHost.replace(/\/$/, '');
-
-        // Check if hostname (after ://) already has a port number
-        // Example: http://localhost:3000 -> has port
-        // Example: http://localhost -> needs port
-        const hostnameMatch = hostPart.match(/:\/\/([^\/]+)/);
-        if (hostnameMatch) {
-          const hostname = hostnameMatch[1];
-          // If hostname doesn't contain a colon (which would indicate a port), add it
-          if (!hostname.includes(':') && appPort) {
-            hostPart = hostPart.replace(/:\/\/[^\/]+/, `://${hostname}:${appPort}`);
-          }
-        } else if (appPort) {
-          // If no protocol, just append port
-          hostPart = `${hostPart}:${appPort}`;
-        }
-
-        return hostPart;
-      })();
+    const apiBaseUrl = getApiBaseUrl();
 
     const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
 
@@ -158,12 +123,7 @@ export class UserService implements OnModuleInit {
     } else if (filterType === 'USERS' && filterValue && filterValue.length > 0) {
       query._id = { $in: filterValue };
     }
-
-    console.log('🔍 findUsersByFilter query:', JSON.stringify(query));
-
     const users = await this.userModel.find(query).populate(['avatar', 'coverPhoto']);
-    console.log(`🔍 findUsersByFilter found ${users.length} users`);
-
     // Enrich users
     const enrichedUsers = [];
     for (const user of users) {
@@ -203,8 +163,6 @@ export class UserService implements OnModuleInit {
     }
 
     try {
-      console.log('🔍 findByLogin: Searching for user with login:', login);
-
       // Escape special regex characters to prevent crashes
       const escapedLogin = login.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -214,8 +172,6 @@ export class UserService implements OnModuleInit {
           { phone: login }
         ],
       }).populate(['avatar', 'coverPhoto']);
-
-      console.log('🔍 findByLogin: Result:', user ? `Found user ${user._id}` : 'User not found');
       return user;
     } catch (error) {
       console.error('🔍 findByLogin: Database error:', {
@@ -312,29 +268,24 @@ export class UserService implements OnModuleInit {
   }
 
   async updateSubscriptionPlan(userId: string, plan: string) {
-    console.log('🔍 updateSubscriptionPlan called:', { userId, plan });
     const result = await this.userModel.findByIdAndUpdate(
       userId,
       { subscriptionPlan: plan },
       { new: true, runValidators: true }
     ).populate(['avatar', 'coverPhoto']);
-    console.log('✅ Subscription plan updated in database:', { userId, plan, result: result?.subscriptionPlan });
     return result;
   }
 
   async createSubscriptionPlan(userId: string, plan: string) {
-    console.log('🔍 createSubscriptionPlan called:', { userId, plan });
     const user = await this.userModel.findById(userId).populate(['avatar', 'coverPhoto']);
     if (!user) {
       throw new BadRequestException('User not found');
     }
     if (user.subscriptionPlan) {
-      console.log('⚠️ User already has subscription plan, will update instead');
       throw new BadRequestException('Subscription plan already exists for this user');
     }
     user.subscriptionPlan = plan;
     await user.save();
-    console.log('✅ Subscription plan saved to database:', { userId, plan, saved: user.subscriptionPlan });
     return user;
   }
 
@@ -358,9 +309,6 @@ export class UserService implements OnModuleInit {
     const users = await this.userModel.find({ type: { $in: roles } })
       .populate(['avatar', 'coverPhoto'])
       .lean(false); // Don't use lean() to preserve document methods and virtuals
-
-    console.log('🔍 Found users:', users.length);
-
     // Convert secteur IDs to names and enrich with avatar URLs for all users
     const enrichedUsers = [];
     for (const user of users) {
@@ -390,9 +338,6 @@ export class UserService implements OnModuleInit {
       if (planFromDoc === undefined) {
         planFromDoc = null;
       }
-
-      console.log(`🔍 User ${(user as any)._id} subscriptionPlan from document:`, planFromDoc);
-
       const enrichedUser = this.enrichUserWithAvatarUrls(user);
 
       // CRITICAL: Always explicitly set subscriptionPlan field - even if null
@@ -402,10 +347,7 @@ export class UserService implements OnModuleInit {
       // Double-check: ensure the field exists in the object
       if (!('subscriptionPlan' in enrichedUser)) {
         enrichedUser.subscriptionPlan = null;
-        console.log('⚠️ subscriptionPlan missing after enrichment, explicitly setting to null');
       }
-
-      console.log(`✅ User ${(user as any)._id} final subscriptionPlan:`, enrichedUser.subscriptionPlan);
       enrichedUsers.push(enrichedUser);
     }
     return enrichedUsers;
@@ -451,20 +393,7 @@ export class UserService implements OnModuleInit {
       const userWithFullUrl = user.toObject() as any;
 
       // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
-      const apiBaseUrl = process.env.API_BASE_URL ||
-        (() => {
-          const appHost = process.env.APP_HOST || 'http://localhost';
-          const appPort = process.env.APP_PORT || 3000;
-          const isProduction = process.env.NODE_ENV === 'production';
-
-          // In production, use https://api.mazad.click if APP_HOST is not explicitly set
-          if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-            return 'https://api.mazad.click';
-          }
-
-          const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-          return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-        })();
+      const apiBaseUrl = getApiBaseUrl();
 
       const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
       const avatarUrl = (user.avatar as any).url || `/static/${(user.avatar as any).filename}`;
@@ -489,20 +418,7 @@ export class UserService implements OnModuleInit {
       const userWithFullUrl = user.toObject() as any;
 
       // Use API_BASE_URL if available, otherwise construct from APP_HOST/APP_PORT
-      const apiBaseUrl = process.env.API_BASE_URL ||
-        (() => {
-          const appHost = process.env.APP_HOST || 'http://localhost';
-          const appPort = process.env.APP_PORT || 3000;
-          const isProduction = process.env.NODE_ENV === 'production';
-
-          // In production, use https://api.mazad.click if APP_HOST is not explicitly set
-          if (isProduction && (appHost.includes('localhost') || !appHost.startsWith('https'))) {
-            return 'https://api.mazad.click';
-          }
-
-          const hostPart = appPort && !appHost.includes(':') ? appHost.replace(/\/$/, '') : appHost.replace(/\/$/, '');
-          return appPort && !hostPart.includes(':') ? `${hostPart}:${appPort}` : hostPart;
-        })();
+      const apiBaseUrl = getApiBaseUrl();
 
       const fullBaseUrl = apiBaseUrl.replace(/\/$/, '');
       userWithFullUrl.avatar.fullUrl = `${fullBaseUrl}${user.avatar.url}`;
@@ -582,8 +498,9 @@ export class UserService implements OnModuleInit {
       return;
     }
 
-    // Check if secteur is a valid ObjectId (24-character hex string)
-    if (Types.ObjectId.isValid(user.secteur) && user.secteur.length === 24) {
+    // Check if secteur is a valid hex string of length 24
+    const isHex = /^[0-9a-fA-F]{24}$/.test(user.secteur);
+    if (isHex && Types.ObjectId.isValid(user.secteur)) {
       try {
         const category = await this.categoryModel.findById(user.secteur);
         if (category) {

@@ -74,15 +74,6 @@ export class AttachmentController {
         // Default to MESSAGE if not a valid enum value
         attachmentType = 'MESSAGE';
       }
-      
-      console.log('📤 Uploading attachment:', {
-        filename: file.originalname,
-        size: file.size,
-        type: file.mimetype,
-        as: attachmentType,
-        userId
-      });
-      
       return await this.attachmentService.upload(file, attachmentType, userId);
     } catch (error) {
       console.error('❌ Error in uploadAttachment:', error);

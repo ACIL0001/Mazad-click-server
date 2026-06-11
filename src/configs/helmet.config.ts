@@ -37,7 +37,7 @@ const helmetConfig = helmet({
     },
   },
   // --- ADD THIS LINE FOR CROSS-ORIGIN-RESOURCE-POLICY ---
-  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow images from other origins
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Prevent external hotlinking while allowing subdomains
   // --- END ADDITION ---
 });
 

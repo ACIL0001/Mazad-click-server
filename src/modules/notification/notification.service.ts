@@ -76,9 +76,6 @@ export class NotificationService {
         })
         .sort({ createdAt: -1 })
         .exec();
-
-      console.log('Found notifications for buyer:', notifications.length);
-      console.log('Notification user IDs:', notifications.map(n => ({ id: n._id, userId: n.userId, title: n.title })));
       return notifications;
     } catch (error) {
       console.error('Error finding notifications for buyer:', error);
@@ -87,14 +84,11 @@ export class NotificationService {
   }
 
   async findForUser(userId: string): Promise<Notification[]> {
-    console.log('Fetching all notifications for userId:', userId);
     try {
       const notifications = await this.notificationModel
         .find({ userId })
         .sort({ createdAt: -1 })
         .exec();
-
-      console.log('Found notifications:', notifications.length);
       return notifications;
     } catch (error) {
       console.error('Error fetching notifications:', error);
@@ -139,8 +133,6 @@ export class NotificationService {
   }
 
   async markAsRead(id: string): Promise<Notification> {
-    console.log('🔖 Service: Marking notification as read:', id);
-
     const result = await this.notificationModel.findByIdAndUpdate(
       id,
       { read: true, updatedAt: new Date() },
@@ -148,12 +140,6 @@ export class NotificationService {
     ).exec();
 
     if (result) {
-      console.log('✅ Service: Notification marked as read successfully:', {
-        id: result._id,
-        read: result.read,
-        updatedAt: result.updatedAt,
-        type: result.type
-      });
     } else {
       console.error('❌ Service: Failed to mark notification as read:', id);
     }
@@ -189,17 +175,14 @@ export class NotificationService {
   }
 
   async markAllChatNotificationsAsRead(userId: string, chatId: string): Promise<{ modifiedCount: number }> {
-    console.log('🔖 Marking all notifications as read for user:', userId, 'and chatId:', chatId);
     const result = await this.notificationModel.updateMany(
       { userId, read: false, 'data.chatId': chatId },
       { read: true, updatedAt: new Date() }
     ).exec();
-    console.log('📊 Marked as read result for chat:', result);
     return { modifiedCount: result.modifiedCount };
   }
 
   async markAllChatNotificationsAsReadForUser(userId: string): Promise<{ modifiedCount: number }> {
-    console.log('🔖 Marking all chat notifications as read for user:', userId);
     const result = await this.notificationModel.updateMany(
       {
         userId,
@@ -213,7 +196,6 @@ export class NotificationService {
       },
       { read: true, updatedAt: new Date() }
     ).exec();
-    console.log('📊 Marked as read result for all chat notifications:', result);
     return { modifiedCount: result.modifiedCount };
   }
 
@@ -223,32 +205,6 @@ export class NotificationService {
     // console.log('🔔 User ID type:', typeof userId);
 
     try {
-      // First, let's see all notifications for this user (for debugging)
-      const allUserNotifications = await this.notificationModel
-        .find({ userId })
-        .sort({ createdAt: -1 })
-        .exec();
-
-      // console.log('🔍 DEBUG: All notifications for user (no filters):', allUserNotifications.length);
-      // console.log('🔍 DEBUG: All notification types:', allUserNotifications.map(n => n.type));
-      // console.log('🔍 DEBUG: All notification titles:', allUserNotifications.map(n => n.title));
-      // console.log('🔍 DEBUG: All notification read status:', allUserNotifications.map(n => n.read));
-      // console.log('🔍 DEBUG: All notification user IDs:', allUserNotifications.map(n => n.userId));
-
-      // Check specifically for offer notifications
-      const offerNotifications = allUserNotifications.filter(n =>
-        n.type === 'OFFER_ACCEPTED' || n.type === 'OFFER_DECLINED'
-      );
-      // console.log('🔍 DEBUG: Offer notifications found:', offerNotifications.length);
-      // if (offerNotifications.length > 0) {
-      //   console.log('🔍 DEBUG: Offer notifications details:', offerNotifications.map(n => ({
-      //     id: n._id,
-      //     title: n.title,
-      //     type: n.type,
-      //     read: n.read,
-      //     userId: n.userId
-      //   })));
-      // }
 
       const notifications = await this.notificationModel
         .find({
@@ -299,7 +255,6 @@ export class NotificationService {
 
       // Perform manual population if needed
       if (manualPopulationIds.size > 0) {
-        console.log(`🔔 Manually populating ${manualPopulationIds.size} users for old general notifications`);
         const users = await this.userModel.find({ _id: { $in: Array.from(manualPopulationIds) } }).select('firstName lastName email entreprise companyName');
 
         const userMap = new Map();
@@ -346,9 +301,6 @@ export class NotificationService {
         .populate('senderId', 'firstName lastName email entreprise')
         .sort({ createdAt: -1 })
         .exec();
-
-      console.log('💬 Found chat notifications:', notifications.length);
-
       // Collect IDs for manual population of older notifications (where senderId might be in data)
       const manualPopulationIds = new Set<string>();
 
@@ -379,7 +331,6 @@ export class NotificationService {
 
       // Perform manual population if needed
       if (manualPopulationIds.size > 0) {
-        console.log(`💬 Manually populating ${manualPopulationIds.size} users for old notifications`);
         const users = await this.userModel.find({ _id: { $in: Array.from(manualPopulationIds) } }).select('firstName lastName email entreprise');
 
         const userMap = new Map();

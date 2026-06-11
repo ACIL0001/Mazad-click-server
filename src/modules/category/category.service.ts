@@ -53,7 +53,6 @@ export class CategoryService {
     }
 
     // Check if any users were looking for this category
-    console.log('📢 Checking for interested users for category:', savedCategory.name);
     this.searchService.notifyInterestedUsers(
       savedCategory.name,
       savedCategory.description || '',

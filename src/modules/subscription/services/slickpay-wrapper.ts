@@ -14,7 +14,6 @@ async function initializeSlickPay(): Promise<void> {
     // Use dynamic import for ES modules
     const slickPayModule = await import('@slick-pay-algeria/slickpay-npm');
     Invoice = slickPayModule.Invoice;
-    console.log('SlickPay Invoice module loaded successfully');
   } catch (error) {
     console.error('Failed to load SlickPay modules:', error);
     // Fallback - create a mock class to prevent startup failures
@@ -25,8 +24,6 @@ async function initializeSlickPay(): Promise<void> {
       constructor(publicKey: string, sandbox: boolean) {
         this.publicKey = publicKey;
         this.sandbox = sandbox;
-        console.warn('Using MockInvoice - SlickPay package not available');
-        console.warn('This is for development/testing only. Add SLICKPAY_PUBLIC_KEY to .env for production.');
       }
       
       commission(amount: number): Promise<any> {
@@ -38,10 +35,6 @@ async function initializeSlickPay(): Promise<void> {
         const mockId = `MOCK${Date.now()}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
         // const mockUrl = `http://localhost:3000/subscription/payment/mock/${mockId}`;
         const mockUrl = `${(process.env.NODE_ENV === 'production' ? 'https://mazadclick-server.onrender.com' : 'http://localhost:3000')}/subscription/payment/mock/${mockId}`;
-        
-        console.log('Mock SlickPay store called with data:', data);
-        console.log('Returning mock payment URL:', mockUrl);
-        
         return Promise.resolve({ 
           success: true, 
           id: mockId,

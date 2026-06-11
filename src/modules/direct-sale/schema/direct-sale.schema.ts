@@ -193,6 +193,7 @@ export type DirectSalePurchaseDocument = HydratedDocument<DirectSalePurchase>;
 
 export const DirectSaleSchema = SchemaFactory.createForClass(DirectSale);
 export const DirectSalePurchaseSchema = SchemaFactory.createForClass(DirectSalePurchase);
+DirectSalePurchaseSchema.index({ directSale: 1, status: 1 });
 
 DirectSaleSchema.pre('find', function () {
   this.populate('productCategory');

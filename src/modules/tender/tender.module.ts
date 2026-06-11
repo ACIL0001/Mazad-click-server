@@ -42,8 +42,5 @@ import { SearchModule } from '../search/search.module';
 })
 export class TenderModule {
   constructor() {
-    console.log('✅ TenderModule loaded successfully');
-    console.log('📋 Controllers:', ['TenderController']);
-    console.log('🔧 Providers:', ['TenderService']);
   }
 }

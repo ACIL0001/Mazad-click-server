@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { WebSocketGateway, SubscribeMessage, MessageBody, WebSocketServer, OnGatewayConnection, OnGatewayDisconnect } from "@nestjs/websockets";
+import { JwtService } from "@nestjs/jwt";
 import { Server, Socket } from 'socket.io';
 
 interface IOnlineUser {
@@ -25,50 +26,62 @@ export interface NotificationPayload {
   sender: string;
   attachment?: any;
 }
-const resolveApiBaseUrl = (): string => {
-  const envUrl = process.env.API_BASE_URL;
-  if (envUrl && envUrl.trim() !== '') {
-    return envUrl.trim().replace(/\/$/, '');
-  }
-  return (process.env.NODE_ENV === 'production'
-    ? 'https://mazadclick-server.onrender.com'
-    : 'http://localhost:3000').replace(/\/$/, '');
-};
-
+import { getApiBaseUrl } from '../common/utils';
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: [
+      /^https?:\/\/localhost:30\d{2}$/,
+      /^https:\/\/mazad-click-(buyer|seller|backoffice|admin)(-[a-z0-9-]+)?\.vercel\.app$/,
+      /^https:\/\/mazadclick\.vercel\.app\/?$/,
+      /^https:\/\/mazadclick\.com\/?$/,
+    ],
   },
 })
 export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  private onlineUsers: IOnlineUser[] = [];
+  private onlineUsers: Map<string, IOnlineUser> = new Map();
 
-  handleConnection(client: Socket) {
-    const userId = client.handshake.query.userId as string;
+  constructor(private readonly jwtService: JwtService) {}
 
-    if (userId && userId !== 'undefined' && userId !== 'null') {
-      let user = this.onlineUsers.find((e) => e.userId === userId);
-      if (user) {
-        // Add new socketId if not already present
-        if (!user.socketIds.includes(client.id)) {
-          user.socketIds.push(client.id);
+  async handleConnection(client: Socket) {
+    let token = client.handshake.query.token as string || client.handshake.auth?.token as string;
+    
+    // Fallback to userId if token isn't provided (transitional period)
+    // Wait, the security issue requires strict verification! 
+    if (token && token.startsWith('Bearer ')) {
+      token = token.split(' ')[1];
+    }
+
+    try {
+      if (!token) {
+        // Silently disconnect if no token is provided to avoid log spam
+        client.disconnect(true);
+        return;
+      }
+
+      // Verify the JWT cryptographically
+      const payload = await this.jwtService.verifyAsync(token);
+      const userId = payload.sub as string;
+
+      if (userId && userId !== 'undefined' && userId !== 'null') {
+        let user = this.onlineUsers.get(userId);
+        if (user) {
+          if (!user.socketIds.includes(client.id)) {
+            user.socketIds.push(client.id);
+          }
+        } else {
+          this.onlineUsers.set(userId, { userId, socketIds: [client.id] });
         }
+        this.emitOnlineUsers();
       } else {
-        this.onlineUsers.push({ userId, socketIds: [client.id] });
+        client.disconnect(true);
       }
-      // Only log in development mode
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[SOCKET] handleConnection:', { userId, socketId: client.id });
-      }
-      this.emitOnlineUsers();
-    } else {
-      // Disconnect clients without valid userId to prevent spam
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[SOCKET] handleConnection: No valid userId in handshake, disconnecting', { socketId: client.id });
+    } catch (error) {
+      if (error.message !== 'No token provided') {
+        console.error('Socket Authentication Failed:', error.message);
       }
       client.disconnect(true);
     }
@@ -76,29 +89,26 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   handleDisconnect(client: Socket) {
     let disconnectedUser: IOnlineUser | undefined;
-    this.onlineUsers = this.onlineUsers.map((user) => {
+    for (const [userId, user] of this.onlineUsers.entries()) {
       if (user.socketIds.includes(client.id)) {
         disconnectedUser = user;
-        // Remove the socketId from the array
-        return { ...user, socketIds: user.socketIds.filter((id) => id !== client.id) };
+        const remainingSockets = user.socketIds.filter((id) => id !== client.id);
+        if (remainingSockets.length > 0) {
+          this.onlineUsers.set(userId, { ...user, socketIds: remainingSockets });
+        } else {
+          this.onlineUsers.delete(userId);
+        }
+        break; // Assuming one user per socket ID
       }
-      return user;
-    }).filter((user) => user.socketIds.length > 0); // Only keep users with at least one socket
-    // Only log in development mode
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[SOCKET] handleDisconnect:', { socketId: client.id, user: disconnectedUser });
     }
+    // Only log in development mode
     this.emitOnlineUsers();
   }
 
   sendMessageToUser(sender: string, userId: string, message: string, idChat: string, idMes: string): void {
     // Only log in development mode
-    if (process.env.NODE_ENV === 'development') {
-      console.log('📨 sendMessageToUser called:', { sender, userId, message, idChat, idMes });
-    }
-
-    const recipient = this.onlineUsers.find((e) => e.userId == userId);
-    const senderUser = this.onlineUsers.find((e) => e.userId == sender);
+    const recipient = this.onlineUsers.get(userId);
+    const senderUser = this.onlineUsers.get(sender);
     const now = new Date().toISOString();
 
     // Prepare message payload
@@ -150,9 +160,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     } else {
       // Only log in development mode
-      if (process.env.NODE_ENV === 'development') {
-        console.log('⚠️ Recipient not online:', userId);
-      }
     }
 
     if (senderUser) {
@@ -195,10 +202,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   sendMessageToAllAdmins(sender: string, adminIds: string[], message: string, idChat: string, idMes: string, attachment?: any): void {
-    console.log('📨 Sending message to admins:', adminIds);
-    console.log("📨 Sender:", sender);
-
-    const senderUser = this.onlineUsers.find((e) => e.userId == sender);
+    const senderUser = this.onlineUsers.get(sender);
     const now = new Date().toISOString();
 
     // Prepare message payload
@@ -214,7 +218,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Add attachment if present
     if (attachment) {
       if (attachment.url && attachment.url.startsWith('/static/')) {
-        attachment.url = `${resolveApiBaseUrl()}${attachment.url}`;
+        attachment.url = `${getApiBaseUrl()}${attachment.url}`;
       }
       messagePayload.attachment = attachment;
     }
@@ -228,9 +232,9 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     // Send to specified admins
     adminIds.forEach(adminId => {
-      const adminUser = this.onlineUsers.find(u => u.userId === adminId);
+      const adminUser = this.onlineUsers.get(adminId);
       if (adminUser) {
-        console.log('📤 Sending to admin:', adminId);
+
         adminUser.socketIds.forEach(socketId => {
           // Prevent sending to sender again if they are an admin
           if (senderUser && senderUser.socketIds.includes(socketId)) {
@@ -250,7 +254,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
           if (attachment) {
             const attachmentCopy = { ...attachment };
             if (attachmentCopy.url && attachmentCopy.url.startsWith('/static/')) {
-              attachmentCopy.url = `${resolveApiBaseUrl()}${attachmentCopy.url}`;
+              attachmentCopy.url = `${getApiBaseUrl()}${attachmentCopy.url}`;
             }
             notificationPayload.attachment = attachmentCopy;
           }
@@ -260,20 +264,16 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     });
 
-    console.log('✅ Message sent to target admins');
+
   }
 
   sendMessageFromAdminToUser(adminId: string, userId: string, message: string, idChat: string, idMes: string, attachment?: any): void {
-    console.log('📨 Admin sending message to user:', { adminId, userId, message, idChat, idMes });
-    console.log("📨 Online users:", this.onlineUsers);
-    console.log("📎 Attachment:", attachment);
-
     // For admin messages, adminId is 'admin' string, not actual admin user ID
     // So we don't need to find admin in online users, just send to recipient
-    const recipientUser = this.onlineUsers.find((e) => e.userId == userId);
+    const recipientUser = this.onlineUsers.get(userId);
     const now = new Date().toISOString();
 
-    console.log('📨 Recipient user:', recipientUser);
+
 
     // Prepare message payload
     const messagePayload: MessagePayload = {
@@ -289,21 +289,17 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (attachment) {
       // Ensure attachment URL is absolute
       if (attachment.url && attachment.url.startsWith('/static/')) {
-        attachment.url = `${resolveApiBaseUrl()}${attachment.url}`;
+        attachment.url = `${getApiBaseUrl()}${attachment.url}`;
       }
       messagePayload.attachment = attachment;
-      console.log('📎 Including attachment in admin-to-user message:', attachment);
     }
 
     // Send to recipient user if online
     if (recipientUser) {
-      console.log('📤 Sending to user:', userId);
       recipientUser.socketIds.forEach(socketId => {
         // 1. Emit adminMessage specifically for admin chat - HIGHEST PRIORITY
         // This is the most reliable way to ensure messages are delivered to the client
         this.server.to(socketId).emit('adminMessage', messagePayload);
-        console.log('📤 Emitted adminMessage event to socket:', socketId);
-
         // 2. Also emit sendMessage for backward compatibility - COMMENTED OUT TO PREVENT DUPLICATES
         // this.server.to(socketId).emit('sendMessage', messagePayload);
         // ^ This was commented out, now I am confirming it should STAY commented out or removed.
@@ -321,19 +317,15 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
           // Ensure attachment URL is absolute
           const attachmentCopy = { ...attachment };
           if (attachmentCopy.url && attachmentCopy.url.startsWith('/static/')) {
-            attachmentCopy.url = `${resolveApiBaseUrl()}${attachmentCopy.url}`;
+            attachmentCopy.url = `${getApiBaseUrl()}${attachmentCopy.url}`;
           }
           notificationPayload.attachment = attachmentCopy;
         }
         this.server.to(socketId).emit('newMessage', notificationPayload);
 
         // 4. Log success for debugging
-        console.log('✅ Successfully emitted all message events to socket:', socketId);
       });
-      console.log('✅ Admin message sent to user via socket');
     } else {
-      console.log('📤 User not online:', userId);
-
       // For guest users, broadcast to all sockets since they might not be in onlineUsers
       // if (userId === 'guest') {
       //   console.log('📤 Broadcasting admin message to all sockets for guest user');
@@ -372,7 +364,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     });
 
-    console.log('✅ Admin message processing completed');
+
   }
 
   sendNotificationToClients(notification: any) {
@@ -385,20 +377,20 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   sendNotificationToUser(userId: string, notification: any) {
-    console.log('📧 sendNotificationToUser called:', { userId, notification });
-    const user = this.onlineUsers.find((u) => u.userId === userId);
+
+    const user = this.onlineUsers.get(userId);
     if (user) {
-      console.log('📧 User found online, sending notification to socketIds:', user.socketIds);
+
       user.socketIds.forEach(socketId => {
         this.server.to(socketId).emit('notification', notification);
       });
     } else {
-      console.log('📧 User not online:', userId);
+
     }
   }
 
   sendNotificationChatCreateToOne(userId: string) {
-    const check = this.onlineUsers.find((e) => e.userId == userId);
+    const check = this.onlineUsers.get(userId);
     if (!check) return;
     check.socketIds.forEach(socketId => {
       this.server
@@ -409,12 +401,12 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   emitOnlineUsers() {
     // Emit only userIds (not socketIds) for online users
-    const users = this.onlineUsers.map(u => ({ userId: u.userId }));
+    const users = Array.from(this.onlineUsers.values()).map(u => ({ userId: u.userId }));
     this.server.emit('online-users', users);
   }
 
   sendBidWonNotificationToUser(userId: string, notification: any) {
-    const user = this.onlineUsers.find((e) => e.userId == userId);
+    const user = this.onlineUsers.get(userId);
     if (!user) return;
     user.socketIds.forEach(socketId => {
       this.server.to(socketId).emit('bidWonNotification', notification);
@@ -422,7 +414,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   sendAuctionSoldNotificationToUser(userId: string, notification: any) {
-    const user = this.onlineUsers.find((e) => e.userId == userId);
+    const user = this.onlineUsers.get(userId);
     if (!user) return;
     user.socketIds.forEach(socketId => {
       this.server.to(socketId).emit('auctionSoldNotification', notification);
@@ -430,7 +422,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   sendNewChatToBuyer(userId: string, chatInfo: any) {
-    const user = this.onlineUsers.find((e) => e.userId == userId);
+    const user = this.onlineUsers.get(userId);
     if (!user) return;
     user.socketIds.forEach(socketId => {
       this.server.to(socketId).emit('newChatCreatedForBuyer', chatInfo);
@@ -438,7 +430,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   sendNewChatToSeller(userId: string, chatInfo: any) {
-    const user = this.onlineUsers.find((e) => e.userId == userId);
+    const user = this.onlineUsers.get(userId);
     if (!user) return;
     user.socketIds.forEach(socketId => {
       this.server.to(socketId).emit('newChatCreatedForSeller', chatInfo);
@@ -448,10 +440,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Test endpoint to verify socket communication
   @SubscribeMessage('test')
   handleTest(client: Socket, payload: any) {
-    console.log('🧪 Test message received from client:', payload);
-    console.log('🧪 Client ID:', client.id);
-    console.log('🧪 Online users:', this.onlineUsers);
-
     // Send a test response back to the client
     client.emit('testResponse', {
       message: 'Test response from server',
@@ -470,11 +458,11 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Test endpoint specifically for admin message delivery
   @SubscribeMessage('testAdminMessage')
   handleTestAdminMessage(client: Socket, payload: any) {
-    console.log('🧪 Test admin message received:', payload);
+console.log('🧪 Test admin message received:', payload);
     const { userId, message } = payload;
 
     if (userId && message) {
-      console.log('🧪 Testing admin message delivery to user:', userId);
+
 
       // Test the admin message delivery
       this.sendMessageFromAdminToUser('admin', userId, message, 'test-chat-id', 'test-message-id');
@@ -496,12 +484,12 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // New method to broadcast message to all users in a chat
   @SubscribeMessage('joinChat')
   handleJoinChat(client: Socket, payload: { chatId: string, userId: string }) {
-    console.log('📱 User joining chat:', payload);
+
     const { chatId, userId } = payload;
 
     // Join the chat room
     client.join(`chat_${chatId}`);
-    console.log(`✅ User ${userId} joined chat room: chat_${chatId}`);
+
 
     // Notify other users in the chat that someone joined
     client.to(`chat_${chatId}`).emit('userJoinedChat', {
@@ -522,12 +510,12 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // New method to handle leaving a chat
   @SubscribeMessage('leaveChat')
   handleLeaveChat(client: Socket, payload: { chatId: string, userId: string }) {
-    console.log('📱 User leaving chat:', payload);
+
     const { chatId, userId } = payload;
 
     // Leave the chat room
     client.leave(`chat_${chatId}`);
-    console.log(`✅ User ${userId} left chat room: chat_${chatId}`);
+
 
     // Notify other users in the chat that someone left
     client.to(`chat_${chatId}`).emit('userLeftChat', {
@@ -540,7 +528,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // New method to broadcast typing indicators
   @SubscribeMessage('typing')
   handleTyping(client: Socket, payload: { chatId: string, userId: string, isTyping: boolean }) {
-    console.log('⌨️ Typing indicator:', payload);
+
     const { chatId, userId, isTyping } = payload;
 
     // Broadcast typing status to other users in the chat
@@ -555,7 +543,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // New method to broadcast message read status
   @SubscribeMessage('markMessageAsRead')
   handleMarkMessageAsRead(client: Socket, payload: { messageId: string, chatId: string, userId: string }) {
-    console.log('👁️ Marking message as read:', payload);
+
     const { messageId, chatId, userId } = payload;
 
     // Broadcast read status to other users in the chat
@@ -576,7 +564,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // Enhanced method to send real-time message updates
   sendRealtimeMessageUpdate(chatId: string, message: any) {
-    console.log('📡 Broadcasting real-time message update to chat:', chatId);
+
 
     // Send to all users in the chat room
     this.server.to(`chat_${chatId}`).emit('realtimeMessageUpdate', {
@@ -588,7 +576,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // Method to notify clients when messages are marked as read
   sendMessageReadStatus(chatId: string, data: any) {
-    console.log('👁️ Broadcasting message read status for chat:', chatId, data);
+
 
     // Send to all users in the chat room
     this.server.to(`chat_${chatId}`).emit('messagesMarkedAsRead', {
@@ -607,7 +595,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   getOnlineUsersInChat(chatId: string): string[] {
     // This would need to be implemented based on your chat room management
     // For now, return all online users
-    return this.onlineUsers.map(user => user.userId);
+    return Array.from(this.onlineUsers.values()).map(user => user.userId);
   }
 
   // Handle direct message sending from frontend
@@ -618,7 +606,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     message: string,
     idChat: string
   }) {
-    console.log('📨 Direct message received from frontend:', payload);
+console.log('📨 Direct message received from frontend:', payload);
     const { sender, reciver, message, idChat } = payload;
 
     // Generate a temporary message ID for socket delivery
@@ -635,7 +623,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       timestamp: new Date().toISOString()
     });
 
-    console.log('✅ Direct message processed and sent via socket');
+console.log('✅ Direct message processed and sent via socket');
   }
 
 }

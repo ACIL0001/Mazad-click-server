@@ -59,7 +59,7 @@ export class SessionService {
 
       if (!session) {
         // console.log('🔍 ValidateSession: Session not in cache, looking in DB...');
-        session = await this.sessionModel.findOne({ access_key: key });
+        session = await this.sessionModel.findOne({ access_key: key }).populate('user');
 
         if (!session) {
           console.error(`❌ ValidateSession: Session not found in DB for key: ${key}`);
@@ -80,7 +80,7 @@ export class SessionService {
       // Check if user is fully populated (has _id property)
       // Mongoose populated field becomes a document. If not populated, it's an ObjectId.
       const userDoc = session.user as any;
-      if (!userDoc._id) {
+      if (!userDoc || !userDoc._id) {
         console.error(`❌ ValidateSession: Session user not populated (is ObjectId?). Session ID: ${session._id}`);
         // This implies the User document might be missing or populate failed.
         // We can try to manually find the user to be sure, or just assume invalid.
@@ -110,7 +110,7 @@ export class SessionService {
     refresh_token: string,
   ): Promise<{ access_token: string; refresh_token: string }> {
     const { sub, key } = await this.jwtService.verifyAsync(refresh_token);
-    const session = await this.sessionModel.findOne({ refresh_key: key });
+    const session = await this.sessionModel.findOne({ refresh_key: key }).populate('user');
     // if (!session) throw new BadRequestException('Invalid RefreshToken'); // TODO: TRANSLATE THIS
     if (!session) throw new HttpException('Invalid RefreshToken', 403); // TODO: TRANSLATE THIS
 

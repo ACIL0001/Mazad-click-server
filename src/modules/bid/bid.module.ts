@@ -53,8 +53,5 @@ import { SearchModule } from '../search/search.module';
 })
 export class BidModule {
   constructor() {
-    console.log('✅ BidModule loaded successfully');
-    console.log('📋 Controllers:', ['BidController', 'OfferController', 'ParticipantController', 'AutoBidController']);
-    console.log('🔧 Providers:', ['BidService', 'OfferService', 'ParticipantService', 'AutoBidService']);
   }
 }

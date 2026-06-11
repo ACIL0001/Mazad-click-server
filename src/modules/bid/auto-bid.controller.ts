@@ -21,8 +21,6 @@ import { ProtectedRequest } from 'src/types/request.type';
 @UseGuards(AuthGuard)
 export class AutoBidController {
   constructor(private readonly autoBidService: AutoBidService) {
-    console.log('✅ AutoBidController loaded successfully');
-    console.log('🔗 Routes: POST /auto-bid/:bidId, GET /auto-bid/test, GET /auto-bid/user/:userId, DELETE /auto-bid/:bidId/user/:userId');
   }
 
   @Get('test')
@@ -40,22 +38,17 @@ export class AutoBidController {
     @Req() request: ProtectedRequest,
   ) {
     try {
-      console.log('AutoBidController: Getting auto-bid for bidId:', bidId);
-      console.log('AutoBidController: User ID:', request.session.user._id);
-
       const autoBid = await this.autoBidService.getAutoBidByUserAndBid(
         request.session.user._id.toString(),
         bidId
       );
 
       if (autoBid) {
-        console.log('AutoBidController: Auto-bid found:', autoBid);
         return {
           success: true,
           data: autoBid
         };
       } else {
-        console.log('AutoBidController: No auto-bid found for this user and auction');
         return {
           success: false,
           data: null
@@ -81,10 +74,6 @@ export class AutoBidController {
     @Req() request: ProtectedRequest,
   ) {
     try {
-      console.log('AutoBidController: Received request for bidId:', bidId);
-      console.log('AutoBidController: Request body:', createAutoBidDto);
-      console.log('AutoBidController: User from request:', request.session.user._id);
-
       // Ensure the user can only create auto-bid for themselves
       if (createAutoBidDto.user !== request.session.user._id.toString()) {
         throw new HttpException('Unauthorized: You can only create auto-bids for yourself', HttpStatus.UNAUTHORIZED);
@@ -94,8 +83,6 @@ export class AutoBidController {
       createAutoBidDto.bid = bidId;
 
       const result = await this.autoBidService.createOrUpdateAutoBid(createAutoBidDto);
-      console.log('AutoBidController: Auto-bid saved successfully:', result);
-      
       return {
         success: true,
         message: 'Auto-bid saved successfully',

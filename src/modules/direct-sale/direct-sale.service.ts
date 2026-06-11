@@ -108,14 +108,14 @@ export class DirectSaleService {
         .populate({
           path: 'comments',
           populate: [
-            { path: 'user' },
+            { path: 'user', select: 'firstName lastName avatar username companyName entreprise rate type' },
             {
               path: 'replies',
               populate: [
-                { path: 'user' },
+                { path: 'user', select: 'firstName lastName avatar username companyName entreprise rate type' },
                 {
                   path: 'replies',
-                  populate: { path: 'user' }
+                  populate: { path: 'user', select: 'firstName lastName avatar username companyName entreprise rate type' }
                 }
               ]
             }
@@ -129,13 +129,6 @@ export class DirectSaleService {
       }
 
       // DEBUG: Log contactNumber from database
-      console.log('🗄️ [SERVICE] Direct Sale from DB:', {
-        id: directSale._id,
-        title: directSale.title,
-        contactNumber: directSale.contactNumber,
-        hasContactNumber: !!directSale.contactNumber,
-      });
-
       return directSale as any;
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -157,19 +150,13 @@ export class DirectSaleService {
   }
 
   async create(createDirectSaleDto: CreateDirectSaleDto): Promise<DirectSale> {
-    console.log('Creating direct sale:', createDirectSaleDto.title);
-    console.log('Direct sale DTO thumbs (type:', typeof createDirectSaleDto.thumbs, ', isArray:', Array.isArray(createDirectSaleDto.thumbs), '):', createDirectSaleDto.thumbs);
-    console.log('Direct sale DTO videos (type:', typeof createDirectSaleDto.videos, ', isArray:', Array.isArray(createDirectSaleDto.videos), '):', createDirectSaleDto.videos);
-    console.log('Direct sale DTO thumbs length:', createDirectSaleDto.thumbs?.length || 0);
-    console.log('Direct sale DTO videos length:', createDirectSaleDto.videos?.length || 0);
-
     // Ensure thumbs and videos are arrays
     if (!Array.isArray(createDirectSaleDto.thumbs)) {
-      console.warn('WARNING: thumbs is not an array, converting:', createDirectSaleDto.thumbs);
+      if (process.env.NODE_ENV === 'development')
       createDirectSaleDto.thumbs = createDirectSaleDto.thumbs ? [createDirectSaleDto.thumbs] : [];
     }
     if (!Array.isArray(createDirectSaleDto.videos)) {
-      console.warn('WARNING: videos is not an array, converting:', createDirectSaleDto.videos);
+      if (process.env.NODE_ENV === 'development') console.warn('WARNING: videos is not an array, converting:', createDirectSaleDto.videos);
       createDirectSaleDto.videos = createDirectSaleDto.videos ? [createDirectSaleDto.videos] : [];
     }
 
@@ -178,19 +165,7 @@ export class DirectSaleService {
       soldQuantity: 0,
       status: DIRECT_SALE_STATUS.ACTIVE,
     });
-    console.log('Direct sale model before save - thumbs (raw):', createdDirectSale.thumbs);
-    console.log('Direct sale model before save - thumbs (type):', typeof createdDirectSale.thumbs, Array.isArray(createdDirectSale.thumbs));
-    console.log('Direct sale model before save - thumbs (length):', createdDirectSale.thumbs?.length || 0);
-
     const savedDirectSale = await createdDirectSale.save();
-    console.log('Direct sale saved - thumbs (raw):', savedDirectSale.thumbs);
-    console.log('Direct sale saved - thumbs (type):', typeof savedDirectSale.thumbs, Array.isArray(savedDirectSale.thumbs));
-    console.log('Direct sale saved - thumbs (length):', savedDirectSale.thumbs?.length || 0);
-
-    // Verify the saved direct sale has thumbs
-    const verificationDirectSale = await this.directSaleModel.findById(savedDirectSale._id).select('thumbs videos').lean();
-    console.log('Verification query - thumbs:', verificationDirectSale?.thumbs);
-    console.log('Verification query - thumbs length:', verificationDirectSale?.thumbs?.length || 0);
     const populatedDirectSale = await this.directSaleModel
       .findById(savedDirectSale._id)
       .populate('productCategory')
@@ -247,7 +222,6 @@ export class DirectSaleService {
     }
 
     // Check if any users were looking for this item
-    console.log('📢 Checking for interested users for direct sale:', populatedDirectSale.title);
     this.searchService.notifyInterestedUsers(
       populatedDirectSale.title,
       populatedDirectSale.description || '',
@@ -490,7 +464,6 @@ export class DirectSaleService {
 
         const chat = await this.chatService.create(chatUsers, new Date().toISOString());
         chatId = chat._id.toString();
-        console.log(`✅ Chat created between ${sellerUser.firstName} and ${buyerUser.firstName} (ID: ${chatId})`);
       }
     } catch (chatError) {
       console.error('❌ Error creating chat on confirm purchase:', chatError);

@@ -37,6 +37,7 @@ export class Offer {
 }
 export type OfferDocument = HydratedDocument<Offer>;
 export const OfferSchema = SchemaFactory.createForClass(Offer);
+OfferSchema.index({ bid: 1 });
 
 
 OfferSchema.pre(['find', 'findOne'], function() {

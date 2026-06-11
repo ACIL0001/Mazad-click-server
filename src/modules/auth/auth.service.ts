@@ -80,47 +80,33 @@ export class AuthService {
 
   async SignIn(credentials: SignInDto) {
     try {
-      console.log('🔐 SignIn: Starting authentication for login:', credentials.login);
-
       let user = await this.userService.findByLogin(credentials.login);
-      console.log('🔐 SignIn: findByLogin result:', user ? `User found (${user._id})` : 'User not found');
 
       if (!user) throw new UnauthorizedException('Invalid credentials - login');
 
-      console.log('🔐 SignIn: Validating password...');
       const isMatch = await user.validatePassword(credentials.password);
-      console.log('🔐 SignIn: Password validation result:', isMatch ? 'Valid' : 'Invalid');
 
       if (!isMatch) throw new UnauthorizedException('Invalid credentials - password');
 
       // Check if phone is verified - prevent login if not verified
-      console.log('🔐 SignIn: Checking phone verification status:', user.isPhoneVerified);
       if (!user.isPhoneVerified) {
         // Send OTP for phone verification
-        console.log('🔐 SignIn: Phone not verified, sending OTP...');
         await this.otpService.createOtpAndSendSMS(user, OtpType.PHONE_CONFIRMATION);
         throw new UnauthorizedException('Phone number not verified. Please verify your phone number with the OTP sent to you.');
       }
 
       // Increment login count
-      console.log('🔐 SignIn: Incrementing login count...');
       await this.userService.incrementLoginCount(user._id.toString());
 
       // Reload user to get updated count
-      console.log('🔐 SignIn: Reloading user...');
       user = await this.userService.findUserById(user._id.toString());
 
-      console.log('🔐 SignIn: Creating session...');
       const session = await this.sessionService.CreateSession(user);
-      console.log('🔐 SignIn: Session created:', session ? 'Success' : 'Failed');
 
       // Ensure session has required properties (note: backend uses snake_case)
       if (!session.access_token || !session.refresh_token) {
-        console.error('🔐 SignIn: Session missing required tokens:', session);
         throw new Error('Failed to create valid session');
       }
-
-      console.log('🔐 SignIn: Authentication successful');
       // Return consistent structure for frontend (convert to camelCase) - DON'T spread session
       // Note: findUserById may return enriched plain object, so check if toObject exists
       const userObject = typeof user.toObject === 'function' ? user.toObject() : user;
@@ -135,11 +121,13 @@ export class AuthService {
         }
       };
     } catch (error) {
-      console.error('🔐 SignIn: Error occurred:', {
-        name: (error as Error).name,
-        message: (error as Error).message,
-        stack: (error as Error).stack?.split('\n').slice(0, 5).join('\n')
-      });
+      if (process.env.NODE_ENV === 'development') {
+        console.error('🔐 SignIn: Error occurred:', {
+          name: (error as Error).name,
+          message: (error as Error).message,
+          stack: (error as Error).stack?.split('\n').slice(0, 5).join('\n')
+        });
+      }
       throw error;
     }
   }
@@ -158,8 +146,6 @@ export class AuthService {
     const updatedUser = await this.userService.updateUserType(user._id.toString(), RoleCode.CLIENT);
 
     const buyerUrl = process.env.CLIENT_BASE_URL || 'http://localhost:3001';
-    console.log('🔄 Mark as buyer - redirecting to:', buyerUrl);
-
     return {
       success: true,
       message: 'User successfully marked as buyer',
@@ -173,8 +159,6 @@ export class AuthService {
     const updatedUser = await this.userService.updateUserType(user._id.toString(), RoleCode.PROFESSIONAL);
 
     const sellerUrl = (process.env.SELLER_BASE_URL || 'http://localhost:3002') + '/dashboard/app';
-    console.log('🔄 Mark as seller - redirecting to:', sellerUrl);
-
     return {
       success: true,
       message: 'User successfully marked as seller',

@@ -79,7 +79,6 @@ export class User {
   identity?: any;
 
   @Prop({ type: Boolean, default: false })
-  @Prop({ type: Boolean, default: false })
   isRecommended: boolean;
 
   @Prop({ type: String, required: false })

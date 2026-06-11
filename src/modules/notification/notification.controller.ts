@@ -59,22 +59,11 @@ export class NotificationController {
   @Get('offer')
   @UseGuards(AuthGuard, SellerGuard)
   async findOffersForSeller(@Req() req: ProtectedRequest) {
-    console.log("🔍 SELLER AUTH DEBUG:");
-    console.log("Session exists:", !!req.session);
-    console.log("User exists:", !!req.session?.user);
-    console.log("User ID:", req.session?.user?._id);
-
     if (!req.session?.user) {
       throw new UnauthorizedException('User not authenticated');
     }
     const userId = req.session.user._id.toString();
-    console.log("Fetching notifications for seller with userId:", userId);
-
     const notifications = await this.notificationService.findForSeller(userId);
-    console.log("🔍 DEBUG: Backend found notifications:", notifications.length);
-    console.log("🔍 DEBUG: Backend notification types:", notifications.map(n => n.type));
-    console.log("🔍 DEBUG: Backend notification user IDs:", notifications.map(n => n.userId));
-
     return notifications;
   }
 
@@ -89,9 +78,6 @@ export class NotificationController {
 
     const userId = req.session.user._id.toString();
     const userType = req.session.user.type;
-
-    console.log('📧 Fetching notifications for user:', { userId, userType });
-
     // If admin or sous_admin, they should see their notifications
     // (notifications are created specifically for each admin)
     const notifications = await this.notificationService.findForUser(userId);
@@ -108,12 +94,7 @@ export class NotificationController {
   // Debug endpoint to see all notifications in database
   @Get('debug/all')
   async debugAllNotifications() {
-    console.log("🔍 DEBUG: Checking all notifications in database");
     const allNotifications = await this.notificationService.findAllNotifications();
-    console.log("🔍 DEBUG: Total notifications in database:", allNotifications.length);
-    console.log("🔍 DEBUG: Notification types:", allNotifications.map(n => n.type));
-    console.log("🔍 DEBUG: User IDs:", allNotifications.map(n => n.userId));
-    console.log("🔍 DEBUG: Titles:", allNotifications.map(n => n.title));
     return {
       total: allNotifications.length,
       notifications: allNotifications.map(n => ({
@@ -131,12 +112,6 @@ export class NotificationController {
   @Put(':id/read')
   @UseGuards(AuthGuard)
   async markAsRead(@Param('id') id: string, @Req() req: ProtectedRequest) {
-    console.log("🔖 Marking notification as read:", {
-      notificationId: id,
-      userId: req.session?.user?._id,
-      userType: req.session?.user?.type
-    });
-
     if (!req.session?.user) {
       throw new UnauthorizedException('User not authenticated');
     }
@@ -149,15 +124,6 @@ export class NotificationController {
       console.error("❌ Notification not found:", id);
       throw new UnauthorizedException('Notification not found');
     }
-
-    console.log("🔍 Found notification:", {
-      id: notification._id,
-      userId: notification.userId,
-      type: notification.type,
-      read: notification.read,
-      title: notification.title
-    });
-
     if (notification.userId !== userId) {
       console.error("❌ User trying to mark notification that doesn't belong to them:", {
         notificationUserId: notification.userId,
@@ -167,11 +133,6 @@ export class NotificationController {
     }
 
     const result = await this.notificationService.markAsRead(id);
-    console.log("✅ Notification marked as read successfully:", {
-      id: result._id,
-      read: result.read,
-      updatedAt: result.updatedAt
-    });
     return result;
   }
 
@@ -183,7 +144,6 @@ export class NotificationController {
       throw new UnauthorizedException('User not authenticated');
     }
     const userId = req.session.user._id.toString();
-    console.log("🔖 Marking all notifications as read for buyer:", userId);
     return this.notificationService.markAllAsRead(userId);
   }
 
@@ -195,7 +155,6 @@ export class NotificationController {
       throw new UnauthorizedException('User not authenticated');
     }
     const userId = req.session.user._id.toString();
-    console.log("🔖 Marking all notifications as read for user:", userId);
     return this.notificationService.markAllAsRead(userId);
   }
 
@@ -296,7 +255,6 @@ export class NotificationController {
       throw new UnauthorizedException('User not authenticated');
     }
     const userId = req.session.user._id.toString();
-    console.log("🧪 Creating test notification for user:", userId);
     const notification = await this.notificationService.create(
       userId,
       NotificationType.NEW_OFFER,
@@ -304,7 +262,6 @@ export class NotificationController {
       body.message || 'This is a test notification to verify the system works!',
       { test: true }
     );
-    console.log("✅ Test notification created:", notification);
     return { success: true, notification };
   }
 
@@ -316,7 +273,6 @@ export class NotificationController {
       throw new UnauthorizedException('User not authenticated');
     }
     const userId = req.session.user._id.toString();
-    console.log("🧪 Creating test CHAT_CREATED notification for user:", userId);
     const buyerName = body.buyerName || 'Test Buyer';
     const productTitle = body.productTitle || 'Test Product';
     const notification = await this.notificationService.create(
@@ -331,7 +287,6 @@ export class NotificationController {
         productTitle: productTitle
       }
     );
-    console.log("✅ Test CHAT_CREATED notification created:", notification);
     return { success: true, notification };
   }
 
@@ -343,7 +298,6 @@ export class NotificationController {
       throw new UnauthorizedException('User not authenticated');
     }
     const userId = req.session.user._id.toString();
-    console.log('🔖 Marking all notifications as read for user:', userId, 'and chatId:', chatId);
     return this.notificationService.markAllChatNotificationsAsRead(userId, chatId);
   }
 
@@ -355,8 +309,6 @@ export class NotificationController {
       throw new UnauthorizedException('User not authenticated');
     }
     const userId = req.session.user._id.toString();
-    console.log('🔖 Marking all chat notifications as read for user:', userId);
-
     const result = await this.notificationService.markAllChatNotificationsAsReadForUser(userId);
     return result;
   }

@@ -323,7 +323,7 @@ export class AuctionNotificationService {
     }
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_5_MINUTES)
   async checkFeedbackReminders() {
     const now = new Date();
     try {

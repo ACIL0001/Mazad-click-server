@@ -32,11 +32,8 @@ export class OfferController {
   @Get()
   @Public()
   async getAllOffers() {
-    console.log('Controller: Getting all offers');
-
     try {
       const offers = await this.offerService.getAllOffersForTesting();
-      console.log('Controller: Returning all offers:', offers.length);
       return {
         success: true,
         data: offers,
@@ -54,12 +51,8 @@ export class OfferController {
    */
   @Post('all')
   async getAllOffersForUser(@Body('data') data: any) {
-    console.log('Controller: Getting offers for user ID:', data._id);
-    console.log('Controller: Full request body:', data);
-
     try {
       const offers = await this.offerService.getOffers(data);
-      console.log('Controller: Returning offers:', offers.length);
       return offers;
     } catch (error) {
       console.error('Controller: Error getting offers:', error);
@@ -73,11 +66,8 @@ export class OfferController {
    */
   @Get('test/all')
   async getAllOffersTest() {
-    console.log('Controller: Getting all offers for testing');
-
     try {
       const allOffers = await this.offerService.getAllOffersForTesting();
-      console.log('Controller: Returning all offers:', allOffers.length);
       return allOffers;
     } catch (error) {
       console.error('Controller: Error getting all offers:', error);
@@ -155,8 +145,6 @@ export class OfferController {
     @Req() req: ProtectedRequest,
   ) {
     try {
-      console.log('Controller: Accepting offer:', { offerId, userId: req.session?.user?._id });
-
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         console.error('Controller: User ID not found in session. properties:', Object.keys(req.session?.user || {}), 'session:', !!req.session);
@@ -164,7 +152,6 @@ export class OfferController {
       }
 
       const result = await this.offerService.acceptOffer(offerId, userId);
-      console.log('Controller: Offer accepted successfully:', result._id);
       return result;
     } catch (error) {
       console.error('Controller: Error accepting offer:', error);
@@ -185,8 +172,6 @@ export class OfferController {
     @Req() req: ProtectedRequest,
   ) {
     try {
-      console.log('Controller: Rejecting offer:', { offerId, userId: req.session?.user?._id });
-
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         console.error('Controller: User ID not found in session. properties:', Object.keys(req.session?.user || {}), 'session:', !!req.session);
@@ -194,7 +179,6 @@ export class OfferController {
       }
 
       const result = await this.offerService.rejectOffer(offerId, userId);
-      console.log('Controller: Offer rejected successfully:', result._id);
       return result;
     } catch (error) {
       console.error('Controller: Error rejecting offer:', error);
@@ -215,15 +199,12 @@ export class OfferController {
     @Req() req: ProtectedRequest,
   ) {
     try {
-      console.log('Controller: Deleting offer:', { offerId, userId: req.session?.user?._id });
-
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         throw new BadRequestException('User ID not found in session');
       }
 
       const result = await this.offerService.deleteOffer(offerId, userId);
-      console.log('Controller: Offer deleted successfully:', offerId);
       return result;
     } catch (error) {
       console.error('Controller: Error deleting offer:', error);

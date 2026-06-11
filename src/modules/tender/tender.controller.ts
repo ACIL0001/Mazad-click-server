@@ -281,8 +281,6 @@ export class TenderController {
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
     const userId = req.session?.user?._id?.toString();
-    console.log('TenderController.create - Session User ID:', userId);
-
     if (!userId) {
       console.error('TenderController.create - No User ID in Session!', { session: req.session });
       throw new Error('User ID not found in session. Cannot create tender.');
@@ -292,10 +290,6 @@ export class TenderController {
       console.error('TenderController.create - No "data" field in body!');
       throw new Error('Missing "data" field in request body');
     }
-
-    console.log('Creating tender with data:', rawData);
-    console.log('Uploaded files count:', files?.length || 0);
-
     let createTenderDto: CreateTenderDto;
     try {
       createTenderDto = JSON.parse(rawData);
@@ -308,20 +302,9 @@ export class TenderController {
     if (!createTenderDto.attachments) {
       createTenderDto.attachments = [];
     }
-
-    console.log('📋 CreateTenderDto parsed:', {
-      title: createTenderDto.title,
-      tenderType: createTenderDto.tenderType,
-      auctionType: createTenderDto.auctionType,
-      evaluationType: createTenderDto.evaluationType,
-      hasEvaluationType: !!createTenderDto.evaluationType
-    });
-
     if (files && files.length > 0) {
       // Log all file fieldnames to debug
       const allFieldnames = [...new Set(files.map(f => f.fieldname))];
-      console.log('All unique fieldnames received:', allFieldnames);
-
       // Filter files - handle both 'attachments[]' and 'attachments'
       let attachmentFiles = files.filter(file => {
         const isAttachmentsField = file.fieldname === 'attachments[]' ||
@@ -332,23 +315,16 @@ export class TenderController {
 
       // Fallback: if no files found with attachments fieldname, use all files
       if (attachmentFiles.length === 0) {
-        console.warn('No files found with attachments fieldname, using all files...');
         attachmentFiles = files;
       }
-
-      console.log('Filtered attachment files:', attachmentFiles.length);
-      console.log('Attachment file details:', attachmentFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
-
       try {
         const attachmentPromises = attachmentFiles.map(async (file) => {
           try {
-            console.log('Uploading attachment file:', file.originalname);
             const att = await this.attachmentService.upload(
               file,
               AttachmentAs.BID, // Reusing the same attachment type
               userId,
             );
-            console.log('Attachment created:', att._id, att.url);
             return att;
           } catch (error) {
             console.error('Error uploading attachment file:', file.originalname, error);
@@ -360,11 +336,9 @@ export class TenderController {
           .filter(att => att && att._id)
           .map((att) => {
             const id = att._id.toString();
-            console.log('Adding attachment ID:', id, 'from attachment:', att._id);
             return id;
           });
         createTenderDto.attachments = attachmentIds;
-        console.log('Attachments IDs set (count:', attachmentIds.length, '):', createTenderDto.attachments);
         if (attachmentIds.length === 0 && attachmentFiles.length > 0) {
           console.error('WARNING: No valid attachment IDs were extracted from', attachments.length, 'attachments');
           console.error('Attachment details:', attachments.map(a => ({
@@ -378,16 +352,9 @@ export class TenderController {
         throw new Error(`Failed to upload attachments: ${error.message}`);
       }
     } else {
-      console.warn('No files received in the request');
     }
 
     // Final validation before creating tender
-    console.log('Final tender DTO before service call:', {
-      title: createTenderDto.title,
-      attachmentsCount: createTenderDto.attachments?.length || 0,
-      attachments: createTenderDto.attachments
-    });
-
     if (!createTenderDto.owner) {
       createTenderDto.owner = userId;
     }
@@ -449,16 +416,6 @@ export class TenderController {
 
     const hasProposalText = createTenderBidDto.proposal && createTenderBidDto.proposal.trim().length >= 10;
     const hasProposalFile = !!proposalFileUpload;
-
-    console.log('🔍 [TenderController] Bid validation:', {
-      tenderId,
-      evaluationType: tender.evaluationType,
-      isMieuxDisant,
-      bidAmount: createTenderBidDto.bidAmount,
-      hasProposalText,
-      hasProposalFile,
-    });
-
     if (isMieuxDisant) {
       // For MIEUX_DISANT: require proposal text (≥10 chars) OR an uploaded file (or both)
       if (!hasProposalText && !hasProposalFile) {
@@ -484,7 +441,6 @@ export class TenderController {
         createTenderBidDto.proposalFile = attachment.url
           ? (attachment.url.startsWith('http') ? attachment.url : `${this.baseUrl}${attachment.url}`)
           : `${this.baseUrl}/uploads/${proposalFileUpload.filename}`;
-        console.log('📎 Proposal file uploaded:', createTenderBidDto.proposalFile);
       } catch (uploadError) {
         console.error('Error uploading proposal file:', uploadError);
         throw new BadRequestException('Échec du téléchargement du fichier de proposition');
@@ -499,12 +455,6 @@ export class TenderController {
       throw new BadRequestException('Tender owner not found');
     }
     createTenderBidDto.tenderOwner = tender.owner._id.toString();
-
-    console.log('Controller - Final DTO before service call:', {
-      ...createTenderBidDto,
-      proposalFile: createTenderBidDto.proposalFile ? '[URL]' : undefined,
-    });
-
     return this.tenderService.createTenderBid(tenderId, createTenderBidDto, isMieuxDisant);
   }
 
@@ -596,15 +546,12 @@ export class TenderController {
     @Req() req: ProtectedRequest,
   ) {
     try {
-      console.log('TenderController: Accepting tender bid:', { bidId, userId: req.session?.user?._id });
-
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         throw new BadRequestException('User ID not found in session');
       }
 
       const result = await this.tenderService.acceptTenderBid(bidId, userId);
-      console.log('TenderController: Tender bid accepted successfully:', result._id);
       return result;
     } catch (error) {
       console.error('TenderController: Error accepting tender bid:', error);
@@ -622,15 +569,12 @@ export class TenderController {
     @Req() req: ProtectedRequest,
   ) {
     try {
-      console.log('TenderController: Rejecting tender bid:', { bidId, userId: req.session?.user?._id });
-
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         throw new BadRequestException('User ID not found in session');
       }
 
       const result = await this.tenderService.rejectTenderBid(bidId, userId);
-      console.log('TenderController: Tender bid rejected successfully:', result._id);
       return result;
     } catch (error) {
       console.error('TenderController: Error rejecting tender bid:', error);
@@ -684,15 +628,12 @@ export class TenderController {
     @Req() req: ProtectedRequest,
   ) {
     try {
-      console.log('TenderController: Deleting tender bid:', { bidId, userId: req.session?.user?._id });
-
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         throw new BadRequestException('User ID not found in session');
       }
 
       const result = await this.tenderService.deleteTenderBid(bidId, userId);
-      console.log('TenderController: Tender bid deleted successfully:', result._id);
       return result;
     } catch (error) {
       console.error('TenderController: Error deleting tender bid:', error);
@@ -707,15 +648,12 @@ export class TenderController {
     @Req() req: ProtectedRequest,
   ) {
     try {
-      console.log('TenderController: Deleting tender:', { tenderId, userId: req.session?.user?._id });
-
       const userId = req.session?.user?._id?.toString();
       if (!userId) {
         throw new BadRequestException('User ID not found in session');
       }
 
       const result = await this.tenderService.deleteTender(tenderId, userId);
-      console.log('TenderController: Tender deleted successfully:', result._id);
       return result;
     } catch (error) {
       console.error('TenderController: Error deleting tender:', error);

@@ -32,19 +32,13 @@ export class ChatService {
   ) { }
 
   async create(users: IUser[], createdAt: string): Promise<Chat> {
-    console.log("Creating chat with users:", users);
-
     // Check if this is an admin chat (one user has AccountType = 'admin')
     const isAdminChat = users.some(user => user.AccountType === 'admin' || user._id === 'admin');
 
     if (isAdminChat) {
-      console.log("This is an admin chat");
-
       // For admin chats, we need to find the actual admin users from the database
       try {
         const adminUsers = await this.userService.findUsersByRoles([RoleCode.ADMIN]);
-        console.log("Found admin users:", adminUsers);
-
         if (adminUsers && adminUsers.length > 0) {
           // Use the first admin user for the chat
           const adminUser = adminUsers[0];
@@ -100,8 +94,6 @@ export class ChatService {
     }
 
     // Original logic for non-admin chats or fallback
-    console.log("Using original chat creation logic");
-
     // Check if chat already exists between these two users
     if (users.length >= 2) {
       const userId1 = users[0]._id?.toString() || users[0]._id;
@@ -130,17 +122,14 @@ export class ChatService {
         }).lean();
 
         if (existingChat2) {
-          console.log("✅ Found existing chat between users:", userId1, userId2);
           return existingChat2 as Chat;
         }
       } else {
-        console.log("✅ Found existing chat between users:", userId1, userId2);
         return existingChat as Chat;
       }
     }
 
     // Create new chat if it doesn't exist
-    console.log("📝 Creating new chat between users");
     const chat = new this.chatModel({ users, createdAt })
     await chat.save()
 
@@ -154,8 +143,6 @@ export class ChatService {
 
 
   async getChat(id: string, from: string): Promise<any[]> {
-    console.log('🔍 ChatService.getChat called with:', { id, from, idType: typeof id });
-
     // Handle both string and ObjectId types for users._id
     // Try multiple query formats to ensure we find all chats
     let queryId: any = id;
@@ -187,14 +174,7 @@ export class ChatService {
         );
         chats = uniqueChats;
       }
-
-      console.log(`📊 Found ${chats.length} chats for seller ${id}`);
       if (chats.length > 0) {
-        console.log('📋 Sample chat structure:', {
-          _id: chats[0]._id,
-          usersCount: chats[0].users?.length,
-          users: chats[0].users?.map((u: any) => ({ _id: u._id, firstName: u.firstName, AccountType: u.AccountType }))
-        });
       }
     } else if (from == 'admin') {
       // For admin, find chats where either:
@@ -245,7 +225,6 @@ export class ChatService {
         Array.isArray(chat.users) &&
         chat.users.length >= 2; // Each chat should have exactly 2 users
       if (!isValid) {
-        console.warn('⚠️ Invalid chat found:', chat);
       }
       return isValid;
     });
@@ -284,8 +263,6 @@ export class ChatService {
         lastMessage: lastMessageMap.get(chat._id.toString()) || null,
         unreadCount: unreadCountMap.get(chat._id.toString()) || 0
       }));
-
-      console.log(`✅ Returning ${chatsWithDetails.length} chats with details`);
       return chatsWithDetails;
     } catch (error) {
       console.error('Error populating chat details:', error);
@@ -309,9 +286,6 @@ export class ChatService {
         { 'users.AccountType': 'admin' }
       ]
     }).exec();
-
-    console.log(`Found ${chats.length} admin chats`);
-
     // Add isAdminChat property (always true for admin chats) and populate messages
     try {
       const chatsWithAdminFlag = chats.map(chat => ({
@@ -350,8 +324,6 @@ export class ChatService {
         { 'users.AccountType': 'guest' }
       ]
     }).exec();
-
-    console.log(`Found ${chats.length} guest chats`);
     return chats;
   }
 
@@ -375,9 +347,7 @@ export class ChatService {
     }).exec();
 
     if (chat) {
-      console.log(`Found guest chat by info: ${chat._id}`);
     } else {
-      console.log(`No guest chat found for ${guestName} (${guestPhone})`);
     }
 
     return chat;
@@ -389,13 +359,9 @@ export class ChatService {
     filterType: BroadcastFilterType = BroadcastFilterType.ALL,
     filterValue: string[] = []
   ): Promise<{ success: boolean; count: number }> {
-    console.log('📢 Starting broadcast message:', { message, filterType, filterValue });
-
     try {
       // 1. Fetch users based on filter
       const allUsers = await this.userService.findUsersByFilter(filterType, filterValue);
-      console.log(`📢 Found ${allUsers.length} users to broadcast to`);
-
       let sentCount = 0;
 
       // 2. Iterate and send message
@@ -443,8 +409,6 @@ export class ChatService {
           // Continue to next user even if one fails
         }
       }
-
-      console.log(`✅ Broadcast complete. Sent to ${sentCount} users.`);
       return { success: true, count: sentCount };
 
     } catch (error) {

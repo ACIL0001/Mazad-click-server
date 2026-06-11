@@ -40,8 +40,6 @@ export class MessageController {
     
     // If no chat ID provided or chat doesn't exist, create a new chat
     if (!chatId || chatId === 'undefined' || chatId === 'null') {
-      console.log('📝 No chat ID provided, creating new chat for users:', dto.sender, dto.reciver);
-      
       try {
         // Fetch user details for both sender and receiver
         let senderUser: any = null;
@@ -51,7 +49,6 @@ export class MessageController {
           senderUser = await this.UserService.findUserById(dto.sender);
           receiverUser = await this.UserService.findUserById(dto.reciver);
         } catch (error) {
-          console.warn('⚠️ Could not fetch user details, using minimal info:', error);
         }
         
         // Check if chat already exists between these two users
@@ -85,11 +82,9 @@ export class MessageController {
             );
           }
         } catch (error) {
-          console.warn('⚠️ Error checking for existing chat:', error);
         }
         
         if (foundExistingChat) {
-          console.log('✅ Found existing chat:', foundExistingChat._id);
           chatId = foundExistingChat._id;
         } else {
           // Create new chat with user details
@@ -112,7 +107,6 @@ export class MessageController {
           
           const newChat = await this.ChatService.create(chatUsers, new Date().toISOString());
           chatId = newChat._id;
-          console.log('✅ Created new chat:', chatId, 'between users:', dto.sender, 'and', dto.reciver);
         }
       } catch (error) {
         console.error('❌ Error creating chat:', error);
@@ -182,8 +176,6 @@ export class MessageController {
       filename: string;
     };
   }): Promise<Message> {
-    console.log('📨 Guest message received:', dto);
-    
     // Generate a unique chat ID if not provided
     const chatId = dto.idChat || `guest-chat-${Date.now()}`;
     
@@ -197,14 +189,11 @@ export class MessageController {
           chat.users?.some((user: any) => user._id === 'guest') &&
           chat.users?.some((user: any) => user.AccountType === 'admin')
         );
-        console.log('🔍 Existing guest chat found:', existingChat?._id);
       } catch (error) {
-        console.log('🔍 No existing guest chat found or error:', error);
       }
       
       // If no existing chat, create a new one
       if (!existingChat) {
-        console.log('📝 Creating new guest chat...');
         const guestChatUsers = [
           {
             _id: 'guest',
@@ -223,7 +212,6 @@ export class MessageController {
         ];
         
         existingChat = await this.ChatService.create(guestChatUsers, new Date().toISOString());
-        console.log('✅ Guest chat created:', existingChat._id);
       }
       
       // Use the existing or newly created chat ID
@@ -242,8 +230,6 @@ export class MessageController {
           attachment: dto.attachment
         }
       );
-      
-      console.log('✅ Guest message created:', message._id);
       return message;
     } catch (error) {
       console.error('❌ Error creating guest message:', error);
@@ -283,15 +269,6 @@ export class MessageController {
     @Body('guestPhone') guestPhone?: string
   ): Promise<Message> {
     try {
-      console.log('🎤 Voice message received:', {
-        filename: file?.originalname,
-        sender,
-        reciver,
-        idChat,
-        guestName,
-        guestPhone
-      });
-
       if (!file) {
         throw new Error('No audio file provided');
       }
@@ -305,20 +282,8 @@ export class MessageController {
         'MESSAGE',
         userId
       );
-
-      console.log('✅ Voice attachment uploaded:', attachment);
-
       // Create the voice message with attachment info
       const attachmentAny = attachment as any;
-      
-      console.log('📎 Creating attachment info:', {
-        'attachment._id': attachmentAny._id,
-        'attachment.size': attachmentAny.size,
-        'file.size': file.size,
-        'attachment.mimetype': attachmentAny.mimetype,
-        'file.mimetype': file.mimetype
-      });
-      
       const attachmentInfo = {
         _id: attachmentAny._id || attachmentAny.id || '',
         url: attachmentAny.fullUrl || attachmentAny.url || `${resolveApiBaseUrl()}/static/${attachmentAny.filename}`,
@@ -328,9 +293,6 @@ export class MessageController {
         size: attachmentAny.size || file.size,
         filename: attachmentAny.filename || file.filename
       };
-      
-      console.log('📎 Final attachment info:', attachmentInfo);
-
       // Check if this is a guest message
       const isGuest = !req.session?.user?._id && (guestName || guestPhone);
 
@@ -344,7 +306,6 @@ export class MessageController {
             chat.users?.some((user: any) => user.AccountType === 'admin')
           );
         } catch (error) {
-          console.log('🔍 No existing guest chat found');
         }
         
         const finalChatId = existingChat?._id || idChat;
@@ -361,8 +322,6 @@ export class MessageController {
             attachment: attachmentInfo
           }
         );
-
-        console.log('✅ Guest voice message created:', message._id);
         return message;
       } else {
         // Handle authenticated user voice message
@@ -375,8 +334,6 @@ export class MessageController {
             attachment: attachmentInfo
           }
         );
-
-        console.log('✅ Authenticated voice message created:', message._id);
         return message;
       }
     } catch (error) {

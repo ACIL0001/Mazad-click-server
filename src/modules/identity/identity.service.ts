@@ -18,8 +18,6 @@ export class IdentityService {
   ) { }
 
   async createIdentity(userId: string, identityData: Partial<Identity>): Promise<IdentityDocument> {
-    console.log('Creating identity with data:', { userId, identityData });
-
     try {
       const identity = new this.identityModel({
         ...identityData,
@@ -28,11 +26,7 @@ export class IdentityService {
         // Ensure conversionType is set
         conversionType: identityData.conversionType || CONVERSION_TYPE.PROFESSIONAL_VERIFICATION
       });
-      console.log('Identity model created, saving...');
-
       const savedIdentity = await identity.save();
-      console.log('Identity saved successfully:', savedIdentity._id);
-
       // Don't update verification status on creation - wait for admin approval
       // Verification status will be set after admin approves (status becomes DONE)
 
@@ -68,21 +62,11 @@ export class IdentityService {
 
   public async createIdentityVerificationNotification(identity: IdentityDocument): Promise<void> {
     try {
-      console.log('🔔 Creating identity verification notifications...');
-
       // Get all admin users (both ADMIN and SOUS_ADMIN)
       const adminUsers = await this.userModel.find({
         type: { $in: ['ADMIN', 'SOUS_ADMIN'] }
       }).select('_id email firstName lastName type');
-
-      console.log(`📧 Found ${adminUsers.length} admin users:`, adminUsers.map(u => ({
-        id: u._id,
-        email: u.email,
-        type: u.type
-      })));
-
       if (adminUsers.length === 0) {
-        console.warn('⚠️ No admin users found to send identity verification notification');
         return;
       }
 
@@ -116,8 +100,6 @@ export class IdentityService {
       );
 
       const createdNotifications = await Promise.all(notificationPromises);
-      console.log(`✅ Identity verification notifications created successfully for ${adminUsers.length} admin users`);
-      console.log('📝 Notification IDs:', createdNotifications.map(n => n._id));
     } catch (error) {
       console.error('Error creating identity verification notification:', error);
       throw error;
@@ -126,15 +108,12 @@ export class IdentityService {
 
   public async createIdentityCertificationNotification(identity: IdentityDocument): Promise<void> {
     try {
-      console.log('🔔 Creating identity certification notifications...');
-
       // Get all admin users (both ADMIN and SOUS_ADMIN)
       const adminUsers = await this.userModel.find({
         type: { $in: ['ADMIN', 'SOUS_ADMIN'] }
       }).select('_id email firstName lastName type');
 
       if (adminUsers.length === 0) {
-        console.warn('⚠️ No admin users found to send identity certification notification');
         return;
       }
 
@@ -159,7 +138,6 @@ export class IdentityService {
       );
 
       await Promise.all(notificationPromises);
-      console.log(`✅ Identity certification notifications created successfully for ${adminUsers.length} admin users`);
     } catch (error) {
       console.error('Error creating identity certification notification:', error);
       // Don't throw error
@@ -409,8 +387,6 @@ export class IdentityService {
 
   // Update payment proof for an identity
   async updatePaymentProof(identityId: string, paymentProofId: string): Promise<IdentityDocument | null> {
-    console.log('Updating payment proof for identity:', identityId, 'with attachment:', paymentProofId);
-
     const result = await this.identityModel.findByIdAndUpdate(
       identityId,
       { paymentProof: paymentProofId },
@@ -433,14 +409,10 @@ export class IdentityService {
       // NEW PAYMENT PROOF FIELD
       .populate('paymentProof')
       .exec();
-
-    console.log('Payment proof update result:', result?.paymentProof);
     return result;
   }
 
   async updateIdentityDocument(identityId: string, field: string, attachmentId: string): Promise<IdentityDocument | null> {
-    console.log('Updating identity document:', { identityId, field, attachmentId });
-
     try {
       const updateData = { [field]: attachmentId };
 
@@ -460,9 +432,6 @@ export class IdentityService {
         .populate('carteFellah')
         .populate('paymentProof')
         .exec();
-
-      console.log('Document update result:', result?.[field]);
-
       // Only update verification status if identity is already approved (DONE)
       // If status is WAITING, documents are pending admin review
       if (result && result.user && result.status === IDE_TYPE.DONE) {
@@ -485,7 +454,6 @@ export class IdentityService {
     // Only update verification status if identity has been approved by admin (status is DONE)
     // Users should not be verified just by uploading documents - they need admin approval first
     if (identity.status !== IDE_TYPE.DONE) {
-      console.log(`⏸️ Skipping verification status update - identity status is ${identity.status}, not DONE`);
       return;
     }
 
@@ -522,7 +490,6 @@ export class IdentityService {
 
       if (Object.keys(updateFields).length > 0) {
         await this.userModel.findByIdAndUpdate(userId, { $set: updateFields });
-        console.log(`✅ Updated user ${userId} verification status:`, updateFields);
       }
     } catch (error) {
       console.error('Error updating user verification status:', error);

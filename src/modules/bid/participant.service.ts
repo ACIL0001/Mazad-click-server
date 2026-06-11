@@ -103,7 +103,6 @@ export class ParticipantService {
       await this.updateBidParticipantCount(bid._id.toString());
       updatedCount++;
     }
-    console.log(`Synced participants count for ${updatedCount} bids.`);
     return { updated: updatedCount };
   }
 

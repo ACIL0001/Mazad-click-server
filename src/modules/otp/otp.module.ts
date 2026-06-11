@@ -67,16 +67,8 @@ import { EmailModule } from '../email/email.module';
 export class OtpModule {
   constructor() {
     const environment = process.env.NODE_ENV || 'development';
-    console.log(`🔧 OTP Module initialized in ${environment.toUpperCase()} mode`);
-
     if (environment === 'development') {
-      console.log('📝 SMS messages will be logged instead of sent (saves credits)');
-      console.log('🧪 Enhanced debugging and testing features enabled');
-      console.log('⚡ Relaxed rate limiting for easier testing');
     } else {
-      console.log('🚀 SMS messages will be sent via NetBeOpeN gateway');
-      console.log('💰 SMS credits will be consumed');
-      console.log('🔒 Production rate limiting active');
     }
   }
 }

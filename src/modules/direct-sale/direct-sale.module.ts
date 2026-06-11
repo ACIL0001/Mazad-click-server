@@ -38,7 +38,6 @@ import { SocketModule } from 'src/socket/socket.module';
 })
 export class DirectSaleModule {
   constructor() {
-    console.log('✅ DirectSaleModule loaded successfully');
   }
 }
 

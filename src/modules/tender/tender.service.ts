@@ -139,38 +139,15 @@ export class TenderService {
   }
 
   async create(createTenderDto: CreateTenderDto): Promise<Tender> {
-    console.log('🔍 [TenderService] Creating tender with DTO:', {
-      title: createTenderDto.title,
-      tenderType: createTenderDto.tenderType,
-      auctionType: createTenderDto.auctionType,
-      evaluationType: createTenderDto.evaluationType,
-      hasEvaluationType: !!createTenderDto.evaluationType,
-      attachmentsCount: createTenderDto.attachments?.length || 0,
-      attachments: createTenderDto.attachments,
-      allKeys: Object.keys(createTenderDto)
-    });
-
     // Ensure attachments is an array
     if (!Array.isArray(createTenderDto.attachments)) {
-      console.warn('WARNING: attachments is not an array, converting:', createTenderDto.attachments);
       createTenderDto.attachments = createTenderDto.attachments ? [createTenderDto.attachments] : [];
     }
 
     const createdTender = new this.tenderModel(createTenderDto);
-    console.log('🔍 [TenderService] Tender model before save - attachments (raw):', createdTender.attachments);
-    console.log('🔍 [TenderService] Tender model before save - attachments (type):', typeof createdTender.attachments, Array.isArray(createdTender.attachments));
-    console.log('🔍 [TenderService] Tender model before save - attachments (length):', createdTender.attachments?.length || 0);
-
     const savedTender = await createdTender.save();
-    console.log('✅ [TenderService] Tender saved - attachments (raw):', savedTender.attachments);
-    console.log('✅ [TenderService] Tender saved - attachments (length):', savedTender.attachments?.length || 0);
-
     // Verify the saved tender has attachments
     const verificationTender = await this.tenderModel.findById(savedTender._id).select('attachments').lean();
-    console.log('✅ [TenderService] Verification query - attachments:', verificationTender?.attachments);
-    console.log('✅ [TenderService] Verification query - attachments length:', verificationTender?.attachments?.length || 0);
-
-    console.log('✅ [TenderService] Tender saved with evaluationType:', savedTender.evaluationType);
     const populatedTender = await this.tenderModel
       .findById(savedTender._id)
       .populate('category')
@@ -223,7 +200,6 @@ export class TenderService {
     }
 
     // Check if any users were looking for this item
-    console.log('📢 Checking for interested users for tender:', populatedTender.title);
     this.searchService.notifyInterestedUsers(
       populatedTender.title,
       populatedTender.description || '',
@@ -253,7 +229,6 @@ export class TenderService {
   }
 
   async checkTenders(id: string): Promise<void> {
-    console.log('Checking tenders for user:', id);
     const getUser = await this.userService.getUserById(id);
     const now = new Date();
     const getAllTenders = await this.tenderModel.find({
@@ -337,20 +312,11 @@ export class TenderService {
       await this.tenderModel.findByIdAndUpdate(tender._id, { participantsCount: count });
       updatedCount++;
     }
-    console.log(`Synced participants count for ${updatedCount} tenders.`);
     return { updated: updatedCount };
   }
 
   // Tender bid methods
   async createTenderBid(tenderId: string, createTenderBidDto: CreateTenderBidDto, isMieuxDisant: boolean = false): Promise<TenderBid> {
-
-    console.log('🔍 [TenderService] Creating bid:', {
-      tenderId,
-      isMieuxDisant,
-      bidAmount: createTenderBidDto.bidAmount,
-      hasProposal: !!createTenderBidDto.proposal
-    });
-
     // Validate based on evaluation type
     if (isMieuxDisant) {
       // For MIEUX_DISANT: proposal text (≥10 chars) OR uploaded file URL is required
@@ -377,8 +343,6 @@ export class TenderService {
     }
 
     const tender = await this.findOne(tenderId);
-    console.log("Found tender:", tender._id);
-
     // Check if tender is still active
     if (tender.status !== 'OPEN') {
       throw new BadRequestException('Tender is no longer accepting bids');
@@ -418,8 +382,6 @@ export class TenderService {
       tender: tenderId,
     });
     const savedTenderBid = await createdTenderBid.save();
-    console.log("Tender bid created:", savedTenderBid._id);
-
     // Increment participants count if this is the first bid by this user
     if (!existingBid) {
       await this.tenderModel.findByIdAndUpdate(tenderId, { $inc: { participantsCount: 1 } });
@@ -431,7 +393,6 @@ export class TenderService {
 
     // Check if tender.owner exists and has _id before trying to access it
     if (tender.owner && tender.owner._id) {
-      console.log("Creating notification for tender owner:", tender.owner._id.toString());
       await this.notificationService.create(
         tender.owner._id.toString(),
         NotificationType.NEW_OFFER,
@@ -440,7 +401,6 @@ export class TenderService {
         { tender: tender, tenderBid: savedTenderBid }
       );
     } else {
-      console.log("Warning: Tender owner is null or missing _id, skipping notification");
     }
 
     // Send confirmation notification to bidder
@@ -513,8 +473,6 @@ export class TenderService {
    * Accept a tender bid
    */
   async acceptTenderBid(bidId: string, ownerId: string): Promise<TenderBid> {
-    console.log('TenderService: Accepting tender bid:', { bidId, ownerId });
-
     try {
       // Find the tender bid
       const tenderBid = await this.tenderBidModel.findById(bidId).populate('tender').exec();
@@ -551,7 +509,6 @@ export class TenderService {
         chat = new this.chatModel({ users, createdAt });
         await chat.save();
       } else {
-        console.log('TenderService: Using existing chat:', chat._id);
       }
 
       // Send notifications
@@ -609,9 +566,6 @@ export class TenderService {
             tenderTitle: tender.title
           }
         );
-
-        console.log('TenderService: Notifications and chat created for accepted bid:', updatedBid._id);
-
       } catch (notificationError) {
         console.error('TenderService: Error sending notifications or creating chat:', notificationError);
         // Continue even if notification fails, but log it
@@ -628,8 +582,6 @@ export class TenderService {
    * Reject a tender bid
    */
   async rejectTenderBid(bidId: string, ownerId: string): Promise<TenderBid> {
-    console.log('TenderService: Rejecting tender bid:', { bidId, ownerId });
-
     try {
       // Find the tender bid
       const tenderBid = await this.tenderBidModel.findById(bidId).populate('tender').exec();
@@ -670,14 +622,10 @@ export class TenderService {
           undefined, // senderName (will be populated by notification service)
           undefined  // senderEmail (will be populated by notification service)
         );
-
-        console.log('TenderService: Notification sent to bidder:', tenderBid.bidder);
       } catch (notificationError) {
         console.error('TenderService: Error sending notification:', notificationError);
         // Don't fail the entire operation if notification fails
       }
-
-      console.log('TenderService: Tender bid rejected successfully:', updatedBid._id);
       return updatedBid;
     } catch (error) {
       console.error('TenderService: Error rejecting tender bid:', error);
@@ -689,8 +637,6 @@ export class TenderService {
    * Delete a tender bid
    */
   async deleteTenderBid(bidId: string, userId: string): Promise<TenderBid> {
-    console.log('TenderService: Deleting tender bid:', { bidId, userId });
-
     try {
       // Find the tender bid
       const tenderBid = await this.tenderBidModel.findById(bidId).populate('tender').exec();
@@ -712,8 +658,6 @@ export class TenderService {
       if (!deletedBid) {
         throw new BadRequestException(`Tender bid with ID ${bidId} not found`);
       }
-
-      console.log('TenderService: Tender bid deleted successfully:', deletedBid._id);
       return deletedBid;
     } catch (error) {
       console.error('TenderService: Error deleting tender bid:', error);
@@ -725,8 +669,6 @@ export class TenderService {
    * Delete a tender
    */
   async deleteTender(tenderId: string, userId: string): Promise<Tender> {
-    console.log('TenderService: Deleting tender:', { tenderId, userId });
-
     try {
       // Find the tender
       const tender = await this.tenderModel.findById(tenderId).exec();
@@ -747,8 +689,6 @@ export class TenderService {
       if (!deletedTender) {
         throw new BadRequestException(`Tender with ID ${tenderId} not found`);
       }
-
-      console.log('TenderService: Tender deleted successfully:', deletedTender._id);
       return deletedTender;
     } catch (error) {
       console.error('TenderService: Error deleting tender:', error);

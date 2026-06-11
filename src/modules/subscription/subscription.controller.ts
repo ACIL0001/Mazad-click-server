@@ -287,8 +287,6 @@ async getAllPayments(@Query('page') page: number = 1, @Query('limit') limit: num
   @Public()
   async showMockSatimForm(@Param('mdOrder') mdOrder: string, @Res() res: any) {
     try {
-      console.log(`🎯 Mock SATIM form accessed for mdOrder: ${mdOrder}`);
-      
       const satimFormHtml = `
         <html>
           <head>
@@ -523,13 +521,9 @@ async getAllPayments(@Query('page') page: number = 1, @Query('limit') limit: num
   async processMockSatimPayment(@Body() body: any, @Res() res: any) {
     try {
       const { mdOrder, paymentType, cardNumber, expiryDate, cvv, cardName } = body;
-      console.log(`🎯 Processing mock SATIM payment for mdOrder: ${mdOrder}`);
-      console.log(`Payment details: ${paymentType}, Card: ${cardNumber?.substring(0, 4)}****`);
-      
       // Find payment by mdOrder
       const payment = await this.paymentService.getPaymentByMetadata('mdOrder', mdOrder);
       if (!payment) {
-        console.log(`❌ Payment not found for mdOrder: ${mdOrder}`);
         return res.redirect(`${this.configService.get('CLIENT_BASE_URL')}/subscription/payment/error`);
       }
 
@@ -546,9 +540,6 @@ async getAllPayments(@Query('page') page: number = 1, @Query('limit') limit: num
         },
         message: 'Mock SATIM payment completed successfully'
       });
-
-      console.log(`✅ Mock SATIM payment completed for payment: ${payment._id}`);
-      
       // Redirect to success page
       return res.redirect(`${this.configService.get('CLIENT_BASE_URL')}/subscription/payment/success?paymentId=${payment._id}`);
     } catch (error) {
@@ -566,8 +557,6 @@ async getAllPayments(@Query('page') page: number = 1, @Query('limit') limit: num
     @Res() res: any
   ) {
     try {
-      console.log(`🎯 Mock SATIM payment route accessed: ${paymentMethod}/${mdOrder}`);
-      
       // Find the payment by order ID (mdOrder should be the payment ID for mock payments)
       const paymentId = mdOrder.replace('MOCK', '').substring(13); // Extract payment ID from mock mdOrder
       const payment = await this.paymentService.getPaymentById(paymentId);
@@ -577,7 +566,6 @@ async getAllPayments(@Query('page') page: number = 1, @Query('limit') limit: num
         if (paymentByMdOrder) {
           return this.renderSatimMockSuccess(paymentByMdOrder, paymentMethod, mdOrder, res);
         }
-        console.log(`❌ Payment not found for mdOrder: ${mdOrder}`);
         return res.status(404).send(`
           <html>
             <head><title>Mock SATIM Payment Not Found</title></head>
@@ -596,9 +584,6 @@ async getAllPayments(@Query('page') page: number = 1, @Query('limit') limit: num
         paymentMethod: paymentMethod,
         mdOrder: mdOrder,
       });
-
-      console.log(`✅ Mock SATIM payment completed for paymentId: ${paymentId}`);
-      
       return this.renderSatimMockSuccess(payment, paymentMethod, mdOrder, res);
     } catch (error) {
       console.error('❌ Error in mock SATIM payment redirect:', error);
@@ -707,17 +692,13 @@ async getAllPayments(@Query('page') page: number = 1, @Query('limit') limit: num
   @Public()
   async handleSlickPayReturn(@Query('paymentId') paymentId: string, @Res() res: any) {
     try {
-      console.log(`🎯 Return URL accessed for paymentId: ${paymentId}`);
-
       const verifiedPayment = await this.paymentService.verifyPaymentStatus(paymentId);
       
       if (verifiedPayment.status === PaymentStatus.COMPLETED) {
         // This is a common case: the user returns to the site after a successful payment
         // We should redirect them to a success page
-        console.log(`✅ Payment ${paymentId} is already completed. Redirecting to success.`);
         return res.redirect(`${this.configService.get('CLIENT_BASE_URL')}/subscription/payment/success?paymentId=${paymentId}`);
       } else {
-        console.log(`⚠️ Payment ${paymentId} is still pending or failed. Status: ${verifiedPayment.status}`);
         return res.redirect(`${this.configService.get('CLIENT_BASE_URL')}/subscription/payment/pending?paymentId=${paymentId}`);
       }
     } catch (error) {
@@ -731,8 +712,6 @@ async getAllPayments(@Query('page') page: number = 1, @Query('limit') limit: num
   @Public()
   async handlePaymentFailure(@Query('paymentId') paymentId: string, @Res() res: any) {
     try {
-      console.log(`❌ Payment failure route accessed for paymentId: ${paymentId}`);
-      
       const payment = await this.paymentService.getPaymentById(paymentId);
       
       if (payment) {

@@ -42,11 +42,7 @@ const UserSchema        = new mongoose.Schema({ score: { type: Number, default: 
 async function backfill() {
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error('MONGODB_URI is not set in .env');
-
-  console.log('🔌 Connecting to MongoDB...');
   await mongoose.connect(uri);
-  console.log('✅ Connected');
-
   const ReviewModel   = mongoose.model('AnnouncementReview', AnnouncementReviewSchema);
   const BidModel      = mongoose.model('Bid', BidSchema);
   const SaleModel     = mongoose.model('DirectSale', DirectSaleSchema);
@@ -88,8 +84,6 @@ async function backfill() {
       });
       updated++;
     }
-
-    console.log(`✅ Backfilled ${name}: ${updated} documents`);
   }
 
   // ── Step 2: Recompute User.score for every user ─────────────────────────────
@@ -111,10 +105,7 @@ async function backfill() {
     await UserModel.findByIdAndUpdate(u._id, { score });
     usersUpdated++;
   }
-
-  console.log(`✅ Backfilled User.score: ${usersUpdated} users updated`);
   await mongoose.disconnect();
-  console.log('🔌 Disconnected. Migration complete.');
 }
 
 backfill().catch((err) => {

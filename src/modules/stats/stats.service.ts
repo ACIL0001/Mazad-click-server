@@ -544,16 +544,10 @@ export class StatsService {
   }
 
   async getUsersBySector() {
-    console.log('📊 getUsersBySector called');
-
     // First, let's check all users with secteur field
     const allUsersWithSecteur = await this.userModel.find({
       secteur: { $exists: true, $nin: [null, ''] }
     }).select('secteur isActive type').lean();
-
-    console.log('📊 Total users with secteur field:', allUsersWithSecteur.length);
-    console.log('📊 Sample users:', JSON.stringify(allUsersWithSecteur.slice(0, 3), null, 2));
-
     const sectorStats = await this.userModel.aggregate([
       {
         $match: {
@@ -578,10 +572,6 @@ export class StatsService {
         $sort: { count: -1 }
       }
     ]);
-
-    console.log('📊 Sector stats result:', JSON.stringify(sectorStats, null, 2));
-    console.log('📊 Number of sectors found:', sectorStats.length);
-
     return sectorStats;
   }
 }

@@ -92,7 +92,6 @@ export class OfferService {
 
     // Check if bid.owner exists and has _id before trying to access it
     if (bid.owner && bid.owner._id) {
-      console.log("Creating notification for bid owner:", bid.owner._id.toString());
       await this.notificationService.create(
         bid.owner._id.toString(),
         NotificationType.NEW_OFFER,
@@ -222,13 +221,9 @@ export class OfferService {
    * 2. The owner of the auction that received the offer (seller)
    */
   async getOffers(data: any): Promise<Offer[]> {
-    console.log('Getting offers for user ID =', data._id);
-
     try {
       // First, let's check if there are any offers at all for debugging
       const totalOffers = await this.offerModel.countDocuments();
-      console.log('Total offers in database:', totalOffers);
-
       // Option 1: Get offers made BY this user (as a buyer)
       const offersMadeByUser = await this.offerModel
         .find({ user: data._id })
@@ -236,9 +231,6 @@ export class OfferService {
         .populate('bid', 'title currentPrice category owner')
         .lean()
         .exec();
-
-      console.log('Offers made by user:', offersMadeByUser.length);
-
       // Option 2: Get offers made ON this user's auctions (as a seller)
       const userBids = await this.bidService.findByOwner(data._id);
       const userBidIds = userBids.map(bid => bid._id);
@@ -249,18 +241,11 @@ export class OfferService {
         .populate('bid', 'title currentPrice category owner')
         .lean()
         .exec();
-
-      console.log('Offers on user\'s auctions:', offersOnUserBids.length);
-
       // Combine both types of offers and remove duplicates
       const allUserOffers = [...offersMadeByUser, ...offersOnUserBids];
       const uniqueOffers = allUserOffers.filter((offer, index, self) =>
         index === self.findIndex(o => o._id.toString() === offer._id.toString())
       );
-
-      console.log('Total unique offers for user:', uniqueOffers.length);
-      console.log('Sample offer data:', uniqueOffers[0]);
-
       return uniqueOffers;
 
     } catch (error) {
@@ -273,26 +258,14 @@ export class OfferService {
    * Test method to get all offers (for debugging)
    */
   async getAllOffersForTesting(): Promise<Offer[]> {
-    console.log('Service: Getting all offers for testing');
-
     const allOffers = await this.offerModel
       .find({})
       .populate('user', 'firstName lastName phone email username companyName entreprise')
       .populate('bid', 'title currentPrice category owner')
       .lean()
       .exec();
-
-    console.log('Service: Found all offers:', allOffers.length);
-
     // Log some sample data for debugging
     if (allOffers.length > 0) {
-      console.log('Sample offer structure:', {
-        _id: allOffers[0]._id,
-        user: allOffers[0].user,
-        bid: allOffers[0].bid,
-        price: allOffers[0].price,
-        owner: allOffers[0].owner || 'No owner field'
-      });
     }
 
     return allOffers;
@@ -302,8 +275,6 @@ export class OfferService {
    * Update offer status (accept/reject)
    */
   async updateOfferStatus(offerId: string, status: 'ACCEPTED' | 'DECLINED', ownerId: string): Promise<Offer> {
-    console.log('Service: Updating offer status:', { offerId, status, ownerId });
-
     try {
       // Validate ObjectId format
       if (!offerId || offerId.length !== 24) {
@@ -313,24 +284,13 @@ export class OfferService {
 
       // Log all offers to debug
       const allOffers = await this.offerModel.find({}).lean().exec();
-      console.log('Service: All offers in database:', allOffers.map(o => ({ _id: o._id, owner: o.owner, status: o.status })));
-
       // Find the offer
-      console.log('Service: Searching for offer with ID:', offerId);
       const offer = await this.offerModel.findById(offerId).populate('user', 'firstName lastName email').exec();
       if (!offer) {
         console.error('Service: Offer not found:', offerId);
         console.error('Service: Available offer IDs:', allOffers.map(o => o._id));
         throw new NotFoundException(`Offer with ID ${offerId} not found`);
       }
-
-      console.log('Service: Found offer:', {
-        _id: offer._id,
-        owner: offer.owner,
-        currentStatus: offer.status,
-        price: offer.price
-      });
-
       // Check if the user is the owner of the offer (strict check on offer document)
       let isAuthorized = false;
 
@@ -342,8 +302,6 @@ export class OfferService {
       // 2. If not authorized yet, check against the parent Bid/Tender owner
       // This handles legacy data issues where offer.owner might have been set to bidder
       if (!isAuthorized) {
-        console.log('Service: Direct ownership check failed, checking parent Bid/Tender...');
-
         // We need to fetch the bid/tender to check its owner
         // In the schema, 'bid' can be an ID or reference. For tenders, it's also stored in 'bid' often.
         if (offer.bid) {
@@ -357,18 +315,15 @@ export class OfferService {
                 : parentBid.owner.toString();
 
               if (parentOwnerId === ownerId) {
-                console.log('Service: Authorized via parent Bid/Tender ownership');
                 isAuthorized = true;
 
                 // AUTO-HEAL: Update the offer owner to be correct
                 offer.owner = parentBid.owner; // or ownerId, but kept safe
                 // We don't save yet, it will be saved downstream
               } else {
-                console.log('Service: Parent owner mismatch:', { parentOwnerId, requestingUser: ownerId });
               }
             }
           } catch (err) {
-            console.warn('Service: Could not fetch parent bid for auth check:', err.message);
           }
         }
       }
@@ -383,19 +338,13 @@ export class OfferService {
 
       // Update the offer status using proper enum values
       const statusValue = status === 'ACCEPTED' ? OfferStatus.ACCEPTED : OfferStatus.DECLINED;
-      console.log('Service: Updating status to:', statusValue);
-
       offer.status = statusValue;
       const updatedOffer = await offer.save();
-
-      console.log('Service: Offer status updated successfully:', updatedOffer._id);
-
       // If accepted, create a chat
       let chatId = null;
       if (status === 'ACCEPTED') {
         try {
           const ownerUser = await this.userService.findOne(ownerId);
-          console.log('Service: Looking up user for chat:', offer.user._id);
           const offerMakerUser = await this.userService.findOne(offer.user._id.toString());
 
           if (ownerUser && offerMakerUser) {
@@ -419,7 +368,6 @@ export class OfferService {
 
             const chat = await this.chatService.create(chatUsers, new Date().toISOString());
             chatId = chat._id.toString();
-            console.log(`✅ Chat created between ${ownerUser.firstName} and ${offerMakerUser.firstName} (ID: ${chatId})`);
           }
         } catch (chatError) {
           console.error('❌ Error creating chat on offer acceptance:', chatError);
@@ -438,9 +386,6 @@ export class OfferService {
 
       if (offer.user && offer.user._id) {
         try {
-          console.log('Service: Creating notification for offer maker:', offer.user._id);
-          console.log('Service: Notification service available:', !!this.notificationService);
-
           if (!this.notificationService) {
             console.error('Service: Notification service is not available');
             throw new Error('Notification service not available');
@@ -457,16 +402,12 @@ export class OfferService {
               chatId: chatId // Include chat ID if available
             }
           );
-          console.log('Service: Notification created successfully');
         } catch (notificationError) {
           console.error('Service: Error creating notification:', notificationError);
           // Don't fail the entire operation if notification fails
         }
       } else {
-        console.warn('Service: No user found for offer, skipping notification');
       }
-
-      console.log('Service: Offer status updated successfully:', updatedOffer._id);
       return updatedOffer;
 
     } catch (error) {
@@ -493,8 +434,6 @@ export class OfferService {
    * Delete an offer
    */
   async deleteOffer(offerId: string, userId: string): Promise<{ message: string }> {
-    console.log('Service: Deleting offer:', { offerId, userId });
-
     try {
       // Validate ObjectId format
       if (!offerId || offerId.length !== 24) {
@@ -508,15 +447,6 @@ export class OfferService {
         console.error('Service: Offer not found:', offerId);
         throw new BadRequestException(`Offer with ID ${offerId} not found`);
       }
-
-      console.log('Service: Found offer:', {
-        _id: offer._id,
-        user: offer.user?._id,
-        owner: offer.owner,
-        currentStatus: offer.status,
-        price: offer.price
-      });
-
       // Authorization: allow deleting when
       // - requester is the offer creator (offer.user)
       // - OR requester is the tender/auction owner related to this offer
@@ -544,8 +474,6 @@ export class OfferService {
 
       // Delete the offer
       await this.offerModel.findByIdAndDelete(offerId);
-
-      console.log('Service: Offer deleted successfully:', offerId);
       return { message: 'Offer deleted successfully' };
 
     } catch (error) {

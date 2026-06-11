@@ -36,7 +36,7 @@ export class AuthController {
   ) { }
 
   @Public()
-  @Throttle({ short: { limit: 5, ttl: 300000 } }) // 5 signups per 5 minutes
+  @Throttle({ short: { limit: 10, ttl: 60000 } }) // 10 signups per minute
   @Post('signup')
   @UseInterceptors(FileInterceptor('avatar'))
   async signup(
@@ -50,7 +50,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ short: { limit: 3, ttl: 60000 } }) // 3 attempts per minute
+  @Throttle({ short: { limit: 10, ttl: 60000 } }) // 10 attempts per minute
   @Post('signin')
   async signin(
     @Request() request: PublicRequest,

@@ -101,9 +101,6 @@ export class UserController {
     if (Object.keys(filteredData).length === 0) {
       throw new BadRequestException('No valid fields to update');
     }
-
-    console.log('Updating user profile:', { userId, updateData: filteredData });
-
     // Update the user
     const updatedUser = await this.userService.updateUserFields(userId, filteredData);
 
@@ -134,19 +131,14 @@ export class UserController {
     }
 
     const userId = req.session.user._id.toString();
-
-    console.log('Updating avatar for user:', userId);
-
     try {
       // Check if user already has an avatar attachment
       const existingAvatar = await this.attachmentService.findByUserAndType(userId, AttachmentAs.AVATAR);
 
       let attachment;
       if (existingAvatar) {
-        console.log('Updating existing avatar attachment:', existingAvatar._id);
         attachment = await this.attachmentService.updateAttachment(existingAvatar._id.toString(), avatar, userId);
       } else {
-        console.log('Creating new avatar attachment');
         attachment = await this.attachmentService.upload(avatar, AttachmentAs.AVATAR, userId);
 
         await this.userService.updateUserFields(userId, {
@@ -187,9 +179,6 @@ export class UserController {
   ) {
     const userId = req.session.user._id.toString();
     const { action } = body;
-
-    console.log(`Updating profile completion note for user ${userId}: ${action}`);
-
     if (action === 'dismiss') {
       await this.userService.updateUserFields(userId, {
         "profileCompletionNote.dismissed": true
@@ -230,25 +219,19 @@ export class UserController {
     @Request() req: ProtectedRequest,
     @UploadedFile() cover: Express.Multer.File
   ) {
-    console.log('🖼️ User.Controller: updateCover endpoint hit');
     if (!cover) {
       throw new BadRequestException('Cover file is required');
     }
 
     const userId = req.session.user._id.toString();
-
-    console.log('Updating cover for user:', userId);
-
     try {
       // Check if user already has a cover attachment
       const existingCover = await this.attachmentService.findByUserAndType(userId, AttachmentAs.COVER);
 
       let attachment;
       if (existingCover) {
-        console.log('Updating existing cover attachment:', existingCover._id);
         attachment = await this.attachmentService.updateAttachment(existingCover._id.toString(), cover, userId);
       } else {
-        console.log('Creating new cover attachment');
         attachment = await this.attachmentService.upload(cover, AttachmentAs.COVER, userId);
 
         await this.userService.updateUserFields(userId, {
@@ -288,13 +271,7 @@ export class UserController {
     @Request() req: ProtectedRequest,
     @Body() conversionData: { plan?: string; paymentDetails?: any }
   ) {
-    console.log('🏢 === CONVERT TO PROFESSIONAL ENDPOINT CALLED ===');
-
     const user = req.session.user;
-    console.log('convertToProfessional called with user:', user);
-    console.log('User type:', user.type);
-    console.log('conversionData:', conversionData);
-
     // Validate that user is a client
     if (user.type !== RoleCode.CLIENT) {
       throw new BadRequestException('Only clients can convert to professional');
@@ -324,7 +301,6 @@ export class UserController {
         try {
           await this.userService.createSubscriptionPlan(user._id.toString(), plan);
         } catch (subscriptionError) {
-          console.log('Subscription plan creation failed, trying to update:', subscriptionError.message);
           await this.userService.updateSubscriptionPlan(user._id.toString(), plan);
         }
       }
@@ -335,9 +311,6 @@ export class UserController {
         isVerified: true,
         isHasIdentity: true
       });
-
-      console.log('User converted to professional:', updatedUser);
-
       // Return fresh user data
       const freshUser = await this.userService.findUserById(user._id.toString());
 
@@ -369,13 +342,7 @@ export class UserController {
     @Request() req: ProtectedRequest,
     @Body() conversionData: { plan: string; paymentDetails: any }
   ) {
-    console.log('🚀 === CONVERT TO RESELLER ENDPOINT CALLED ===');
-
     const user = req.session.user;
-    console.log('convertToReseller called with user:', user);
-    console.log('User type:', user.type);
-    console.log('conversionData:', conversionData);
-
     // Validate that user is a client
     if (user.type !== RoleCode.CLIENT) {
       throw new BadRequestException('Only clients can convert to reseller');
@@ -406,23 +373,13 @@ export class UserController {
 
     try {
       // Process payment (this would integrate with a real payment gateway)
-      console.log('Processing payment for reseller conversion:', {
-        userId: user._id,
-        plan,
-        amount: paymentDetails.amount
-      });
-
       // Create or update subscription plan for the user
       let subscriptionResult;
       try {
         subscriptionResult = await this.userService.createSubscriptionPlan(user._id.toString(), plan);
       } catch (subscriptionError) {
-        console.log('Subscription plan creation failed, trying to update:', subscriptionError.message);
         subscriptionResult = await this.userService.updateSubscriptionPlan(user._id.toString(), plan);
       }
-
-      console.log('Subscription result:', subscriptionResult);
-
       // Update user type to RESELLER and increase rate by 2 (this should already be done by identity verification, but ensure it's set)
       const currentRate = user.rate || 1;
       const newRate = Math.min(10, currentRate + 2); // Add 2 to current rate, max 10
@@ -433,9 +390,6 @@ export class UserController {
         isVerified: true,
         isHasIdentity: true
       });
-
-      console.log('User updated to reseller:', updatedUser);
-
       // Return fresh user data
       const freshUser = await this.userService.findUserById(user._id.toString());
 
@@ -466,12 +420,7 @@ export class UserController {
   @Post('/verify-professional-identity')
   @UseGuards(AuthGuard)
   async verifyProfessionalIdentity(@Request() req: ProtectedRequest) {
-    console.log('🔍 === VERIFY PROFESSIONAL IDENTITY ENDPOINT CALLED ===');
-
     const user = req.session.user;
-    console.log('verifyProfessionalIdentity called with user:', user);
-    console.log('User type:', user.type);
-
     // Validate that user is a professional
     if (user.type !== RoleCode.PROFESSIONAL) {
       throw new BadRequestException('Only professionals can verify their identity through this endpoint');
@@ -499,9 +448,6 @@ export class UserController {
         isVerified: true,
         isHasIdentity: true
       });
-
-      console.log('Professional identity verified:', updatedUser);
-
       // Return fresh user data
       const freshUser = await this.userService.findUserById(user._id.toString());
 
@@ -601,13 +547,8 @@ export class UserController {
     @Request() req: ProtectedRequest,
     @Body() data: { currentPassword: string; newPassword: string }
   ) {
-    console.log('Change password request received:', { userId: req.session.user._id.toString() });
-    console.log('Request data:', { currentPassword: data.currentPassword ? 'Present' : 'Missing', newPassword: data.newPassword ? 'Present' : 'Missing' });
-
     const userId = req.session.user._id.toString();
     const result = await this.userService.changePassword(userId, data.currentPassword, data.newPassword);
-    console.log('Change password result:', result);
-
     return {
       success: true,
       message: result.message || 'Password changed successfully',
@@ -634,10 +575,7 @@ export class UserController {
   @UseGuards(AuthGuard)
   async getProfessionals(@Request() req: ProtectedRequest) {
     const user = req.session?.user;
-    console.log('Getting ALL professionals (verified and unverified)...');
     const professionals = await this.userService.findUsersByRoles([RoleCode.PROFESSIONAL]);
-    console.log(`Found ${professionals.length} total professionals`);
-
     return professionals.map((prof: User) => this.sanitizeUserResponse(prof, user));
   }
 
@@ -646,9 +584,7 @@ export class UserController {
   async getResellers(@Request() req: ProtectedRequest) {
     const user = req.session?.user;
     const roles = [RoleCode.RESELLER];
-    console.log('Querying for resellers with roles:', roles);
     const resellers = await this.userService.findUsersByRoles(roles);
-    console.log('Reseller users found:', resellers);
     return resellers.map((reseller: User) => this.sanitizeUserResponse(reseller, user));
   }
 
@@ -657,24 +593,16 @@ export class UserController {
   @Public()
   async getVerifiedProfessionals(@Request() req: ProtectedRequest) {
     const user = req.session?.user;
-    console.log('Getting verified professionals...');
-
     try {
       // Get all accepted/done identities
       const acceptedIdentities = await this.identityService.getIdentitiesByStatus(IDE_TYPE.DONE);
-      console.log('Found accepted identities:', acceptedIdentities.length);
-
       // Filter for professional users only
       const professionalIdentities = acceptedIdentities.filter(identity =>
         identity.user && (identity.user as unknown as User).type === RoleCode.PROFESSIONAL
       );
-      console.log('Professional identities found:', professionalIdentities.length);
-
       // Extract user IDs and fetch full user details
       const userIds = professionalIdentities.map(identity => (identity.user as unknown as User)._id.toString());
       const professionals = await this.userService.findUsersByIds(userIds);
-
-      console.log('Verified professionals found:', professionals.length);
       return professionals.map((prof: User) => this.sanitizeUserResponse(prof, user));
     } catch (error) {
       console.error('Error getting verified professionals:', error);
@@ -686,13 +614,9 @@ export class UserController {
   @Public()
   async getVerifiedResellers(@Request() req: ProtectedRequest) {
     const user = req.session?.user;
-    console.log('Getting verified resellers...');
-
     try {
       // Get all users with RESELLER type who have verified identities
       const allResellers = await this.userService.findUsersByRoles([RoleCode.RESELLER]);
-      console.log('All resellers found:', allResellers.length);
-
       // Filter resellers who have verified identities (status = DONE)
       const verifiedResellers = [];
 
@@ -702,8 +626,6 @@ export class UserController {
           verifiedResellers.push(this.sanitizeUserResponse(reseller, user));
         }
       }
-
-      console.log('Verified resellers found:', verifiedResellers.length);
       return verifiedResellers;
     } catch (error) {
       console.error('Error getting verified resellers:', error);
@@ -804,14 +726,7 @@ export class UserController {
   @Post('update-with-identity')
   @UseGuards(AuthGuard)
   async updateUserWithIdentity(@Request() req: ProtectedRequest) {
-    console.log('🆔 === UPDATE USER WITH IDENTITY ENDPOINT CALLED ===');
-    console.log('🆔 Request headers:', req.headers);
-    console.log('🆔 Session:', req.session);
-
     const user = req.session.user;
-    console.log('updateUserWithIdentity called with user:', user);
-    console.log('User type:', user.type);
-
     try {
       // Get the user's identity record
       const identity = await this.identityService.getIdentityByUser(user._id.toString());
@@ -819,17 +734,11 @@ export class UserController {
       if (!identity) {
         throw new BadRequestException('No identity record found for this user');
       }
-
-      console.log('🆔 Found identity record:', identity._id);
-
       // Update user to mark that they have identity (no type change)
       const updatedUser = await this.userService.updateUserFields(user._id.toString(), {
         isHasIdentity: true,
         identity: identity._id
       });
-
-      console.log('🆔 User updated successfully:', updatedUser._id);
-
       // Return fresh user data
       const freshUser = await this.userService.findUserById(user._id.toString());
 

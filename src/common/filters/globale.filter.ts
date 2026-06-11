@@ -18,21 +18,16 @@ import {
       const request = ctx.getRequest<Request>();
       const status = exception.getStatus();
 
-      logger.error(exception);
+      if (status >= 500) {
+        logger.error(exception);
+      } else {
+        logger.warn(`${request.method} ${request.url} - ${status} ${exception.message}`);
+      }
 
       // Log detailed validation errors
       if (exception instanceof BadRequestException) {
         const exceptionResponse = exception.getResponse();
-        console.log('BadRequestException details:', {
-          message: exceptionResponse,
-          url: request.url,
-          method: request.method,
-          body: request.body,
-          status
-        });
       }
-
-      console.log(exception.getResponse());
       response.status(status).json(
         Object.assign(exception.getResponse(), {
           stack:

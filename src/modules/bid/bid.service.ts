@@ -71,14 +71,14 @@ export class BidService {
         .populate({
           path: 'comments',
           populate: [
-            { path: 'user' },
+            { path: 'user', select: 'firstName lastName avatar username companyName entreprise rate type' },
             {
               path: 'replies',
               populate: [
-                { path: 'user' },
+                { path: 'user', select: 'firstName lastName avatar username companyName entreprise rate type' },
                 {
                   path: 'replies',
-                  populate: { path: 'user' }
+                  populate: { path: 'user', select: 'firstName lastName avatar username companyName entreprise rate type' }
                 }
               ]
             }
@@ -125,6 +125,7 @@ export class BidService {
     return this.bidModel.find(query)
       .populate({
         path: 'owner',
+        select: 'firstName lastName avatar username companyName entreprise rate type wilaya',
         populate: {
           path: 'avatar',
           model: 'Attachment'
@@ -173,25 +174,13 @@ export class BidService {
     // console.log('Bid model before save - thumbs (length):', createdBid.thumbs?.length || 0);
 
     const savedBid = await createdBid.save();
-    // console.log('Bid saved - thumbs (raw):', savedBid.thumbs);
-    // console.log('Bid saved - thumbs (type):', typeof savedBid.thumbs, Array.isArray(savedBid.thumbs));
-    // console.log('Bid saved - thumbs (length):', savedBid.thumbs?.length || 0);
 
-    // Verify the saved bid has thumbs
-    const verificationBid = await this.bidModel.findById(savedBid._id).select('thumbs videos').lean();
-    // console.log('Verification query - thumbs:', verificationBid?.thumbs);
-    // console.log('Verification query - thumbs length:', verificationBid?.thumbs?.length || 0);
     const populatedBid = await this.bidModel
       .findById(savedBid._id)
       .populate('productCategory')
       .populate('productSubCategory')
       .populate('thumbs')
       .exec();
-
-    if (process.env.NODE_ENV === 'development') {
-      // console.log('Bid created:', populatedBid._id);
-    }
-
     // Remove broadcast notification to all buyers as per user request
     // Notifications should only be sent to the creator upon successful creation
 
@@ -240,7 +229,6 @@ export class BidService {
     }
 
     // Check if any users were looking for this item
-    console.log('📢 Checking for interested users for auction:', populatedBid.title);
     this.searchService.notifyInterestedUsers(
       populatedBid.title,
       populatedBid.description || '',
@@ -277,18 +265,12 @@ export class BidService {
   async checkBids(id: string): Promise<void> {
     // Validate ObjectId before querying
     if (!isValidObjectId(id)) {
-      console.warn('checkBids: Invalid user ID provided:', id);
       return;
     }
 
     // Only log in development mode
-    if (process.env.NODE_ENV === 'development') {
-      // console.log('Checking bids for user:', id);
-    }
-
     const getUser = await this.userService.getUserById(id);
     if (!getUser) {
-      console.warn('checkBids: User not found for ID:', id);
       return;
     }
 
@@ -299,11 +281,19 @@ export class BidService {
       endingAt: { $lt: now }
     }).exec();
 
+    const bidIds = getAllBids.map(b => b._id);
+    const allOffers = await this.OfferModel.find({ bid: { $in: bidIds } });
+    const offersByBid = new Map();
+    allOffers.forEach(o => {
+      const key = o.bid.toString();
+      if (!offersByBid.has(key)) offersByBid.set(key, []);
+      offersByBid.get(key).push(o);
+    });
+
     for (let index = 0; index < getAllBids.length; index++) {
       // Date check is now handled by the query
 
-
-      const getOffers = await this.OfferModel.find({ bid: getAllBids[index]._id });
+      const getOffers = offersByBid.get(getAllBids[index]._id.toString()) || [];
 
       if (getAllBids[index].bidType == BID_TYPE.PRODUCT) {
 
@@ -884,8 +874,6 @@ export class BidService {
         const notificationTitle = 'Enchère Relancée';
         const categoryName = populatedBid.productCategory?.name || 'Inconnue';
         const notificationMessage = `L'enchère "${populatedBid.title}" que vous avez suivie a été relancée dans la catégorie ${categoryName}. Participez dès maintenant !`;
-
-        console.log('Creating notifications for participants...');
         // Create notification for relaunched bid for each participant
         for (const offer of originalOffers) {
           if (offer.user && offer.user._id) {

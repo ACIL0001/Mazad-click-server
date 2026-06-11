@@ -31,7 +31,7 @@ import { getApiBaseUrl, transformAttachment, sanitizeUser } from 'src/common/uti
 
 
 @ApiTags('Direct Sales')
-@Controller('direct-sale')
+@Controller(['direct-sale', 'direct-sales'])
 export class DirectSaleController {
   private readonly baseUrl: string;
 
@@ -245,17 +245,6 @@ export class DirectSaleController {
     if (!userId) {
       throw new Error('User ID not found in session. Cannot create direct sale.');
     }
-
-    console.log('Creating direct sale with data:', rawData);
-    console.log('Uploaded files count:', files?.length || 0);
-    console.log('Uploaded files details:', files?.map(f => ({
-      fieldname: f.fieldname,
-      originalname: f.originalname,
-      mimetype: f.mimetype,
-      size: f.size,
-      filename: f.filename
-    })));
-
     const createDirectSaleDto: CreateDirectSaleDto = JSON.parse(rawData);
 
     // Initialize thumbs and videos arrays
@@ -269,8 +258,6 @@ export class DirectSaleController {
     if (files && files.length > 0) {
       // Log all file fieldnames to debug
       const allFieldnames = [...new Set(files.map(f => f.fieldname))];
-      console.log('All unique fieldnames received:', allFieldnames);
-
       // Separate images and videos based on fieldname (handle both 'thumbs[]' and 'thumbs')
       let imageFiles = files.filter(file => {
         const isThumbsField = file.fieldname === 'thumbs[]' ||
@@ -282,10 +269,8 @@ export class DirectSaleController {
 
       // Fallback: if no images found with thumbs fieldname, check all image files
       if (imageFiles.length === 0) {
-        console.warn('No images found with thumbs fieldname, checking all image files...');
         const allImages = files.filter(file => file.mimetype.startsWith('image/'));
         if (allImages.length > 0) {
-          console.warn('Found', allImages.length, 'image files with fieldnames:', allImages.map(f => f.fieldname));
           imageFiles = allImages;
         }
       }
@@ -300,31 +285,21 @@ export class DirectSaleController {
 
       // Fallback: if no videos found with videos fieldname, check all video files
       if (videoFiles.length === 0) {
-        console.warn('No videos found with videos fieldname, checking all video files...');
         const allVideos = files.filter(file => file.mimetype.startsWith('video/'));
         if (allVideos.length > 0) {
-          console.warn('Found', allVideos.length, 'video files with fieldnames:', allVideos.map(f => f.fieldname));
           videoFiles = allVideos;
         }
       }
-
-      console.log('Filtered image files:', imageFiles.length);
-      console.log('Filtered video files:', videoFiles.length);
-      console.log('Image file details:', imageFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
-      console.log('Video file details:', videoFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
-
       // Handle image uploads
       if (imageFiles.length > 0) {
         try {
           const thumbPromises = imageFiles.map(async (file) => {
             try {
-              console.log('Uploading image file:', file.originalname);
               const att = await this.attachmentService.upload(
                 file,
                 AttachmentAs.BID,
                 userId,
               );
-              console.log('Image attachment created:', att._id, att.url);
               return att;
             } catch (error) {
               console.error('Error uploading image file:', file.originalname, error);
@@ -336,11 +311,9 @@ export class DirectSaleController {
             .filter(att => att && att._id)
             .map((att) => {
               const id = att._id.toString();
-              console.log('Adding thumb ID:', id, 'from attachment:', att._id);
               return id;
             });
           createDirectSaleDto.thumbs = thumbIds;
-          console.log('Thumbs IDs set (count:', thumbIds.length, '):', createDirectSaleDto.thumbs);
           if (thumbIds.length === 0 && imageFiles.length > 0) {
             console.error('WARNING: No valid thumb IDs were extracted from', thumbs.length, 'attachments');
             console.error('Attachment details:', thumbs.map(a => ({
@@ -360,13 +333,11 @@ export class DirectSaleController {
         try {
           const videoPromises = videoFiles.map(async (file) => {
             try {
-              console.log('Uploading video file:', file.originalname);
               const att = await this.attachmentService.upload(
                 file,
                 AttachmentAs.BID,
                 userId,
               );
-              console.log('Video attachment created:', att._id, att.url);
               return att;
             } catch (error) {
               console.error('Error uploading video file:', file.originalname, error);
@@ -378,11 +349,9 @@ export class DirectSaleController {
             .filter(att => att && att._id)
             .map((att) => {
               const id = att._id.toString();
-              console.log('Adding video ID:', id, 'from attachment:', att._id);
               return id;
             });
           createDirectSaleDto.videos = videoIds;
-          console.log('Videos IDs set (count:', videoIds.length, '):', createDirectSaleDto.videos);
           if (videoIds.length === 0 && videoFiles.length > 0) {
             console.error('WARNING: No valid video IDs were extracted from', videos.length, 'attachments');
             console.error('Attachment details:', videos.map(a => ({
@@ -397,18 +366,9 @@ export class DirectSaleController {
         }
       }
     } else {
-      console.warn('No files received in the request');
     }
 
     // Final validation before creating direct sale
-    console.log('Final direct sale DTO before service call:', {
-      title: createDirectSaleDto.title,
-      thumbsCount: createDirectSaleDto.thumbs?.length || 0,
-      thumbs: createDirectSaleDto.thumbs,
-      videosCount: createDirectSaleDto.videos?.length || 0,
-      videos: createDirectSaleDto.videos
-    });
-
     if (!createDirectSaleDto.owner) {
       createDirectSaleDto.owner = userId;
     }

@@ -36,14 +36,6 @@ export class SearchService {
     }> {
         const { query, limit = 3, minProbability = 50 } = dto;
         const normalizedQuery = query.toLowerCase().trim();
-
-        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[SERVER]━');
-        console.log('🔍 DATABASE FALLBACK SEARCH');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📝 Query:', query);
-        console.log('🎯 Limit:', limit);
-        console.log('📊 Min Probability:', minProbability + '%');
-
         try {
             // 1. Fetch search terms using Text Search for performance
             // We combine text score with popularity boost (searchCount)
@@ -61,7 +53,6 @@ export class SearchService {
 
             // 1b. Fallback to regex if text search yields no results (handles partial matches like "iph")
             if (searchTerms.length === 0) {
-                console.log('ℹ️  No text match, trying regex fallback...');
                 finalSearchTerms = await this.searchTermModel
                     .find({ normalizedTerm: { $regex: normalizedQuery, $options: 'i' } })
                     .sort({ searchCount: -1 })
@@ -69,9 +60,6 @@ export class SearchService {
                     .lean()
                     .exec();
             }
-
-            console.log('📚 Search terms found in database:', finalSearchTerms.length);
-
             // 2. Fetch edge weights for this query
             const edgeWeights = await this.edgeWeightModel
                 .find({ searchQuery: normalizedQuery })
@@ -83,9 +71,6 @@ export class SearchService {
             edgeWeights.forEach((ew) => {
                 edgeWeightMap.set(ew.selectedTermId.toString(), ew.weight);
             });
-
-            console.log('⚖️  Edge weights found:', edgeWeights.length);
-
             // 3. Perform fuzzy matching with Fuse.js
             // 3. Perform fuzzy matching with Fuse.js on the narrowed results
             const fuse = new Fuse(finalSearchTerms, {
@@ -100,9 +85,6 @@ export class SearchService {
             });
 
             const fuseResults = fuse.search(query);
-
-            console.log('🔎 Fuse.js fuzzy results:', fuseResults.length);
-
             // 4. Calculate probability scores
             const results: SearchResultDto[] = fuseResults.map((result) => {
                 const item: any = result.item;
@@ -139,14 +121,8 @@ export class SearchService {
             const filteredResults = results
                 .filter((r) => r.probability >= minProbability)
                 .slice(0, limit);
-
-            console.log('📊 Results after filtering (>' + minProbability + '%):', filteredResults.length);
             filteredResults.forEach((r, i) => {
-                console.log(`  ${i + 1}. ${r.term} (${r.probability}%, type: ${r.type})`);
             });
-            console.log('✅ Returning', filteredResults.length, 'results');
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
             return {
                 success: true,
                 results: filteredResults,
@@ -167,13 +143,6 @@ export class SearchService {
     }> {
         const { searchQuery, selectedTermId, selectedType, selectedId } = dto;
         const normalizedQuery = searchQuery.toLowerCase().trim();
-
-        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[SERVER]━');
-        console.log('🧠 EDGE WEIGHT UPDATE');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📝 Query:', searchQuery);
-        console.log('🆔 Term ID:', selectedTermId);
-
         try {
             // Check if edge weight already exists
             const existing = await this.edgeWeightModel.findOne({
@@ -183,15 +152,12 @@ export class SearchService {
 
             if (existing) {
                 // Update existing edge weight
-                console.log('📈 Updating existing weight:', existing.weight, '→', existing.weight + 0.5);
-                console.log('🔢 Selection count:', existing.selectionCount, '→', existing.selectionCount + 1);
                 existing.weight += 0.5;
                 existing.selectionCount += 1;
                 existing.lastSelectedAt = new Date();
                 await existing.save();
             } else {
                 // Create new edge weight
-                console.log('🆕 Creating new edge weight (weight: 1.0)');
                 await this.edgeWeightModel.create({
                     searchQuery: normalizedQuery,
                     selectedTermId,
@@ -208,10 +174,6 @@ export class SearchService {
                 selectedTermId,
                 { $inc: { searchCount: 1 } },
             );
-
-            console.log('✅ Edge weight updated successfully');
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
             return { success: true };
         } catch (error) {
             console.error('Update edge weight error:', error);
@@ -228,13 +190,6 @@ export class SearchService {
         message: string;
     }> {
         const { searchQuery, userId, email, phone } = dto;
-
-        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[SERVER]━');
-        console.log('🔔 NOTIFY ME REQUEST');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📝 Query:', searchQuery);
-        console.log('📧 Email:', email);
-
         try {
             // Calculate expiration date (30 days from now)
             const expiresAt = new Date();
@@ -248,12 +203,6 @@ export class SearchService {
                 status: 'pending',
                 expiresAt,
             });
-
-            console.log('✅ Notify me request created');
-            console.log('🆔 Request ID:', request._id.toString());
-            console.log('📅 Expires:', expiresAt.toLocaleDateString());
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
             return {
                 success: true,
                 requestId: request._id.toString(),
@@ -269,12 +218,6 @@ export class SearchService {
      * Notify users who requested items matching the new item
      */
     async notifyInterestedUsers(itemTitle: string, itemDescription: string, itemType: string, itemId: string): Promise<void> {
-        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[SERVER]━');
-        console.log('📢 CHECKING FOR INTERESTED USERS');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📦 New Item:', itemTitle);
-        console.log('📝 Type:', itemType);
-
         try {
             const itemText = (itemTitle + ' ' + (itemDescription || '')).toLowerCase();
 
@@ -289,13 +232,8 @@ export class SearchService {
                 .exec();
 
             if (matchingRequests.length === 0) {
-                console.log('info: No matching pending requests found.');
-                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
                 return;
             }
-
-            console.log(`🔍 Found ${matchingRequests.length} potentially interested users...`);
-
             let notifiedCount = 0;
 
             for (const request of matchingRequests) {
@@ -313,20 +251,12 @@ export class SearchService {
                 // We'll skip complex fuzzy logic here for performance unless requested
                 // "includes" covers 95% of cases like "iphone" in "iPhone 15"
             }
-
-            console.log(`✅ Notified ${notifiedCount} users`);
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
         } catch (error) {
             console.error('Error notifying users:', error);
         }
     }
 
     private async sendNotificationEmail(request: any, itemTitle: string, itemId: string, itemType: string) {
-        console.log(`📧 SENDING EMAIL TO: ${request.email}`);
-        console.log(`   subject: Good news! We found "${request.searchQuery}"`);
-        console.log(`   body: The item "${itemTitle}" just got added! Check it out here: /${itemType}/${itemId}`);
-
         // Mark as notified so we don't spam
         request.status = 'notified';
         request.notifiedAt = new Date();

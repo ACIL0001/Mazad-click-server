@@ -196,9 +196,6 @@ export class BidController {
     // Only admins can check bids for other users. Regular users can only check their own.
     const isAdmin = req.session.user.type === RoleCode.ADMIN || req.session.user.type === RoleCode.SOUS_ADMIN;
     const userId = isAdmin && id ? id : req.session.user._id.toString();
-
-    console.log(`🔍 Checking bids for user ${userId} (Triggered by ${req.session.user.type})`);
-
     await this.bidService.checkBids(userId);
     return {
       success: true,
@@ -303,8 +300,6 @@ export class BidController {
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
     const userId = req.session?.user?._id?.toString();
-    console.log('BidController.create - Session User ID:', userId);
-
     if (!userId) {
       console.error('BidController.create - No User ID in Session!', { session: req.session });
       throw new Error('User ID not found in session. Cannot create bid.');
@@ -314,10 +309,6 @@ export class BidController {
       console.error('BidController.create - No "data" field in body!');
       throw new Error('Missing "data" field in request body');
     }
-
-    console.log('Creating bid with data:', rawData);
-    console.log('Uploaded files count:', files?.length || 0);
-
     let createBidDto: CreateBidDto;
     try {
       createBidDto = JSON.parse(rawData);
@@ -337,8 +328,6 @@ export class BidController {
     if (files && files.length > 0) {
       // Log all file fieldnames to debug
       const allFieldnames = [...new Set(files.map(f => f.fieldname))];
-      console.log('All unique fieldnames received:', allFieldnames);
-
       // Separate images and videos based on fieldname (handle both 'thumbs[]' and 'thumbs')
       // Multer might process the fieldname differently
       let imageFiles = files.filter(file => {
@@ -351,10 +340,8 @@ export class BidController {
 
       // Fallback: if no images found with thumbs fieldname, check all image files
       if (imageFiles.length === 0) {
-        console.warn('No images found with thumbs fieldname, checking all image files...');
         const allImages = files.filter(file => file.mimetype.startsWith('image/'));
         if (allImages.length > 0) {
-          console.warn('Found', allImages.length, 'image files with fieldnames:', allImages.map(f => f.fieldname));
           imageFiles = allImages; // Use all images as fallback
         }
       }
@@ -369,31 +356,21 @@ export class BidController {
 
       // Fallback: if no videos found with videos fieldname, check all video files
       if (videoFiles.length === 0) {
-        console.warn('No videos found with videos fieldname, checking all video files...');
         const allVideos = files.filter(file => file.mimetype.startsWith('video/'));
         if (allVideos.length > 0) {
-          console.warn('Found', allVideos.length, 'video files with fieldnames:', allVideos.map(f => f.fieldname));
           videoFiles = allVideos; // Use all videos as fallback
         }
       }
-
-      console.log('Filtered image files:', imageFiles.length);
-      console.log('Filtered video files:', videoFiles.length);
-      console.log('Image file details:', imageFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
-      console.log('Video file details:', videoFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, mimetype: f.mimetype })));
-
       // Handle image uploads
       if (imageFiles.length > 0) {
         try {
           const imageAttachmentPromises = imageFiles.map(async (file) => {
             try {
-              console.log('Uploading image file:', file.originalname);
               const att = await this.attachmentService.upload(
                 file,
                 AttachmentAs.BID,
                 userId,
               );
-              console.log('Image attachment created:', att._id, att.url);
               return att;
             } catch (error) {
               console.error('Error uploading image file:', file.originalname, error);
@@ -405,11 +382,9 @@ export class BidController {
             .filter(att => att && att._id)
             .map((att) => {
               const id = att._id.toString();
-              console.log('Adding thumb ID:', id, 'from attachment:', att._id);
               return id;
             });
           createBidDto.thumbs = thumbIds;
-          console.log('Thumbs IDs set (count:', thumbIds.length, '):', createBidDto.thumbs);
           if (thumbIds.length === 0 && imageFiles.length > 0) {
             console.error('WARNING: No valid thumb IDs were extracted from', imageAttachments.length, 'attachments');
             console.error('Attachment details:', imageAttachments.map(a => ({
@@ -429,13 +404,11 @@ export class BidController {
         try {
           const videoAttachmentPromises = videoFiles.map(async (file) => {
             try {
-              console.log('Uploading video file:', file.originalname);
               const att = await this.attachmentService.upload(
                 file,
                 AttachmentAs.BID,
                 userId,
               );
-              console.log('Video attachment created:', att._id, att.url);
               return att;
             } catch (error) {
               console.error('Error uploading video file:', file.originalname, error);
@@ -447,11 +420,9 @@ export class BidController {
             .filter(att => att && att._id)
             .map((att) => {
               const id = att._id.toString();
-              console.log('Adding video ID:', id, 'from attachment:', att._id);
               return id;
             });
           createBidDto.videos = videoIds;
-          console.log('Videos IDs set (count:', videoIds.length, '):', createBidDto.videos);
           if (videoIds.length === 0 && videoFiles.length > 0) {
             console.error('WARNING: No valid video IDs were extracted from', videoAttachments.length, 'attachments');
             console.error('Attachment details:', videoAttachments.map(a => ({
@@ -466,7 +437,6 @@ export class BidController {
         }
       }
     } else {
-      console.warn('No files received in the request');
     }
 
     if (!createBidDto.owner) {
@@ -474,14 +444,6 @@ export class BidController {
     }
 
     // Final validation before creating bid
-    console.log('Final bid DTO before service call:', {
-      title: createBidDto.title,
-      thumbsCount: createBidDto.thumbs?.length || 0,
-      thumbs: createBidDto.thumbs,
-      videosCount: createBidDto.videos?.length || 0,
-      videos: createBidDto.videos
-    });
-
     return this.bidService.create(createBidDto);
   }
 
@@ -505,33 +467,14 @@ export class BidController {
     @Request() request: ProtectedRequest,
     @Body() relaunchBidDto: RelaunchBidDto,
   ) {
-    console.log('Relaunch endpoint called with:', JSON.stringify(relaunchBidDto, null, 2));
-    console.log('Request session:', request.session);
-    console.log('Request headers:', request.headers);
-
     const userId = request.session?.user?._id?.toString();
-    console.log('User ID:', userId);
-
     if (!userId) {
-      console.log('No user ID found in session');
       throw new Error('User ID not found in session. Cannot relaunch bid.');
     }
 
     try {
       // Validate the DTO manually to get better error messages
-      console.log('Validating DTO fields...');
-      console.log('originalBidId:', relaunchBidDto.originalBidId);
-      console.log('title:', relaunchBidDto.title);
-      console.log('description:', relaunchBidDto.description);
-      console.log('place:', relaunchBidDto.place);
-      console.log('startingPrice:', relaunchBidDto.startingPrice);
-      console.log('startingAt:', relaunchBidDto.startingAt, typeof relaunchBidDto.startingAt);
-      console.log('endingAt:', relaunchBidDto.endingAt, typeof relaunchBidDto.endingAt);
-      console.log('isPro:', relaunchBidDto.isPro, typeof relaunchBidDto.isPro);
-      console.log('auctionType:', relaunchBidDto.auctionType);
-
       const result = await this.bidService.relaunchBid(relaunchBidDto, userId);
-      console.log('Relaunch successful, returning result:', result);
       return result;
     } catch (error) {
       console.error('Error in relaunch controller:', error);

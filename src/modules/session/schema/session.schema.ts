@@ -31,7 +31,6 @@ SessionSchema.pre('validate', function (next) {
   next();
 });
 
-// @ts-expect-error idk why but i wont crash
-SessionSchema.pre(['find', 'findOne', 'findById'], function () {
-  this.populate('user');
-});
+SessionSchema.index({ access_key: 1 });
+SessionSchema.index({ refresh_key: 1 });
+SessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });

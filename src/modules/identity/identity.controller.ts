@@ -120,17 +120,6 @@ export class IdentityController {
       }
 
       // Log received files for debugging
-      console.log('📁 Received files object:', {
-        keys: Object.keys(files || {}),
-        filesCount: Object.keys(files || {}).filter(key => files[key]?.[0]).length,
-        fileDetails: Object.keys(files || {}).filter(key => files[key]?.[0]).map(key => ({
-          field: key,
-          filename: files[key][0]?.originalname,
-          size: files[key][0]?.size,
-          mimetype: files[key][0]?.mimetype,
-        })),
-      });
-
       // Get current user to check their type
       const currentUser = await this.userService.findUserById(userId);
       if (!currentUser) {
@@ -148,29 +137,18 @@ export class IdentityController {
 
       // Check if files object exists and has at least one document
       if (!files || typeof files !== 'object') {
-        console.log('❌ Validation failed: No files object received');
         throw new BadRequestException('Aucun fichier reçu dans la requête.');
       }
 
       // Check if at least one document is provided
       const hasAnyDocument = Object.values(files).some(fileArray => fileArray && Array.isArray(fileArray) && fileArray.length > 0);
-
-      console.log('🔍 Document upload check:', {
-        hasAnyDocument,
-        filesReceived: Object.keys(files).filter(key => files[key]?.[0]).map(key => key),
-        filesObjectKeys: Object.keys(files),
-      });
-
       // Check if at least one document is provided
       if (!hasAnyDocument) {
-        console.log('❌ Validation failed: No documents provided');
         throw new BadRequestException('Au moins un document doit être fourni.');
       }
 
       // Allow any document upload - no validation at upload time
       // Validation will happen when user clicks "Soumettre"
-      console.log('✅ Validation passed - allowing incremental upload');
-
       // Handle existing optional fields
       const commercialRegisterId = files.commercialRegister?.[0] ? await saveAttachment(files.commercialRegister[0]) : undefined;
       const carteAutoEntrepreneurId = files.carteAutoEntrepreneur?.[0] ? await saveAttachment(files.carteAutoEntrepreneur[0]) : undefined;
@@ -321,13 +299,6 @@ export class IdentityController {
         if (c20Id) identityData.c20 = c20Id;
         if (misesAJourCnasId) identityData.misesAJourCnas = misesAJourCnasId;
         if (carteFellahId) identityData.carteFellah = carteFellahId;
-
-        console.log('📝 Creating new identity with data:', {
-          userId,
-          fieldsCount: Object.keys(identityData).length,
-          hasDocuments: Object.keys(identityData).filter(k => k !== 'status' && k !== 'conversionType' && k !== 'targetUserType' && k !== 'sourceUserType').length,
-        });
-
         identity = await this.identityService.createIdentity(userId, identityData);
 
         await this.userService.updateUserFields(userId, {
@@ -340,37 +311,20 @@ export class IdentityController {
       // Extract plan from body or req.body (FormData text fields are in req.body)
       // With multer/FormData, text fields are accessible via req.body
       const planName = body?.plan || (req.body?.plan as string) || (req.body as any)?.plan;
-
-      console.log('🔍 Checking for subscription plan:', {
-        'body.plan': body?.plan,
-        'req.body.plan': req.body?.plan,
-        'req.body': req.body,
-        'plan extracted': planName
-      });
-
       if (planName) {
-        console.log('✅ Processing subscription plan:', { userId, planName });
-
         try {
           // Step 1: Find the plan by name to get plan details
           const plan = await this.planModel.findOne({ name: planName }).exec();
 
           if (!plan) {
-            console.log('⚠️ Plan not found by name, trying to save plan name directly to user');
             // If plan not found, just save the plan name to user
             await this.userService.updateSubscriptionPlan(userId, planName);
-            console.log('✅ Plan name saved to user:', planName);
           } else {
-            console.log('✅ Found plan:', { planId: plan._id, planName: plan.name, duration: plan.duration });
-
             // Step 2: Save plan name to user.subscriptionPlan field
             try {
               await this.userService.createSubscriptionPlan(userId, planName);
-              console.log('✅ Plan name saved to user.subscriptionPlan:', planName);
             } catch (userPlanError) {
-              console.log('⚠️ User plan save failed, updating instead:', userPlanError.message);
               await this.userService.updateSubscriptionPlan(userId, planName);
-              console.log('✅ Plan name updated in user.subscriptionPlan:', planName);
             }
 
             // Step 3: Create subscription record in subscriptions table
@@ -388,13 +342,6 @@ export class IdentityController {
               });
 
               await subscription.save();
-              console.log('✅ Subscription record created in subscriptions table:', {
-                subscriptionId: subscription._id,
-                userId: userId,
-                planId: plan._id,
-                planName: planName,
-                expiresAt: expirationDate
-              });
             } catch (subscriptionError) {
               console.error('❌ Failed to create subscription record:', subscriptionError);
               // Don't fail the whole process if subscription record creation fails
@@ -406,14 +353,11 @@ export class IdentityController {
           // Even if there's an error, try to save the plan name to user
           try {
             await this.userService.updateSubscriptionPlan(userId, planName);
-            console.log('✅ Plan name saved to user as fallback:', planName);
           } catch (fallbackError) {
             console.error('❌ Failed to save plan name even as fallback:', fallbackError);
           }
         }
       } else {
-        console.log('⚠️ No subscription plan provided in request');
-        console.log('🔍 Request body keys:', Object.keys(req.body || {}));
       }
 
       return identity;
@@ -662,37 +606,20 @@ export class IdentityController {
     // Extract plan from body or req.body (FormData text fields are in req.body)
     // With multer/FormData, text fields are accessible via req.body
     const planName = body?.plan || (req.body?.plan as string) || (req.body as any)?.plan;
-
-    console.log('🔍 Checking for subscription plan:', {
-      'body.plan': body?.plan,
-      'req.body.plan': req.body?.plan,
-      'req.body': req.body,
-      'plan extracted': planName
-    });
-
     if (planName) {
-      console.log('✅ Processing subscription plan:', { userId, planName });
-
       try {
         // Step 1: Find the plan by name to get plan details
         const plan = await this.planModel.findOne({ name: planName }).exec();
 
         if (!plan) {
-          console.log('⚠️ Plan not found by name, trying to save plan name directly to user');
           // If plan not found, just save the plan name to user
           await this.userService.updateSubscriptionPlan(userId, planName);
-          console.log('✅ Plan name saved to user:', planName);
         } else {
-          console.log('✅ Found plan:', { planId: plan._id, planName: plan.name, duration: plan.duration });
-
           // Step 2: Save plan name to user.subscriptionPlan field
           try {
             await this.userService.createSubscriptionPlan(userId, planName);
-            console.log('✅ Plan name saved to user.subscriptionPlan:', planName);
           } catch (userPlanError) {
-            console.log('⚠️ User plan save failed, updating instead:', userPlanError.message);
             await this.userService.updateSubscriptionPlan(userId, planName);
-            console.log('✅ Plan name updated in user.subscriptionPlan:', planName);
           }
 
           // Step 3: Create subscription record in subscriptions table
@@ -710,13 +637,6 @@ export class IdentityController {
             });
 
             await subscription.save();
-            console.log('✅ Subscription record created in subscriptions table:', {
-              subscriptionId: subscription._id,
-              userId: userId,
-              planId: plan._id,
-              planName: planName,
-              expiresAt: expirationDate
-            });
           } catch (subscriptionError) {
             console.error('❌ Failed to create subscription record:', subscriptionError);
             // Don't fail the whole process if subscription record creation fails
@@ -728,14 +648,11 @@ export class IdentityController {
         // Even if there's an error, try to save the plan name to user
         try {
           await this.userService.updateSubscriptionPlan(userId, planName);
-          console.log('✅ Plan name saved to user as fallback:', planName);
         } catch (fallbackError) {
           console.error('❌ Failed to save plan name even as fallback:', fallbackError);
         }
       }
     } else {
-      console.log('⚠️ No subscription plan provided in request');
-      console.log('🔍 Request body keys:', Object.keys(req.body || {}));
     }
 
     await this.userService.updateUserFields(userId, {
@@ -774,14 +691,6 @@ export class IdentityController {
       const hasNif = identity.nifRequired;
       const hasCarteFellah = identity.carteFellah;
       const hasRcAndNif = hasRc && hasNif;
-
-      console.log('🔍 Submit validation check:', {
-        hasRc: !!hasRc,
-        hasNif: !!hasNif,
-        hasCarteFellah: !!hasCarteFellah,
-        hasRcAndNif,
-      });
-
       // Validate: Either (RC + NIF) OR (Carte Fellah only)
       if (!hasRcAndNif && !hasCarteFellah) {
         throw new BadRequestException(
@@ -1514,10 +1423,6 @@ export class IdentityController {
     if (!identity) return null;
 
     // Debug logging for payment proof
-    console.log('🔍 Server - Identity details for ID:', id);
-    console.log('🔍 Server - Payment proof raw data:', identity.paymentProof);
-    console.log('🔍 Server - Payment proof transformed:', transformAttachment(identity.paymentProof));
-
     return {
       ...JSON.parse(JSON.stringify(identity)),
       commercialRegister: transformAttachment(identity.commercialRegister),
@@ -1556,10 +1461,6 @@ export class IdentityController {
     @Request() req
   ): Promise<any> {
     const userId = req.session?.user?._id;
-    console.log('Payment proof upload - User ID:', userId);
-    console.log('Payment proof upload - Identity ID:', identityId);
-    console.log('Payment proof upload - File:', paymentProofFile?.originalname);
-
     if (!userId) {
       throw new BadRequestException('User not authenticated');
     }
@@ -1594,10 +1495,6 @@ export class IdentityController {
       }
 
       // Debug logging for payment proof upload
-      console.log('🔍 Server - Payment proof upload successful for identity:', identityId);
-      console.log('🔍 Server - Attachment created:', attachment);
-      console.log('🔍 Server - Updated identity payment proof:', updatedIdentity.paymentProof);
-
       return {
         success: true,
         message: 'Payment proof updated successfully',
