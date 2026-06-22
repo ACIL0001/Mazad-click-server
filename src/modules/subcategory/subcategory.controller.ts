@@ -11,6 +11,7 @@ import {
   BadRequestException,
   UseInterceptors 
 } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { SubCategoryService } from './subcategory.service';
 import { SubCategory } from './schema/subcategory.schema';
 import { CreateSubCategoryDto } from './dto/create-subcategory.dto';
@@ -81,6 +82,8 @@ export class SubCategoryController {
   }
 
   @Get()
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(300000)
   @ApiOperation({ summary: 'Get all subcategories' })
   @ApiResponse({
     status: 200,

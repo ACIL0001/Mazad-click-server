@@ -449,15 +449,18 @@ export class BidController {
 
   @Put(':id')
   @UseGuards(AuthGuard)
-  update(@Param('id') id: string, @Body() updateBidDto: UpdateBidDto) {
-    return this.bidService.update(id, updateBidDto);
+  update(
+    @Param('id') id: string,
+    @Request() req: ProtectedRequest,
+    @Body() updateBidDto: UpdateBidDto,
+  ) {
+    return this.bidService.update(id, updateBidDto, req.session.user);
   }
 
   @Delete(':id')
   @UseGuards(AuthGuard)
-  remove(@Param('id') id: string) {
-    // Note: ideally should check ownership, but restricting to auth is a good first step
-    return this.bidService.remove(id);
+  remove(@Param('id') id: string, @Request() req: ProtectedRequest) {
+    return this.bidService.remove(id, req.session.user);
   }
 
   @Post('relaunch')

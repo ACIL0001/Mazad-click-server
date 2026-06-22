@@ -40,16 +40,15 @@ export const OfferSchema = SchemaFactory.createForClass(Offer);
 OfferSchema.index({ bid: 1 });
 
 
-OfferSchema.pre(['find', 'findOne'], function() {
-  this.populate({
-    path: 'user',
-    select: 'firstName lastName phone username email companyName entreprise'
-  });
-  this.populate('bid', 'title');
-});
+
 
 
 // OfferSchema.pre('findById', function() {
 //   this.populate('user', 'firstname lastname tel');
 //   this.populate('bid', 'title');
 // });
+
+// Performance Indexes
+OfferSchema.index({ tenderId: 1, status: 1 });
+OfferSchema.index({ owner: 1 });
+OfferSchema.index({ user: 1 });

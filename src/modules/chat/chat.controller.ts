@@ -54,12 +54,13 @@ export class ChatController {
   @Public()
   async findGuestChat(
     @Query('name') name: string,
-    @Query('phone') phone: string
+    @Query('phone') phone: string,
+    @Query('guestUserId') guestUserId: string
   ): Promise<Chat | null> {
-    if (!name || !phone) {
-      throw new Error('Name and phone are required');
+    if (!name || !phone || !guestUserId) {
+      throw new Error('Name, phone, and guestUserId are required');
     }
-    return this.ChatService.findGuestChatByInfo(name, phone);
+    return this.ChatService.findGuestChatByInfo(name, phone, guestUserId);
   }
 
   @Post('broadcast')

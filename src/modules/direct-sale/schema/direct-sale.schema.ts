@@ -195,19 +195,12 @@ export const DirectSaleSchema = SchemaFactory.createForClass(DirectSale);
 export const DirectSalePurchaseSchema = SchemaFactory.createForClass(DirectSalePurchase);
 DirectSalePurchaseSchema.index({ directSale: 1, status: 1 });
 
-DirectSaleSchema.pre('find', function () {
-  this.populate('productCategory');
-  this.populate('productSubCategory');
-});
 
-DirectSaleSchema.pre('findOne', function () {
-  this.populate('productCategory');
-  this.populate('productSubCategory');
-});
 
-DirectSalePurchaseSchema.pre(['find', 'findOne'], function () {
-  this.populate('directSale');
-  this.populate('buyer', 'firstName lastName phone email username companyName entreprise');
-  this.populate('seller', 'firstName lastName phone email username companyName entreprise');
-});
+
+
+// Performance Indexes
+DirectSaleSchema.index({ owner: 1, status: 1 });
+DirectSaleSchema.index({ productCategory: 1, status: 1 });
+DirectSaleSchema.index({ status: 1 });
 

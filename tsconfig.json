@@ -12,9 +12,7 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
-      "src/*": [
-        "src/*"
-      ]
+      "src/*": ["src/*"]
     },
     "incremental": true,
     "skipLibCheck": true,
@@ -23,9 +21,6 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
-    "typeRoots": [
-      "./node_modules/@types",
-      "./node_modules/mongoose/types"
-    ]
+    "typeRoots": ["./node_modules/@types", "./node_modules/mongoose/types"]
   }
 }

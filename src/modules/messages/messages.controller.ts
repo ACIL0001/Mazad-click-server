@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors, Request } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors, Request, BadRequestException } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { MessageService } from "./messages.service";
 import { CrateMessageDto } from "./dto/create.Message";
@@ -37,6 +37,7 @@ export class MessageController {
   @Post('create')
   async create(@Body() dto: CrateMessageDto): Promise<Message> {
     let chatId = dto.idChat;
+    let reciver = dto.reciver;
     
     // If no chat ID provided or chat doesn't exist, create a new chat
     if (!chatId || chatId === 'undefined' || chatId === 'null') {
@@ -113,10 +114,26 @@ export class MessageController {
         // Continue with original chatId (might be invalid, but let message service handle it)
       }
     }
+
+    // Resolve unique guest receiver ID if sending to guest from admin
+    if ((dto.sender === 'admin' || dto.sender === 'ADMIN') && (reciver === 'guest' || reciver === 'GUEST') && chatId) {
+      try {
+        const chat = await this.ChatService.findChatById(chatId);
+        if (chat) {
+          const guestUser = chat.users.find((u: any) => u._id !== 'admin' && u.AccountType !== 'admin') as any;
+          if (guestUser) {
+            reciver = guestUser._id;
+            dto.reciver = guestUser._id;
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error resolving guest user ID for admin response:', error);
+      }
+    }
     
     return this.MessageService.create(
       dto.sender,
-      dto.reciver,
+      reciver,
       dto.message,
       chatId,
       { attachment: dto.attachment }
@@ -167,6 +184,7 @@ export class MessageController {
     guestName: string;
     guestPhone: string;
     idChat?: string;
+    guestUserId?: string;
     attachment?: {
       _id: string;
       url: string;
@@ -176,27 +194,47 @@ export class MessageController {
       filename: string;
     };
   }): Promise<Message> {
+    const guestId = dto.guestUserId;
+    if (!guestId || guestId === 'guest') {
+      throw new BadRequestException('guestUserId is required and must be unique');
+    }
+    
     // Generate a unique chat ID if not provided
     const chatId = dto.idChat || `guest-chat-${Date.now()}`;
     
     try {
       // First, check if a chat already exists for this guest
       let existingChat = null;
-      try {
-        // Try to find existing guest chat by looking for chats with guest user
-        const chats = await this.ChatService.getChat('admin', 'admin');
-        existingChat = chats.find((chat: any) => 
-          chat.users?.some((user: any) => user._id === 'guest') &&
-          chat.users?.some((user: any) => user.AccountType === 'admin')
-        );
-      } catch (error) {
+      
+      // If a chat ID is provided, try to find that specific chat first and verify it belongs to this guest
+      if (dto.idChat && dto.idChat !== 'pending-server-creation' && dto.idChat !== 'undefined' && dto.idChat !== 'null') {
+        try {
+          const chats = await this.ChatService.getChat('admin', 'admin');
+          existingChat = chats.find((chat: any) => 
+            chat._id.toString() === dto.idChat &&
+            chat.users?.some((user: any) => user._id === guestId)
+          );
+        } catch (error) {
+        }
+      }
+      
+      // If not found by ID, try to find by guestId to resume correctly
+      if (!existingChat) {
+        try {
+          const chats = await this.ChatService.getChat('admin', 'admin');
+          existingChat = chats.find((chat: any) => 
+            chat.users?.some((user: any) => user._id === guestId) &&
+            chat.users?.some((user: any) => user.AccountType === 'admin')
+          );
+        } catch (error) {
+        }
       }
       
       // If no existing chat, create a new one
       if (!existingChat) {
         const guestChatUsers = [
           {
-            _id: 'guest',
+            _id: guestId,
             firstName: dto.guestName,
             lastName: 'User',
             AccountType: 'guest',
@@ -219,7 +257,7 @@ export class MessageController {
       
       // Create the guest message
       const message = await this.MessageService.create(
-        'guest', // sender
+        guestId, // sender
         'admin', // receiver
         dto.message,
         finalChatId,
@@ -266,7 +304,8 @@ export class MessageController {
     @Body('idChat') idChat: string,
     @Request() req,
     @Body('guestName') guestName?: string,
-    @Body('guestPhone') guestPhone?: string
+    @Body('guestPhone') guestPhone?: string,
+    @Body('guestUserId') guestUserId?: string
   ): Promise<Message> {
     try {
       if (!file) {
@@ -295,23 +334,43 @@ export class MessageController {
       };
       // Check if this is a guest message
       const isGuest = !req.session?.user?._id && (guestName || guestPhone);
+      const guestId = guestUserId || 'guest';
 
       if (isGuest) {
+        if (!guestUserId || guestUserId === 'guest') {
+          throw new BadRequestException('guestUserId is required');
+        }
         // Handle guest voice message
         let existingChat = null;
-        try {
-          const chats = await this.ChatService.getChat('admin', 'admin');
-          existingChat = chats.find((chat: any) => 
-            chat.users?.some((user: any) => user._id === 'guest') &&
-            chat.users?.some((user: any) => user.AccountType === 'admin')
-          );
-        } catch (error) {
+        
+        // If a chat ID is provided, try to find that specific chat first and verify it belongs to this guest
+        if (idChat && idChat !== 'pending-server-creation' && idChat !== 'undefined' && idChat !== 'null') {
+          try {
+            const chats = await this.ChatService.getChat('admin', 'admin');
+            existingChat = chats.find((chat: any) => 
+              chat._id.toString() === idChat &&
+              chat.users?.some((user: any) => user._id === guestId)
+            );
+          } catch (error) {
+          }
+        }
+        
+        // If not found by ID, try to find by guestId to resume correctly
+        if (!existingChat) {
+          try {
+            const chats = await this.ChatService.getChat('admin', 'admin');
+            existingChat = chats.find((chat: any) => 
+              chat.users?.some((user: any) => user._id === guestId) &&
+              chat.users?.some((user: any) => user.AccountType === 'admin')
+            );
+          } catch (error) {
+          }
         }
         
         const finalChatId = existingChat?._id || idChat;
         
         const message = await this.MessageService.create(
-          'guest',
+          guestId,
           'admin',
           '🎤 Voice message',
           finalChatId,

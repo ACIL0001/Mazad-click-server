@@ -2,9 +2,11 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import { RoleCode } from '../apikey/entity/appType.entity';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
@@ -238,23 +240,43 @@ export class DirectSaleService {
   async update(
     id: string,
     updateDirectSaleDto: UpdateDirectSaleDto,
+    user?: any,
   ): Promise<DirectSale> {
+    const directSale = await this.directSaleModel.findById(id).exec();
+    if (!directSale) {
+      throw new NotFoundException(`Direct sale with ID "${id}" not found`);
+    }
+
+    if (user) {
+      const isOwner = directSale.owner.toString() === user._id.toString();
+      const isAdmin = user.type === RoleCode.ADMIN || user.type === RoleCode.SOUS_ADMIN;
+      if (!isOwner && !isAdmin) {
+        throw new ForbiddenException('You do not have permission to update this direct sale');
+      }
+    }
+
     const updatedDirectSale = await this.directSaleModel
       .findByIdAndUpdate(id, updateDirectSaleDto, { new: true })
       .exec();
 
-    if (!updatedDirectSale) {
-      throw new NotFoundException(`Direct sale with ID "${id}" not found`);
-    }
-
     return updatedDirectSale;
   }
 
-  async delete(id: string): Promise<void> {
-    const result = await this.directSaleModel.findByIdAndDelete(id).exec();
-    if (!result) {
+  async delete(id: string, user?: any): Promise<void> {
+    const directSale = await this.directSaleModel.findById(id).exec();
+    if (!directSale) {
       throw new NotFoundException(`Direct sale with ID "${id}" not found`);
     }
+
+    if (user) {
+      const isOwner = directSale.owner.toString() === user._id.toString();
+      const isAdmin = user.type === RoleCode.ADMIN || user.type === RoleCode.SOUS_ADMIN;
+      if (!isOwner && !isAdmin) {
+        throw new ForbiddenException('You do not have permission to delete this direct sale');
+      }
+    }
+
+    await this.directSaleModel.findByIdAndDelete(id).exec();
   }
 
   async purchase(

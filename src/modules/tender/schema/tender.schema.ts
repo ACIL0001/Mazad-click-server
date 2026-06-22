@@ -155,12 +155,9 @@ export class Tender {
 export type TenderDocument = HydratedDocument<Tender>;
 export const TenderSchema = SchemaFactory.createForClass(Tender);
 
-TenderSchema.pre('find', function () {
-  this.populate('category');
-  this.populate('subCategory');
-});
+// Performance Indexes
+TenderSchema.index({ owner: 1, status: 1 });
+TenderSchema.index({ category: 1, status: 1 });
+TenderSchema.index({ status: 1, startingAt: 1, endingAt: 1 });
 
-TenderSchema.pre('findOne', function () {
-  this.populate('category');
-  this.populate('subCategory');
-});
+

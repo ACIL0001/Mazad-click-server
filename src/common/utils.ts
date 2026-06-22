@@ -134,7 +134,12 @@ export function sanitizeUser(u: User | any, currentUser?: User | any, options: {
     secteur: u.secteur,
     isActive: u.isActive,
     isProfileVisible: u.isProfileVisible,
-    createdAt: u.createdAt
+    createdAt: u.createdAt,
+    isVerified: u.isVerified,
+    isCertified: u.isCertified,
+    isRecommended: u.isRecommended,
+    isHasIdentity: u.isHasIdentity,
+    identity: u.identity ? (u.identity._id || u.identity).toString() : null
   };
 
   // Only include contact info if user is privileged OR it's the user's own info

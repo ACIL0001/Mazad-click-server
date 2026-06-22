@@ -16,7 +16,7 @@ const helmetConfig = helmet({
         "'self'",
         "http://localhost:*",
         "https://*.vercel.app",
-        "https://mazadclick.com",
+        "https://mazadclick.vercel.app",
         "https://admin.mazad.click",
         "https://dashbord.seller.mazad.click"
       ],
@@ -24,8 +24,7 @@ const helmetConfig = helmet({
         "'self'",
         'data:',
         'http://localhost:3000', // Development backend images
-        'https://api.mazad.click', // Legacy production API images
-        'https://mazadclick-server.onrender.com', // Current production API images (Render.com)
+        'https://mazadclick-server.onrender.com', // Production API images (Render.com)
         'https://*.onrender.com', // Allow all Render.com subdomains
         'https:', // Allow all HTTPS images (needed for CDNs and external images)
       ],

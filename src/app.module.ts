@@ -1,4 +1,4 @@
-import { Logger, Module } from '@nestjs/common';
+import { Logger, Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { JwtModule } from '@nestjs/jwt';
@@ -70,6 +70,9 @@ import { DirectSaleModule } from './modules/direct-sale/direct-sale.module';
 import { AdsModule } from './modules/ads/ads.module';
 import { EmailModule } from './modules/email/email.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -108,17 +111,11 @@ import { SettingsModule } from './modules/settings/settings.module';
         const logger = new Logger('MongooseModule');
         const databaseUri = config.get<'string'>(ConfigKeys.DATABASE_URI);
         const databaseName = config.get<'string'>(ConfigKeys.DATABASE_NAME);
-
-        logger.log(`🔗 Attempting to connect to MongoDB...`);
-        logger.log(`📊 Database URI: ${databaseUri}`);
-        logger.log(`📊 Database Name: ${databaseName}`);
-
         return {
           uri: databaseUri,
           dbName: databaseName,
           connectionFactory: (connection) => {
             connection.on('connected', () => {
-              logger.log('✅ MongoDB connected successfully');
             });
 
             connection.on('error', (error) => {
@@ -126,7 +123,6 @@ import { SettingsModule } from './modules/settings/settings.module';
             });
 
             connection.on('disconnected', () => {
-              logger.warn('⚠️ MongoDB disconnected');
             });
 
             return connection;
@@ -137,7 +133,9 @@ import { SettingsModule } from './modules/settings/settings.module';
     I18nModule.forRoot({
       fallbackLanguage: 'fr',
       loaderOptions: {
-        path: path.join(__dirname, 'i18n/'),
+        path: fs.existsSync(path.join(__dirname, 'i18n'))
+          ? path.join(__dirname, 'i18n')
+          : path.join(process.cwd(), 'src/i18n'),
         watch: true,
       },
       resolvers: [
@@ -155,7 +153,6 @@ import { SettingsModule } from './modules/settings/settings.module';
         const disableRedis = config.get('DISABLE_REDIS') === 'true';
 
         if (disableRedis) {
-          logger.log('🚫 Redis disabled, using in-memory cache');
           return {
             ttl: 1000 * 60 * 4, // 4 minutes
             max: 100,
@@ -177,14 +174,11 @@ import { SettingsModule } from './modules/settings/settings.module';
               },
             },
           });
-
-          logger.log('✅ Redis cache connected successfully');
           return {
             store: store,
             ttl: 1000 * 60 * 4,
           };
         } catch (error) {
-          logger.warn('⚠️ Redis not available, falling back to in-memory cache');
           return {
             ttl: 1000 * 60 * 4,
             max: 100,
@@ -210,14 +204,14 @@ import { SettingsModule } from './modules/settings/settings.module';
             destination: destinationPath,
             filename: generateUniqueFilename,
           }),
-          // limits: { fileSize: 1024 * 1024 * 5 }, // Example: 5MB file size limit
-          // fileFilter: (req, file, cb) => { // Example: image file filter
-          //   if (file.mimetype.match(/\/(jpg|jpeg|png|gif)$/)) {
-          //     cb(null, true);
-          //   } else {
-          //     cb(new Error('Unsupported file type'), false);
-          //   }
-          // },
+          limits: { fileSize: 1024 * 1024 * 10 }, // 10MB max
+          fileFilter: (req, file, cb) => {
+            if (file.mimetype.match(/\/(jpg|jpeg|png|gif|webp|pdf|msword|vnd.openxmlformats-officedocument.wordprocessingml.document)$/)) {
+              cb(null, true);
+            } else {
+              cb(new Error('Unsupported file type. Only images and documents are allowed.'), false);
+            }
+          },
         };
       },
       inject: [ConfigService], // Optional: if you need configService
@@ -251,7 +245,9 @@ import { SettingsModule } from './modules/settings/settings.module';
     AdsModule,
     EmailModule,
     SettingsModule,
+    AnalyticsModule,
   ],
+  controllers: [AppController],
   providers: [
     {
       provide: APP_GUARD,
@@ -263,4 +259,10 @@ import { SettingsModule } from './modules/settings/settings.module';
     },
   ],
 })
-export class AppModule { }
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    // CsrfMiddleware has been removed because the application uses Bearer tokens,
+    // making it immune to CSRF. Double Submit Cookies break in cross-domain
+    // setups where frontend JS cannot read backend cookies.
+  }
+}

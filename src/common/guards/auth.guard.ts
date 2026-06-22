@@ -33,11 +33,15 @@ export class AuthGuard implements CanActivate {
         request.session = session;
 
       } catch (error) {
-        this.logger.error(`❌ Token validation failed for ${request.url}:`, {
-          error: error.message,
-          tokenPreview: token.substring(0, 10) + '...',
-          stack: error.stack
-        });
+        if (error instanceof UnauthorizedException) {
+          this.logger.warn(`❌ Token validation failed for ${request.url}: ${error.message} (Token: ${token.substring(0, 10)}...)`);
+        } else {
+          this.logger.error(`❌ Unexpected token validation error for ${request.url}:`, {
+            error: error.message,
+            tokenPreview: token.substring(0, 10) + '...',
+            stack: error.stack
+          });
+        }
         // We do NOT throw here yet. We check if it's public first.
       }
     } else {

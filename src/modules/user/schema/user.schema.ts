@@ -243,3 +243,6 @@ UserSchema.virtual('fullName').get(function () {
 // Ensure virtual fields are included in JSON output
 UserSchema.set('toJSON', { virtuals: true });
 UserSchema.set('toObject', { virtuals: true });
+
+// Performance Indexes
+UserSchema.index({ type: 1, isActive: 1, isBanned: 1 });

@@ -12,6 +12,7 @@ import {
   UseInterceptors,
   Query 
 } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { CategoryService } from './category.service';
 import { Category } from './schema/category.schema';
 import { CreateCategoryDto } from './dto/create-category.dto'; 
@@ -83,6 +84,8 @@ export class CategoryController {
   }
 
   @Get()
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(300000) // 5 minutes
   @ApiOperation({ summary: 'Get all categories' })
   @ApiResponse({
     status: 200,
@@ -98,6 +101,8 @@ export class CategoryController {
   }
 
   @Get('roots')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(300000)
   @ApiOperation({ summary: 'Get root categories (categories without parent)' })
   @ApiResponse({
     status: 200,
@@ -113,6 +118,8 @@ export class CategoryController {
   }
 
   @Get('tree')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(300000)
   @ApiOperation({ summary: 'Get complete category tree with nested subcategories' })
   @ApiResponse({
     status: 200,

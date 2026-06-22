@@ -9,7 +9,12 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  Res,
+  Req,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { Response, Request as ExpressRequest } from 'express';
+import { randomUUID } from 'crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
@@ -55,19 +60,65 @@ export class AuthController {
   async signin(
     @Request() request: PublicRequest,
     @Body() signInDto: SignInDto,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.authService.SignIn(signInDto);
+    const result = await this.authService.SignIn(signInDto);
+    
+    // Set Refresh Token HttpOnly Cookie
+    res.cookie('refresh_token', result.session.refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
+    // Generate and Set CSRF Token Cookie (Readable by JS)
+    const csrfToken = randomUUID();
+    res.cookie('csrf_token', csrfToken, {
+      httpOnly: false,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    // Remove refreshToken from the response body for security
+    return {
+      session: {
+        accessToken: result.session.accessToken,
+      },
+      user: result.user,
+    };
   }
 
   @Delete('signout')
   @UseGuards(AuthGuard)
-  async signout(@Request() request: ProtectedRequest) {
-    return this.authService.SignOut(request.session);
+  async signout(
+    @Request() request: ProtectedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.SignOut(request.session);
+    res.clearCookie('refresh_token', { sameSite: 'none', secure: true });
+    res.clearCookie('csrf_token', { sameSite: 'none', secure: true });
+    return result;
   }
 
   @Get('validate-token')
   @UseGuards(AuthGuard)
-  async validateToken(@Request() request: ProtectedRequest) {
+  async validateToken(
+    @Request() request: ProtectedRequest,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: ExpressRequest,
+  ) {
+    if (!req.cookies['csrf_token']) {
+      const csrfToken = randomUUID();
+      res.cookie('csrf_token', csrfToken, {
+        httpOnly: false,
+        secure: true,
+        sameSite: 'none',
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+    }
+
     return {
       valid: true,
       user: request.session.user,
@@ -77,7 +128,21 @@ export class AuthController {
 
   @Get('status')
   @UseGuards(AuthGuard)
-  async status(@Request() request: ProtectedRequest) {
+  async status(
+    @Request() request: ProtectedRequest,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: ExpressRequest,
+  ) {
+    if (!req.cookies['csrf_token']) {
+      const csrfToken = randomUUID();
+      res.cookie('csrf_token', csrfToken, {
+        httpOnly: false,
+        secure: true,
+        sameSite: 'none',
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+    }
+
     return {
       authenticated: true,
       user: request.session.user,
@@ -90,11 +155,27 @@ export class AuthController {
 
   @Public()
   @Put('refresh')
-  async refresh(@Body() body: { refreshToken: string }) {
-    const tokens = await this.authService.RefreshSession(body.refreshToken);
+  async refresh(
+    @Req() req: ExpressRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = req.cookies['refresh_token'];
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token missing from cookies');
+    }
+
+    const tokens = await this.authService.RefreshSession(refreshToken);
+    
+    // Rotate the refresh token cookie
+    res.cookie('refresh_token', tokens.refresh_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
     return {
       accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
     };
   }
 

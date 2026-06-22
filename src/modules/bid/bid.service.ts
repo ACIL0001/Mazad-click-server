@@ -2,9 +2,11 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import { RoleCode } from '../apikey/entity/appType.entity';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Schema as MongooseSchema } from 'mongoose';
 import { Bid, BidDocument, AUCTION_TYPE, BID_STATUS, BID_TYPE } from './schema/bid.schema';
@@ -242,17 +244,26 @@ export class BidService {
     return populatedBid;
   }
 
-  async update(id: string, updateBidDto: UpdateBidDto): Promise<Bid> {
-    const updatedBid = await this.bidModel
-      .findByIdAndUpdate(id, updateBidDto, { new: true })
-      .exec();
-
-    if (!updatedBid) {
+  async update(id: string, updateBidDto: UpdateBidDto, user?: any): Promise<Bid> {
+    const bid = await this.bidModel.findById(id).exec();
+    if (!bid) {
       const translatedMessage = await this.i18nService.t('BID.NOT_FOUND', {
         args: { id },
       });
       throw new NotFoundException(translatedMessage);
     }
+
+    if (user) {
+      const isOwner = bid.owner.toString() === user._id.toString();
+      const isAdmin = user.type === RoleCode.ADMIN || user.type === RoleCode.SOUS_ADMIN;
+      if (!isOwner && !isAdmin) {
+        throw new ForbiddenException('You do not have permission to update this auction');
+      }
+    }
+
+    const updatedBid = await this.bidModel
+      .findByIdAndUpdate(id, updateBidDto, { new: true })
+      .exec();
 
     return updatedBid;
   }
@@ -694,16 +705,22 @@ export class BidService {
     return;
   }
 
-  async remove(id: string): Promise<Bid> {
-    const deletedBid = await this.bidModel.findByIdAndDelete(id).exec();
-
-    if (!deletedBid) {
+  async remove(id: string, user: any): Promise<Bid> {
+    const bid = await this.bidModel.findById(id).exec();
+    if (!bid) {
       const translatedMessage = await this.i18nService.t('BID.NOT_FOUND', {
         args: { id },
       });
       throw new NotFoundException(translatedMessage);
     }
 
+    const isOwner = bid.owner.toString() === user._id.toString();
+    const isAdmin = user.type === RoleCode.ADMIN || user.type === RoleCode.SOUS_ADMIN;
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException('You do not have permission to delete this auction');
+    }
+
+    const deletedBid = await this.bidModel.findByIdAndDelete(id).exec();
     return deletedBid;
   }
 

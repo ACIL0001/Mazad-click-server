@@ -31,7 +31,7 @@ import { getApiBaseUrl } from '../common/utils';
 @WebSocketGateway({
   cors: {
     origin: [
-      /^https?:\/\/localhost:30\d{2}$/,
+      /^https?:\/\/(localhost|127\.0\.0\.1):30\d{2}$/,
       /^https:\/\/mazad-click-(buyer|seller|backoffice|admin)(-[a-z0-9-]+)?\.vercel\.app$/,
       /^https:\/\/mazadclick\.vercel\.app\/?$/,
       /^https:\/\/mazadclick\.com\/?$/,
@@ -47,16 +47,30 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(private readonly jwtService: JwtService) {}
 
   async handleConnection(client: Socket) {
-    let token = client.handshake.query.token as string || client.handshake.auth?.token as string;
+    // Strictly enforce auth payload token over URL query token for security
+    let token = client.handshake.auth?.token as string;
     
-    // Fallback to userId if token isn't provided (transitional period)
-    // Wait, the security issue requires strict verification! 
     if (token && token.startsWith('Bearer ')) {
       token = token.split(' ')[1];
     }
 
     try {
       if (!token) {
+        // Allow guest connections to stay open for guest chat
+        const queryUserId = client.handshake.query.userId as string;
+        if (queryUserId === 'guest' || queryUserId?.startsWith('guest')) {
+          let user = this.onlineUsers.get(queryUserId);
+          if (user) {
+            if (!user.socketIds.includes(client.id)) {
+              user.socketIds.push(client.id);
+            }
+          } else {
+            this.onlineUsers.set(queryUserId, { userId: queryUserId, socketIds: [client.id] });
+          }
+          this.emitOnlineUsers();
+          return;
+        }
+
         // Silently disconnect if no token is provided to avoid log spam
         client.disconnect(true);
         return;
@@ -205,7 +219,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const senderUser = this.onlineUsers.get(sender);
     const now = new Date().toISOString();
 
-    // Prepare message payload
+    // Full message payload (with _id so frontend deduplication works)
     const messagePayload: MessagePayload = {
       message,
       reciver: 'admin',
@@ -215,7 +229,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       createdAt: now
     };
 
-    // Add attachment if present
     if (attachment) {
       if (attachment.url && attachment.url.startsWith('/static/')) {
         attachment.url = `${getApiBaseUrl()}${attachment.url}`;
@@ -223,48 +236,40 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       messagePayload.attachment = attachment;
     }
 
-    // Send to sender if they are online (confirmation)
+    // 1. Send confirmation back to the sender (user who sent the message)
     if (senderUser) {
       senderUser.socketIds.forEach(socketId => {
         this.server.to(socketId).emit('sendMessage', messagePayload);
       });
     }
 
-    // Send to specified admins
+    // 2. Send to each known admin by their real user ID in onlineUsers
     adminIds.forEach(adminId => {
       const adminUser = this.onlineUsers.get(adminId);
       if (adminUser) {
-
         adminUser.socketIds.forEach(socketId => {
-          // Prevent sending to sender again if they are an admin
-          if (senderUser && senderUser.socketIds.includes(socketId)) {
-            return;
-          }
-
+          // Skip if this socket already got the message as sender
+          if (senderUser && senderUser.socketIds.includes(socketId)) return;
           this.server.to(socketId).emit('sendMessage', messagePayload);
-
-          // Also emit newMessage for notification system
-          const notificationPayload: NotificationPayload = {
-            message,
-            reciver: 'admin',
-            idChat,
-            sender
-          };
-
-          if (attachment) {
-            const attachmentCopy = { ...attachment };
-            if (attachmentCopy.url && attachmentCopy.url.startsWith('/static/')) {
-              attachmentCopy.url = `${getApiBaseUrl()}${attachmentCopy.url}`;
-            }
-            notificationPayload.attachment = attachmentCopy;
-          }
-
-          this.server.to(socketId).emit('newMessage', notificationPayload);
         });
       }
     });
 
-
+    // 3. CRITICAL FIX: Also broadcast to the chat room so that any admin
+    //    who called joinChat receives the message via chatMessageUpdate.
+    //    This is the reliable fallback when onlineUsers lookup returns nothing.
+    this.server.to(`chat_${idChat}`).emit('chatMessageUpdate', {
+      _id: idMes,
+      messageId: idMes,
+      message,
+      sender,
+      reciver: 'admin',
+      idChat,
+      chatId: idChat,
+      createdAt: now,
+      attachment: messagePayload.attachment,
+      isSocket: true
+    });
   }
 
   sendMessageFromAdminToUser(adminId: string, userId: string, message: string, idChat: string, idMes: string, attachment?: any): void {
@@ -364,7 +369,19 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     });
 
-
+    // Also broadcast to chat room for real-time updates (fallback for joined devices/tabs)
+    this.server.to(`chat_${idChat}`).emit('chatMessageUpdate', {
+      _id: idMes,
+      messageId: idMes,
+      message,
+      sender: 'admin',
+      reciver: userId,
+      idChat,
+      chatId: idChat,
+      createdAt: now,
+      attachment,
+      isSocket: true
+    });
   }
 
   sendNotificationToClients(notification: any) {
@@ -624,6 +641,35 @@ console.log('📨 Direct message received from frontend:', payload);
     });
 
 console.log('✅ Direct message processed and sent via socket');
+  }
+
+  // ═══════════════════════════════════════════
+  // ██  ANALYTICS REALTIME ENDPOINTS
+  // ═══════════════════════════════════════════
+
+  @SubscribeMessage('joinAnalytics')
+  handleJoinAnalytics(client: Socket, payload: { userId: string, role: string }) {
+    if (payload.role === 'admin' || payload.role === 'superadmin') {
+      client.join('admin_analytics');
+      client.emit('analyticsJoined', {
+        status: 'success',
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      client.emit('analyticsJoined', {
+        status: 'forbidden',
+        message: 'Only admins can join analytics room'
+      });
+    }
+  }
+
+  @SubscribeMessage('leaveAnalytics')
+  handleLeaveAnalytics(client: Socket) {
+    client.leave('admin_analytics');
+  }
+
+  broadcastAnalyticsUpdate(data: any) {
+    this.server.to('admin_analytics').emit('analyticsRealtimeUpdate', data);
   }
 
 }

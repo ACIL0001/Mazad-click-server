@@ -278,6 +278,10 @@ export class ChatService {
     return deleted;
   }
 
+  async findChatById(id: string): Promise<ChatDocument | null> {
+    return this.chatModel.findById(id).exec();
+  }
+
   async getChatsByAdmin(): Promise<Chat[]> {
     // Find all chats where one of the users has _id === 'admin' OR AccountType === 'admin'
     const chats = await this.chatModel.find({
@@ -327,28 +331,16 @@ export class ChatService {
     return chats;
   }
 
-  async findGuestChatByInfo(guestName: string, guestPhone: string): Promise<Chat | null> {
-    // Find a guest chat by matching guest name and phone
+  async findGuestChatByInfo(guestName: string, guestPhone: string, guestUserId: string): Promise<Chat | null> {
+    if (!guestUserId) return null;
+    // Find a guest chat by matching BOTH guest name, phone AND guestUserId (strict match to prevent cross-session leakage)
     const chat = await this.chatModel.findOne({
       $and: [
-        {
-          $or: [
-            { 'users._id': 'guest' },
-            { 'users.AccountType': 'guest' }
-          ]
-        },
-        {
-          $or: [
-            { 'users.firstName': guestName },
-            { 'users.phone': guestPhone }
-          ]
-        }
+        { 'users._id': guestUserId },
+        { 'users.firstName': guestName },  // must match name
+        { 'users.phone': guestPhone }       // AND phone
       ]
     }).exec();
-
-    if (chat) {
-    } else {
-    }
 
     return chat;
   }

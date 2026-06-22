@@ -12,26 +12,32 @@ import { MongoExceptionFilter } from './common/filters/mongo-exception.filter';
 import { SetupSwagger } from './configs/swagger.config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import compression from 'compression';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    logger: WinstonModule.createLogger(winstonLoggerOptions),
+    logger: ['error'], // Silences verbose NestJS init logs and warnings
   });
 
-  app.use(morgan('combined'));
+  // GZIP Compression for ultra-fast API payload delivery
+  app.use(compression());
+  
+  // Parse Cookie header and populate req.cookies
+  app.use(cookieParser());
 
-  // CORS Configuration - Enhanced for better compatibility
+  // app.use(morgan('combined')); // Disabled to stop HTTP request spam
+
   const allowedOrigins = [
     'http://localhost:3001',
     'http://localhost:3002',
     'http://localhost:3003',
     'http://localhost:3004',
-    'http://localhost:3005', 
-    'http://localhost:3006',
-    'http://localhost:3007',
-    'http://localhost:3008',
-    'http://localhost:3009',
-    'http://localhost:3010',
+    'http://127.0.0.1:3001',
+    'http://127.0.0.1:3002',
+    'http://127.0.0.1:3003',
+    'http://127.0.0.1:3004',
+
     'https://mazad-click-buyer.vercel.app',
     'https://mazad-click-seller.vercel.app',
     'https://mazad-click-backoffice.vercel.app',
@@ -40,7 +46,6 @@ async function bootstrap() {
     'https://mazad-click-seller-eq4j.vercel.app',
     'https://mazadclick.vercel.app',
     'https://mazadclick.vercel.app/', // Keep both with and without trailing slash
-    'https://mazadclick.com',
     'https://admin.mazad.click',
     'https://dashbord.seller.mazad.click',
   ];
@@ -50,18 +55,17 @@ async function bootstrap() {
     /^https:\/\/mazad-click-(buyer|seller|backoffice|admin)(-[a-z0-9-]+)?\.vercel\.app$/,
     /^https:\/\/buyer-mazad\.vercel\.app$/,
     /^https:\/\/mazadclick\.vercel\.app\/?$/, // Allow with or without trailing slash
-    /^https:\/\/mazadclick\.com\/?$/,
     /^https:\/\/dashbord\.seller\.mazad\.click\/?$/,
     /^https:\/\/admin\.mazad\.click\/?$/,
   ];
 
   app.enableCors({
     origin: (origin, callback) => {
-      console.log('🔍 CORS Origin Check:', origin);
+
 
       // Allow requests with no origin (like mobile apps, curl, etc.)
       if (!origin) {
-        console.log('✅ CORS: Allowing request with no origin');
+
         return callback(null, true);
       }
 
@@ -70,11 +74,11 @@ async function bootstrap() {
         allowedOriginPatterns.some((rx) => rx.test(origin));
 
       if (isAllowed) {
-        console.log('✅ CORS: Origin allowed:', origin);
+
         return callback(null, true);
       }
 
-      console.log('❌ CORS: Origin rejected:', origin);
+
       return callback(new Error('Not allowed by CORS'));
     },
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
@@ -86,11 +90,11 @@ async function bootstrap() {
       'Authorization',
       'x-api-key',
       'x-access-key',
-      'accept-language',
       'X-Requested-With',
       'Origin',
       'Access-Control-Request-Method',
-      'Access-Control-Request-Headers'
+      'Access-Control-Request-Headers',
+      'x-csrf-token'
     ],
     exposedHeaders: [
       'Content-Length',
@@ -120,7 +124,7 @@ async function bootstrap() {
     res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE');
     res.header(
       'Access-Control-Allow-Headers',
-      'Content-Type, Accept, Authorization, x-api-key, x-access-key, accept-language, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
+      'Content-Type, Accept, Authorization, x-api-key, x-access-key, accept-language, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers, x-csrf-token',
     );
     next();
   });
@@ -132,14 +136,13 @@ async function bootstrap() {
 
     // Check if origin is allowed
     const isAllowed = allowedOrigins.includes(origin) ||
-      /^https:\/\/mazad-click-(buyer|seller|backoffice|admin)(-[a-z0-9-]+)?\.vercel\.app$/.test(origin) ||
       /^https:\/\/mazadclick\.vercel\.app\/?$/.test(origin);
 
     if (isAllowed) {
       res.header('Access-Control-Allow-Origin', origin);
       res.header('Access-Control-Allow-Credentials', 'true');
       res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, x-api-key, x-access-key, accept-language, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, x-api-key, x-access-key, accept-language, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers, x-csrf-token');
       console.log('✅ OTP CORS: Headers set for origin:', origin);
     } else {
       console.log('❌ OTP CORS: Origin not allowed:', origin);
@@ -157,26 +160,20 @@ async function bootstrap() {
   // Dedicated Auth middleware for token validation
   app.use('/auth', (req, res, next) => {
     const origin = req.headers.origin;
-    console.log('🔍 Auth CORS Middleware - Origin:', origin, 'Path:', req.path);
 
     // Check if origin is allowed
     const isAllowed = allowedOrigins.includes(origin) ||
-      /^https:\/\/mazad-click-(buyer|seller|backoffice|admin)(-[a-z0-9-]+)?\.vercel\.app$/.test(origin) ||
       /^https:\/\/mazadclick\.vercel\.app\/?$/.test(origin);
 
     if (isAllowed) {
       res.header('Access-Control-Allow-Origin', origin);
       res.header('Access-Control-Allow-Credentials', 'true');
       res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, x-api-key, x-access-key, accept-language, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
-      console.log('✅ Auth CORS: Headers set for origin:', origin);
-    } else {
-      console.log('❌ Auth CORS: Origin not allowed:', origin);
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, x-api-key, x-access-key, accept-language, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers, x-csrf-token');
     }
 
     // Handle preflight requests
     if (req.method === 'OPTIONS') {
-      console.log('✅ Auth CORS: Handling OPTIONS request for:', req.path);
       res.status(204).end();
       return;
     }

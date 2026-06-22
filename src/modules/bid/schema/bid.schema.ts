@@ -191,3 +191,5 @@ export const BidSchema = SchemaFactory.createForClass(Bid);
 BidSchema.index({ owner: 1, status: 1, endingAt: 1 });
 BidSchema.index({ status: 1, endingAt: 1, isSoldProcessed: 1 });
 BidSchema.index({ status: 1, startingAt: 1, endingAt: 1 });
+BidSchema.index({ productCategory: 1, status: 1 });
+BidSchema.index({ owner: 1, status: 1 });

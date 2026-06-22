@@ -381,16 +381,17 @@ export class DirectSaleController {
   @ApiOperation({ summary: 'Update a direct sale' })
   async update(
     @Param('id') id: string,
+    @Request() req: ProtectedRequest,
     @Body() updateDirectSaleDto: UpdateDirectSaleDto,
   ) {
-    return this.directSaleService.update(id, updateDirectSaleDto);
+    return this.directSaleService.update(id, updateDirectSaleDto, req.session.user);
   }
 
   @Delete(':id')
   @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Delete a direct sale' })
-  async remove(@Param('id') id: string) {
-    await this.directSaleService.delete(id);
+  async remove(@Param('id') id: string, @Request() req: ProtectedRequest) {
+    await this.directSaleService.delete(id, req.session.user);
     return { message: 'Direct sale deleted successfully' };
   }
 

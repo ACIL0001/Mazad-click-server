@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
+import { RoleCode } from '../apikey/entity/appType.entity';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import * as mongoose from 'mongoose';
@@ -213,17 +214,26 @@ export class TenderService {
     return populatedTender;
   }
 
-  async update(id: string, updateTenderDto: UpdateTenderDto): Promise<Tender> {
-    const updatedTender = await this.tenderModel
-      .findByIdAndUpdate(id, updateTenderDto, { new: true })
-      .exec();
-
-    if (!updatedTender) {
+  async update(id: string, updateTenderDto: UpdateTenderDto, user?: any): Promise<Tender> {
+    const tender = await this.tenderModel.findById(id).exec();
+    if (!tender) {
       const translatedMessage = await this.i18nService.t('TENDER.NOT_FOUND', {
         args: { id },
       });
       throw new NotFoundException(translatedMessage);
     }
+
+    if (user) {
+      const isOwner = tender.owner.toString() === user._id.toString();
+      const isAdmin = user.type === RoleCode.ADMIN || user.type === RoleCode.SOUS_ADMIN;
+      if (!isOwner && !isAdmin) {
+        throw new ForbiddenException('You do not have permission to update this tender');
+      }
+    }
+
+    const updatedTender = await this.tenderModel
+      .findByIdAndUpdate(id, updateTenderDto, { new: true })
+      .exec();
 
     return updatedTender;
   }
@@ -668,7 +678,7 @@ export class TenderService {
   /**
    * Delete a tender
    */
-  async deleteTender(tenderId: string, userId: string): Promise<Tender> {
+  async deleteTender(tenderId: string, user?: any): Promise<Tender> {
     try {
       // Find the tender
       const tender = await this.tenderModel.findById(tenderId).exec();
@@ -676,9 +686,13 @@ export class TenderService {
         throw new BadRequestException(`Tender with ID ${tenderId} not found`);
       }
 
-      // Verify the user has permission to delete this tender (only the owner)
-      if (tender.owner.toString() !== userId) {
-        throw new ForbiddenException('You can only delete your own tenders');
+      // Verify the user has permission to delete this tender (only the owner or admin)
+      if (user) {
+        const isOwner = tender.owner.toString() === user._id.toString();
+        const isAdmin = user.type === RoleCode.ADMIN || user.type === RoleCode.SOUS_ADMIN;
+        if (!isOwner && !isAdmin) {
+          throw new ForbiddenException('You can only delete your own tenders');
+        }
       }
 
       // Delete all associated tender bids first

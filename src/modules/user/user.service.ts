@@ -25,7 +25,7 @@ export class UserService implements OnModuleInit {
 
 
   async findUser(user?: RootFilterQuery<User>) {
-    const users = await this.userModel.find(user).populate(['avatar', 'coverPhoto']);
+    const users = await this.userModel.find(user).populate(['avatar', 'coverPhoto', 'identity']);
     // Convert secteur IDs to names for all users
     for (const user of users) {
       await this.convertSecteurIdToName(user);
@@ -89,7 +89,7 @@ export class UserService implements OnModuleInit {
     if (!id || !Types.ObjectId.isValid(id)) {
       return null;
     }
-    const user = await this.userModel.findById(id).populate(['avatar', 'coverPhoto']);
+    const user = await this.userModel.findById(id).populate(['avatar', 'coverPhoto', 'identity']);
     if (user) {
       // Convert secteur ID to name if needed
       await this.convertSecteurIdToName(user);
@@ -211,6 +211,50 @@ export class UserService implements OnModuleInit {
   async onModuleInit() {
     // Admin user initialization is now handled by AdminService
     this.logger.log('UserService initialized - admin creation delegated to AdminService');
+
+    // Automatically correct discriminator keys (__t) in the database on startup (for legacy data)
+    try {
+      this.logger.log('Running automatic discriminator (__t) key alignment...');
+      const usersCollection = this.userModel.collection;
+
+      // Fix Professionals
+      const proResult = await usersCollection.updateMany(
+        { type: RoleCode.PROFESSIONAL, __t: { $ne: 'Professional' } },
+        { $set: { __t: 'Professional' } }
+      );
+      if (proResult.modifiedCount > 0) {
+        this.logger.log(`Aligned ${proResult.modifiedCount} professional discriminator keys to 'Professional'`);
+      }
+
+      // Fix Resellers
+      const resellerResult = await usersCollection.updateMany(
+        { type: RoleCode.RESELLER, __t: { $ne: 'Reseller' } },
+        { $set: { __t: 'Reseller' } }
+      );
+      if (resellerResult.modifiedCount > 0) {
+        this.logger.log(`Aligned ${resellerResult.modifiedCount} reseller discriminator keys to 'Reseller'`);
+      }
+
+      // Fix Clients
+      const clientResult = await usersCollection.updateMany(
+        { type: RoleCode.CLIENT, __t: { $ne: 'Buyer' } },
+        { $set: { __t: 'Buyer' } }
+      );
+      if (clientResult.modifiedCount > 0) {
+        this.logger.log(`Aligned ${clientResult.modifiedCount} client discriminator keys to 'Buyer'`);
+      }
+
+      // Fix Admins
+      const adminResult = await usersCollection.updateMany(
+        { type: { $in: [RoleCode.ADMIN, RoleCode.SOUS_ADMIN] }, __t: { $ne: 'Admin' } },
+        { $set: { __t: 'Admin' } }
+      );
+      if (adminResult.modifiedCount > 0) {
+        this.logger.log(`Aligned ${adminResult.modifiedCount} admin discriminator keys to 'Admin'`);
+      }
+    } catch (error) {
+      this.logger.error('Error aligning discriminator keys on startup:', error);
+    }
   }
 
   async findAllBuyers() {
@@ -253,7 +297,25 @@ export class UserService implements OnModuleInit {
 
   async updateUserFields(userId: string, update: Partial<User>) {
     try {
-      const updatedUser = await this.userModel.findByIdAndUpdate(userId, update, { new: true }).populate(['avatar', 'coverPhoto']);
+      if (update.type) {
+        let expectedT = null;
+        if (update.type === RoleCode.PROFESSIONAL) {
+          expectedT = 'Professional';
+        } else if (update.type === RoleCode.RESELLER) {
+          expectedT = 'Reseller';
+        } else if (update.type === RoleCode.CLIENT) {
+          expectedT = 'Buyer';
+        } else if (update.type === RoleCode.ADMIN || update.type === RoleCode.SOUS_ADMIN) {
+          expectedT = 'Admin';
+        }
+        if (expectedT) {
+          await this.userModel.collection.updateOne(
+            { _id: new Types.ObjectId(userId) },
+            { $set: { __t: expectedT } }
+          );
+        }
+      }
+      const updatedUser = await this.userModel.findByIdAndUpdate(userId, update, { new: true }).populate(['avatar', 'coverPhoto', 'identity']);
       return updatedUser;
     } catch (error) {
       console.error('Error updating user fields:', error);
@@ -307,7 +369,7 @@ export class UserService implements OnModuleInit {
   async findUsersByRoles(roles: RoleCode[]) {
     // Query users - subscriptionPlan should be included by default
     const users = await this.userModel.find({ type: { $in: roles } })
-      .populate(['avatar', 'coverPhoto'])
+      .populate(['avatar', 'coverPhoto', 'identity'])
       .lean(false); // Don't use lean() to preserve document methods and virtuals
     // Convert secteur IDs to names and enrich with avatar URLs for all users
     const enrichedUsers = [];
@@ -520,11 +582,28 @@ export class UserService implements OnModuleInit {
   }
 
   async updateUserType(userId: string, newType: RoleCode): Promise<User> {
+    let expectedT = null;
+    if (newType === RoleCode.PROFESSIONAL) {
+      expectedT = 'Professional';
+    } else if (newType === RoleCode.RESELLER) {
+      expectedT = 'Reseller';
+    } else if (newType === RoleCode.CLIENT) {
+      expectedT = 'Buyer';
+    } else if (newType === RoleCode.ADMIN || newType === RoleCode.SOUS_ADMIN) {
+      expectedT = 'Admin';
+    }
+    if (expectedT) {
+      await this.userModel.collection.updateOne(
+        { _id: new Types.ObjectId(userId) },
+        { $set: { __t: expectedT } }
+      );
+    }
+
     const user = await this.userModel.findByIdAndUpdate(
       userId,
       { type: newType },
       { new: true }
-    ).populate(['avatar', 'coverPhoto']);
+    ).populate(['avatar', 'coverPhoto', 'identity']);
 
     if (!user) {
       throw new BadRequestException('User not found');

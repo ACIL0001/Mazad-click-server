@@ -62,7 +62,7 @@ export class SessionService {
         session = await this.sessionModel.findOne({ access_key: key }).populate('user');
 
         if (!session) {
-          console.error(`❌ ValidateSession: Session not found in DB for key: ${key}`);
+          console.warn(`⚠️ ValidateSession: Session not found in DB for key: ${key}`);
           throw new UnauthorizedException('Invalid session');
         }
 
@@ -97,11 +97,14 @@ export class SessionService {
 
       return session;
     } catch (error) {
-      console.error('❌ ValidateSession Error:', error.message);
-      // Ensure we don't return 500 for auth failures
       if (error instanceof UnauthorizedException) {
         throw error;
       }
+      const isJwtError = error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError';
+      if (isJwtError) {
+        throw new UnauthorizedException(error.message);
+      }
+      console.error('❌ ValidateSession Error:', error.message);
       throw new UnauthorizedException('Session validation error');
     }
   }

@@ -364,13 +364,12 @@ export class TenderController {
 
   @Put(':id')
   @UseGuards(AuthGuard)
-  update(@Param('id') id: string, @Body() updateTenderDto: UpdateTenderDto) {
-    return this.tenderService.update(id, updateTenderDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.tenderService.remove(id);
+  update(
+    @Param('id') id: string,
+    @Request() req: ProtectedRequest,
+    @Body() updateTenderDto: UpdateTenderDto,
+  ) {
+    return this.tenderService.update(id, updateTenderDto, req.session.user);
   }
 
   @Post(':id/bid')
@@ -648,12 +647,12 @@ export class TenderController {
     @Req() req: ProtectedRequest,
   ) {
     try {
-      const userId = req.session?.user?._id?.toString();
-      if (!userId) {
+      const user = req.session?.user;
+      if (!user?._id) {
         throw new BadRequestException('User ID not found in session');
       }
 
-      const result = await this.tenderService.deleteTender(tenderId, userId);
+      const result = await this.tenderService.deleteTender(tenderId, user);
       return result;
     } catch (error) {
       console.error('TenderController: Error deleting tender:', error);

@@ -173,39 +173,46 @@ export class AuthService {
       throw new BadRequestException('Either email or phone must be provided');
     }
 
-    const identifier = dto.email || dto.phone;
-    const user = await this.userService.findByLogin(identifier);
-
-    if (!user) {
-      // Security: Don't reveal if user exists - return generic message
-      return {
-        message: 'If this account exists, you will receive a code.',
-        method: dto.email ? 'email' : 'phone'
-      };
-    }
-
-    // Handle email-based reset
-    if (dto.email) {
+    // Handle email-only reset (method='email' on frontend)
+    if (dto.email && !dto.phone) {
+      const user = await this.userService.findByLogin(dto.email);
+      if (!user) {
+        return { message: 'If this account exists, you will receive a code.', method: 'email' };
+      }
       if (!user.email) {
         throw new BadRequestException('No email linked to this account.');
       }
       await this.otpService.createOtpAndSendEmail(user, OtpType.FORGOT_PASSWORD);
-      return {
-        message: 'Password reset code sent to your email.',
-        method: 'email'
-      };
+      return { message: 'Password reset code sent to your email.', method: 'email' };
     }
 
     // Handle phone-based reset
     if (dto.phone) {
-      if (!user.phone) {
-        throw new BadRequestException('No phone number linked to this account.');
+      if (dto.email) {
+        // Both email and phone provided: verify they belong to the same account
+        const user = await this.userService.findByLogin(dto.email);
+        if (!user) {
+          return { message: 'If this account exists, you will receive a code.', method: 'phone' };
+        }
+        if (user.phone !== dto.phone) {
+          throw new BadRequestException('Le numéro de téléphone ne correspond pas à cet email.');
+        }
+        await this.otpService.createOtpAndSendSMS(user, OtpType.FORGOT_PASSWORD);
+        return { message: 'Password reset code sent to your phone.', method: 'phone' };
+      } else {
+        // Only phone provided (intended for users registered without an email)
+        const user = await this.userService.findByLogin(dto.phone);
+        if (!user) {
+          return { message: 'If this account exists, you will receive a code.', method: 'phone' };
+        }
+        // If the user actually HAS an email linked to their account, require them to provide it for security
+        if (user.email) {
+          throw new BadRequestException('Veuillez fournir l\'adresse email liée à ce compte.');
+        }
+        
+        await this.otpService.createOtpAndSendSMS(user, OtpType.FORGOT_PASSWORD);
+        return { message: 'Password reset code sent to your phone.', method: 'phone' };
       }
-      await this.otpService.createOtpAndSendSMS(user, OtpType.FORGOT_PASSWORD);
-      return {
-        message: 'Password reset code sent to your phone.',
-        method: 'phone'
-      };
     }
   }
 
