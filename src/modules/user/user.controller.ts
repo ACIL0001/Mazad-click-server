@@ -723,6 +723,33 @@ export class UserController {
     };
   }
 
+  @Put('demote-to-client/:userId')
+  @UseGuards(AdminGuard)
+  async demoteToClient(
+    @Param('userId') userId: string
+  ) {
+    // Find the user first
+    const user = await this.userService.findUserById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+    if (user.type !== RoleCode.PROFESSIONAL && user.type !== RoleCode.RESELLER) {
+      throw new BadRequestException('User is not a professional or reseller');
+    }
+    // Demote to client
+    const updatedUser = await this.userService.updateUserType(userId, RoleCode.CLIENT);
+
+    // Return fresh user data
+    const freshUser = await this.userService.findUserById(userId);
+
+    return {
+      success: true,
+      message: 'User demoted to client successfully',
+      user: freshUser,
+      data: freshUser
+    };
+  }
+
   @Post('update-with-identity')
   @UseGuards(AuthGuard)
   async updateUserWithIdentity(@Request() req: ProtectedRequest) {

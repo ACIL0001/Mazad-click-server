@@ -64,9 +64,6 @@ export class ReviewService {
   }
 
   async adjustUserRateByAdmin(userId: string, delta: number) {
-    if (![1, -1].includes(delta)) {
-      throw new BadRequestException('Delta must be +1 or -1');
-    }
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new BadRequestException('User not found');
